@@ -1,37 +1,55 @@
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { EmptyState } from '@/components/ui/empty-state';
+import { Content, Header, Screen } from '@/components/ui/screen';
+import { Txt } from '@/components/ui/text';
+import { Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Props = {
   title: string;
-  /** 이 화면을 실제로 채우는 구현 단계 (설계안 11장) */
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  emptyTitle: string;
+  emptyDescription: string;
+  /** 이 화면을 채우는 구현 단계 (설계안 11장) */
   step: string;
 };
 
 /**
- * 1단계 산출물은 "로그인되는 빈 앱"이다. 아직 구현하지 않은 탭은
- * 어느 단계에서 채워지는지만 밝혀 둔다.
+ * 아직 구현하지 않은 탭. 빈 화면이라도 무엇이 올 자리인지는 분명히 보여준다.
  */
-export function PlaceholderScreen({ title, step }: Props) {
-  const theme = useTheme();
+export function PlaceholderScreen({ title, icon, emptyTitle, emptyDescription, step }: Props) {
+  const { colors } = useTheme();
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
-      <View style={styles.center}>
-        <ThemedText type="subtitle">{title}</ThemedText>
-        <ThemedText themeColor="textSecondary" style={styles.caption}>
-          {step}
-        </ThemedText>
-      </View>
-    </SafeAreaView>
+    <Screen>
+      <Content>
+        <Header title={title} />
+        <View style={styles.body}>
+          <EmptyState icon={icon} title={emptyTitle} description={emptyDescription} />
+        </View>
+        <View style={[styles.stepBadge, { backgroundColor: colors.surfaceMuted }]}>
+          <Ionicons name="construct-outline" size={14} color={colors.textTertiary} />
+          <Txt variant="caption" tone="tertiary">
+            {step}
+          </Txt>
+        </View>
+      </Content>
+    </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: Spacing.two },
-  caption: { textAlign: 'center', paddingHorizontal: Spacing.four },
+  body: { flex: 1, justifyContent: 'center' },
+  stepBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    alignSelf: 'center',
+    marginBottom: Spacing.xxl,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.pill,
+  },
 });

@@ -1,16 +1,19 @@
 import { router } from 'expo-router';
 import { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Card, Divider } from '@/components/ui/card';
+import { ListRow } from '@/components/ui/list-row';
+import { Content, Header, Screen } from '@/components/ui/screen';
+import { Txt } from '@/components/ui/text';
+import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useProfile } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function SettingsScreen() {
-  const theme = useTheme();
+  const { colors } = useTheme();
   const { user, isGuest, signOut } = useAuth();
   const profile = useProfile();
   const [signingOut, setSigningOut] = useState(false);
@@ -27,77 +30,136 @@ export default function SettingsScreen() {
   }
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: theme.background }]}>
-      <View style={styles.content}>
-        <ThemedText type="subtitle">설정</ThemedText>
+    <Screen>
+      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <Content>
+          <Header title="설정" />
 
-        <View style={[styles.card, { backgroundColor: theme.backgroundElement }]}>
-          {profile.isPending ? (
-            <ActivityIndicator color={theme.tint} />
-          ) : (
-            <>
-              <ThemedText type="smallBold">{profile.data?.nickname ?? '알 수 없는 사용자'}</ThemedText>
-              <ThemedText type="small" themeColor="textSecondary">
-                {isGuest ? '게스트 — 이 기기에서만 사용 중' : (user?.email ?? '이메일 없음')}
-              </ThemedText>
-            </>
-          )}
-        </View>
+          <View style={styles.group}>
+            <Card padded={false}>
+              <View style={styles.identity}>
+                <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
+                  {profile.isPending ? (
+                    <ActivityIndicator color={colors.onAccent} />
+                  ) : (
+                    <Txt variant="title" tone="onAccent">
+                      {profile.data?.nickname?.slice(0, 1) ?? '·'}
+                    </Txt>
+                  )}
+                </View>
 
-        {isGuest ? (
-          <>
-            <ThemedText type="small" themeColor="textSecondary">
-              계정을 만들면 다른 기기에서도 이어서 쓰고, 캘린더를 다른 사람과 공유할 수 있습니다.
-              지금까지 쓰던 내용은 그대로 유지됩니다.
-            </ThemedText>
+                <View style={styles.identityText}>
+                  <Txt variant="subtitle">{profile.data?.nickname ?? '알 수 없는 사용자'}</Txt>
+                  <Txt variant="caption" tone="secondary">
+                    {isGuest ? '게스트 · 이 기기에서만 사용 중' : (user?.email ?? '이메일 없음')}
+                  </Txt>
+                </View>
+              </View>
 
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/account')}
-              style={({ pressed }) => [
-                styles.button,
-                { backgroundColor: theme.tint, opacity: pressed ? 0.85 : 1 },
-              ]}>
-              <ThemedText type="smallBold" style={styles.primaryLabel}>
-                계정 만들기
-              </ThemedText>
-            </Pressable>
-          </>
-        ) : (
-          <Pressable
-            accessibilityRole="button"
-            disabled={signingOut}
-            onPress={handleSignOut}
-            style={({ pressed }) => [
-              styles.button,
-              styles.outlined,
-              { borderColor: theme.border, opacity: signingOut ? 0.5 : pressed ? 0.85 : 1 },
-            ]}>
-            {signingOut ? (
-              <ActivityIndicator color={theme.text} />
-            ) : (
-              <ThemedText type="smallBold" themeColor="danger">
-                로그아웃
-              </ThemedText>
-            )}
-          </Pressable>
-        )}
+              {isGuest ? (
+                <View style={styles.upgrade}>
+                  <Txt variant="caption" tone="secondary">
+                    계정을 만들면 다른 기기에서도 이어서 쓰고, 캘린더를 다른 사람과 공유할 수
+                    있습니다. 지금까지 쓰던 내용은 그대로 유지됩니다.
+                  </Txt>
+                  <Button label="계정 만들기" onPress={() => router.push('/account')} />
+                </View>
+              ) : null}
+            </Card>
+          </View>
 
-        <ThemedText type="small" themeColor="textSecondary" style={styles.note}>
-          프로필 수정, 알림 설정, 계정 삭제는 이후 단계에서 붙습니다.
-          {'\n'}계정 삭제는 스토어 심사 필수 요건입니다 (8단계).
-        </ThemedText>
-      </View>
-    </SafeAreaView>
+          <Section title="알림">
+            <Card padded={false}>
+              <ListRow
+                icon="notifications-outline"
+                title="푸시 알림"
+                subtitle="일정 등록·변경, 댓글, 리마인더"
+                value="6단계"
+                disabled
+              />
+            </Card>
+          </Section>
+
+          <Section title="연동">
+            <Card padded={false}>
+              <ListRow
+                icon="sync-outline"
+                title="다른 캘린더 가져오기"
+                subtitle="Google · Apple · 네이버"
+                value="예정"
+                disabled
+              />
+            </Card>
+          </Section>
+
+          <Section title="계정">
+            <Card padded={false}>
+              {isGuest ? (
+                <ListRow
+                  icon="log-in-outline"
+                  title="이미 계정이 있어요"
+                  subtitle="기존 계정으로 로그인"
+                  onPress={() => router.push('/account')}
+                />
+              ) : (
+                <>
+                  <ListRow
+                    icon="person-outline"
+                    title="프로필 수정"
+                    value="예정"
+                    disabled
+                  />
+                  <Divider />
+                  <ListRow
+                    icon="log-out-outline"
+                    title={signingOut ? '로그아웃 중…' : '로그아웃'}
+                    danger
+                    onPress={handleSignOut}
+                    disabled={signingOut}
+                  />
+                </>
+              )}
+            </Card>
+          </Section>
+
+          <Txt variant="caption" tone="tertiary" style={styles.footnote}>
+            계정 삭제는 스토어 심사 필수 요건이라 8단계에서 붙습니다.
+          </Txt>
+        </Content>
+      </ScrollView>
+    </Screen>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <View style={styles.group}>
+      <Txt variant="label" tone="tertiary" style={styles.sectionTitle}>
+        {title}
+      </Txt>
+      {children}
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1 },
-  content: { flex: 1, gap: Spacing.three, padding: Spacing.four },
-  card: { gap: Spacing.one, padding: Spacing.three, borderRadius: 12 },
-  button: { height: 48, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  outlined: { borderWidth: 1 },
-  primaryLabel: { color: '#ffffff' },
-  note: { marginTop: 'auto' },
+  scroll: { paddingBottom: Spacing.xxxl },
+  group: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl, gap: Spacing.sm },
+  sectionTitle: { paddingLeft: Spacing.xs },
+  identity: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.lg,
+    padding: Spacing.lg,
+  },
+  avatar: {
+    width: 52,
+    height: 52,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  identityText: { flex: 1, gap: 2 },
+  upgrade: { gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
+  footnote: { paddingHorizontal: Spacing.xl },
 });

@@ -1,20 +1,15 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  TextInput,
-  View,
-  useColorScheme,
-} from 'react-native';
+import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { ThemedText } from '@/components/themed-text';
-import { Spacing } from '@/constants/theme';
+import { Button } from '@/components/ui/button';
+import { Field } from '@/components/ui/field';
+import { Notice } from '@/components/ui/notice';
+import { Content } from '@/components/ui/screen';
+import { Segmented } from '@/components/ui/segmented';
+import { Txt } from '@/components/ui/text';
+import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import {
   SignInCancelledError,
@@ -28,14 +23,18 @@ import { isSupabaseConfigured } from '@/lib/env';
 
 type Mode = 'create' | 'sign-in';
 
+const MODES = [
+  { value: 'create' as const, label: '계정 만들기' },
+  { value: 'sign-in' as const, label: '로그인' },
+];
+
 /**
  * 가입/로그인 화면. 시작 화면이 아니라 **필요할 때 여는 모달**이다.
  * 게스트로 쓰던 사람이 여기서 계정을 만들면 쓰던 데이터를 그대로 들고 간다.
  */
 export default function AccountScreen() {
-  const theme = useTheme();
-  const scheme = useColorScheme();
-  const { isGuest, user, bootstrapError, createAccount, signInWithEmail } = useAuth();
+  const { colors, scheme } = useTheme();
+  const { isGuest, bootstrapError, createAccount, signInWithEmail } = useAuth();
   const { reason } = useLocalSearchParams<{ reason?: string }>();
 
   const [mode, setMode] = useState<Mode>('create');
@@ -107,224 +106,140 @@ export default function AccountScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: theme.background }]}
+      style={[styles.flex, { backgroundColor: colors.background }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView
-        contentContainerStyle={styles.content}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode="on-drag">
-        <View style={styles.header}>
-          <ThemedText type="subtitle">{creating ? '계정 만들기' : '로그인'}</ThemedText>
-          <ThemedText themeColor="textSecondary">
-            {reason ??
-              (creating
-                ? '지금까지 쓰던 내용은 그대로 유지됩니다.'
-                : '다른 기기에서 쓰던 계정으로 이어서 사용합니다.')}
-          </ThemedText>
-        </View>
+      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+        <Content style={styles.content}>
+          <View style={styles.intro}>
+            <Txt variant="display">{creating ? '계정 만들기' : '로그인'}</Txt>
+            <Txt variant="body" tone="secondary">
+              {reason ??
+                (creating
+                  ? '지금까지 쓰던 내용은 그대로 유지됩니다.'
+                  : '다른 기기에서 쓰던 계정으로 이어서 사용합니다.')}
+            </Txt>
+          </View>
 
-        {!isSupabaseConfigured && (
-          <Notice tone="danger" title="Supabase 설정이 필요합니다">
-            프로젝트 루트에 `.env`를 만들고 EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY 를 채운 뒤 개발
-            서버를 다시 시작하세요. (`.env.example` 참고)
-          </Notice>
-        )}
+          {!isSupabaseConfigured && (
+            <Notice tone="danger" title="Supabase 설정이 필요합니다">
+              프로젝트 루트에 .env를 만들고 EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY 를 채운 뒤 개발
+              서버를 다시 시작하세요.
+            </Notice>
+          )}
 
-        {bootstrapError && (
-          <Notice tone="danger" title="게스트로 시작할 수 없습니다">
-            Supabase 프로젝트에서 익명 로그인(Anonymous sign-ins)을 켜야 가입 없이 쓸 수 있습니다.
-            우선은 계정을 만들어 주세요.
-          </Notice>
-        )}
+          {bootstrapError && (
+            <Notice tone="danger" title="게스트로 시작할 수 없습니다">
+              Supabase 프로젝트에서 익명 로그인을 켜야 가입 없이 쓸 수 있습니다. 우선은 계정을
+              만들어 주세요.
+            </Notice>
+          )}
 
-        {!creating && isGuest && (
-          <Notice tone="warn" title="게스트 기록은 넘어가지 않습니다">
-            지금 기기에서 만든 내용은 다른 계정으로 로그인하면 사라집니다. 지금 것을 계속 쓰려면
-            {' 계정 만들기 '}
-            쪽을 선택하세요.
-          </Notice>
-        )}
+          {!creating && isGuest && (
+            <Notice tone="danger" title="게스트 기록은 넘어가지 않습니다">
+              지금 기기에서 만든 내용은 다른 계정으로 로그인하면 사라집니다. 지금 것을 계속 쓰려면
+              계정 만들기 쪽을 선택하세요.
+            </Notice>
+          )}
 
-        <View style={[styles.segment, { backgroundColor: theme.backgroundElement }]}>
-          {(
-            [
-              ['create', '계정 만들기'],
-              ['sign-in', '로그인'],
-            ] as const
-          ).map(([value, label]) => (
-            <Pressable
-              key={value}
-              accessibilityRole="button"
-              accessibilityState={{ selected: mode === value }}
-              onPress={() => {
-                setMode(value);
-                setMessage(null);
-              }}
-              style={[
-                styles.segmentItem,
-                mode === value && { backgroundColor: theme.backgroundSelected },
-              ]}>
-              <ThemedText type="smallBold" themeColor={mode === value ? 'text' : 'textSecondary'}>
-                {label}
-              </ThemedText>
-            </Pressable>
-          ))}
-        </View>
+          <Segmented
+            options={MODES}
+            value={mode}
+            onChange={(next) => {
+              setMode(next);
+              setMessage(null);
+            }}
+          />
 
-        <View style={styles.form}>
-          {creating && (
+          <View style={styles.form}>
+            {creating && (
+              <Field
+                label="닉네임"
+                value={nickname}
+                onChangeText={setNickname}
+                placeholder="구성원에게 보이는 이름"
+                autoCapitalize="none"
+                maxLength={20}
+              />
+            )}
+
             <Field
-              label="닉네임"
-              value={nickname}
-              onChangeText={setNickname}
-              placeholder="구성원에게 보이는 이름"
+              label="이메일"
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@example.com"
               autoCapitalize="none"
-              maxLength={20}
+              autoComplete="email"
+              keyboardType="email-address"
+              inputMode="email"
+            />
+
+            <Field
+              label="비밀번호"
+              value={password}
+              onChangeText={setPassword}
+              placeholder={creating ? '6자 이상' : ''}
+              hint={creating ? '6자 이상 입력해 주세요' : undefined}
+              autoCapitalize="none"
+              autoComplete={creating ? 'new-password' : 'current-password'}
+              secureTextEntry
+              onSubmitEditing={submitEmail}
+              returnKeyType="go"
+            />
+          </View>
+
+          {message && (
+            <Txt variant="caption" tone={message.tone === 'error' ? 'danger' : 'secondary'}>
+              {message.text}
+            </Txt>
+          )}
+
+          <Button
+            label={creating ? '계정 만들기' : '로그인'}
+            loading={pending === 'email'}
+            disabled={disabled}
+            onPress={submitEmail}
+          />
+
+          <View style={styles.dividerRow}>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Txt variant="caption" tone="tertiary">
+              또는
+            </Txt>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          </View>
+
+          <Button
+            label="Google로 계속하기"
+            variant="secondary"
+            loading={pending === 'google'}
+            disabled={disabled}
+            onPress={() => run('google', socialAction('google'))}
+          />
+
+          {isNativeAppleSignInSupported && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+              buttonStyle={
+                scheme === 'dark'
+                  ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                  : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+              }
+              cornerRadius={Radius.md}
+              style={styles.appleButton}
+              onPress={() => run('apple', socialAction('apple'))}
             />
           )}
 
-          <Field
-            label="이메일"
-            value={email}
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            inputMode="email"
-          />
-
-          <Field
-            label="비밀번호"
-            value={password}
-            onChangeText={setPassword}
-            placeholder={creating ? '6자 이상' : ''}
-            autoCapitalize="none"
-            autoComplete={creating ? 'new-password' : 'current-password'}
-            secureTextEntry
-            onSubmitEditing={submitEmail}
-            returnKeyType="go"
-          />
-        </View>
-
-        {message && (
-          <ThemedText type="small" themeColor={message.tone === 'error' ? 'danger' : 'textSecondary'}>
-            {message.text}
-          </ThemedText>
-        )}
-
-        <Pressable
-          accessibilityRole="button"
-          disabled={disabled}
-          onPress={submitEmail}
-          style={({ pressed }) => [
-            styles.primaryButton,
-            { backgroundColor: theme.tint, opacity: disabled ? 0.5 : pressed ? 0.85 : 1 },
-          ]}>
-          {pending === 'email' ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <ThemedText type="smallBold" style={styles.primaryLabel}>
-              {creating ? '계정 만들기' : '로그인'}
-            </ThemedText>
-          )}
-        </Pressable>
-
-        <View style={styles.dividerRow}>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-          <ThemedText type="small" themeColor="textSecondary">
-            또는
-          </ThemedText>
-          <View style={[styles.divider, { backgroundColor: theme.border }]} />
-        </View>
-
-        <Pressable
-          accessibilityRole="button"
-          disabled={disabled}
-          onPress={() => run('google', socialAction('google'))}
-          style={({ pressed }) => [
-            styles.socialButton,
-            {
-              borderColor: theme.border,
-              backgroundColor: theme.background,
-              opacity: disabled ? 0.5 : pressed ? 0.85 : 1,
-            },
-          ]}>
-          {pending === 'google' ? (
-            <ActivityIndicator color={theme.text} />
-          ) : (
-            <ThemedText type="smallBold">Google로 계속하기</ThemedText>
-          )}
-        </Pressable>
-
-        {isNativeAppleSignInSupported && (
-          <AppleAuthentication.AppleAuthenticationButton
-            buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-            buttonStyle={
-              scheme === 'dark'
-                ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-            }
-            cornerRadius={12}
-            style={styles.appleButton}
-            onPress={() => run('apple', socialAction('apple'))}
-          />
-        )}
-
-        {isGuest && user && (
-          <ThemedText type="small" themeColor="textSecondary" style={styles.footnote}>
-            지금은 이 기기에서만 쓰는 게스트 상태입니다. 앱을 지우면 기록도 사라집니다.
-          </ThemedText>
-        )}
+          {isGuest ? (
+            <Pressable accessibilityRole="button" onPress={done} style={styles.later}>
+              <Txt variant="label" tone="tertiary">
+                나중에 하기
+              </Txt>
+            </Pressable>
+          ) : null}
+        </Content>
       </ScrollView>
     </KeyboardAvoidingView>
-  );
-}
-
-function Notice({
-  tone,
-  title,
-  children,
-}: {
-  tone: 'danger' | 'warn';
-  title: string;
-  children: React.ReactNode;
-}) {
-  const theme = useTheme();
-  const color = tone === 'danger' ? theme.danger : theme.tint;
-
-  return (
-    <View style={[styles.notice, { borderColor: color }]}>
-      <ThemedText type="smallBold" style={{ color }}>
-        {title}
-      </ThemedText>
-      <ThemedText type="small" themeColor="textSecondary">
-        {children}
-      </ThemedText>
-    </View>
-  );
-}
-
-type FieldProps = React.ComponentProps<typeof TextInput> & { label: string };
-
-function Field({ label, style, ...rest }: FieldProps) {
-  const theme = useTheme();
-
-  return (
-    <View style={styles.field}>
-      <ThemedText type="small" themeColor="textSecondary">
-        {label}
-      </ThemedText>
-      <TextInput
-        placeholderTextColor={theme.textSecondary}
-        style={[
-          styles.input,
-          { color: theme.text, backgroundColor: theme.backgroundElement, borderColor: theme.border },
-          style,
-        ]}
-        {...rest}
-      />
-    </View>
   );
 }
 
@@ -333,7 +248,7 @@ function toMessage(error: unknown) {
 
   if (/invalid login credentials/i.test(raw)) return '이메일 또는 비밀번호가 올바르지 않습니다';
   if (/already been registered|already registered|already exists/i.test(raw))
-    return '이미 가입된 이메일입니다. "로그인"으로 이어서 사용하세요.';
+    return '이미 가입된 이메일입니다. 로그인 쪽으로 이어서 사용하세요.';
   if (/password should be at least/i.test(raw)) return '비밀번호는 6자 이상이어야 합니다';
   if (/email not confirmed/i.test(raw)) return '이메일 확인이 아직 완료되지 않았습니다';
   if (/manual linking is disabled/i.test(raw))
@@ -344,39 +259,12 @@ function toMessage(error: unknown) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  content: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    gap: Spacing.three,
-    padding: Spacing.four,
-    maxWidth: 480,
-    width: '100%',
-    alignSelf: 'center',
-  },
-  header: { gap: Spacing.one, marginBottom: Spacing.two },
-  notice: { gap: Spacing.one, padding: Spacing.three, borderRadius: 12, borderWidth: 1 },
-  segment: { flexDirection: 'row', padding: Spacing.one, borderRadius: 10, gap: Spacing.one },
-  segmentItem: { flex: 1, alignItems: 'center', paddingVertical: Spacing.two, borderRadius: 8 },
-  form: { gap: Spacing.three },
-  field: { gap: Spacing.one },
-  input: {
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.three,
-    fontSize: 16,
-  },
-  primaryButton: { height: 50, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  primaryLabel: { color: '#ffffff' },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.three },
+  scroll: { flexGrow: 1, justifyContent: 'center', paddingVertical: Spacing.xxl },
+  content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
+  intro: { gap: Spacing.xs, marginBottom: Spacing.xs },
+  form: { gap: Spacing.lg },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   divider: { flex: 1, height: StyleSheet.hairlineWidth },
-  socialButton: {
-    height: 50,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  appleButton: { height: 50 },
-  footnote: { textAlign: 'center' },
+  appleButton: { height: 52 },
+  later: { alignSelf: 'center', padding: Spacing.md },
 });

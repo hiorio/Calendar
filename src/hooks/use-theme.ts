@@ -1,14 +1,12 @@
-/**
- * Learn more about light and dark modes:
- * https://docs.expo.dev/guides/color-schemes/
- */
-
-import { Colors } from '@/constants/theme';
+import { Colors, type ThemeColors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
-export function useTheme() {
-  const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
+export type Scheme = 'light' | 'dark';
 
-  return Colors[theme];
+/** 현재 배색과 스킴. 색이 필요한 모든 곳은 여기를 통한다. */
+export function useTheme(): { colors: ThemeColors; scheme: Scheme } {
+  const raw = useColorScheme();
+  const scheme: Scheme = raw === 'dark' ? 'dark' : 'light';
+
+  return { colors: Colors[scheme], scheme };
 }

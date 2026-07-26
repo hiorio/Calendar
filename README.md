@@ -68,9 +68,19 @@ src/
     profile/              내 프로필 조회
   lib/                    supabase 클라이언트, 환경변수
   types/database.ts       DB 스키마 타입 (마이그레이션과 1:1)
-supabase/migrations/      스키마 · RLS · Storage
+supabase/migrations/      스키마 · RLS · 권한 · Storage
 docs/design-notes.md      설계안 대비 변경점과 남은 결정
+docs/external-calendars.md  타 서비스 캘린더 가져오기 설계 (미구현)
 ```
+
+## 디자인
+
+`src/constants/theme.ts`가 유일한 색·간격·타이포 출처입니다. 화면에 hex를 직접 쓰지 않습니다.
+공통 컴포넌트는 `src/components/ui/`에 있습니다 (Screen · Card · Button · ListRow · Field ·
+Segmented · EmptyState · Notice · Txt).
+
+월간 뷰는 `src/features/calendar/month-view.tsx`입니다. 한국 달력 관례대로 일요일은 빨강,
+토요일은 파랑이고, 달을 넘길 때 격자가 출렁이지 않도록 항상 6주를 그립니다.
 
 ## 스크립트
 
