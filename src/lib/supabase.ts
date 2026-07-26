@@ -6,13 +6,19 @@ import 'react-native-url-polyfill/auto';
 import { env } from '@/lib/env';
 import type { Database } from '@/types/database';
 
+/**
+ * 웹 정적 렌더링(Node) 중에는 window/localStorage가 없다. 이때 저장소를 붙이면
+ * 모듈 로드 시점에 ReferenceError로 죽으므로 세션 기능을 꺼둔다.
+ */
+const isServer = typeof window === 'undefined';
+
 export const supabase = createClient<Database>(env.supabaseUrl, env.supabaseAnonKey, {
   auth: {
-    storage: AsyncStorage,
-    autoRefreshToken: true,
-    persistSession: true,
+    ...(isServer ? {} : { storage: AsyncStorage }),
+    autoRefreshToken: !isServer,
+    persistSession: !isServer,
     // 모바일에서는 딥링크를 직접 처리한다 (features/auth/oauth.ts)
-    detectSessionInUrl: Platform.OS === 'web',
+    detectSessionInUrl: Platform.OS === 'web' && !isServer,
     flowType: 'pkce',
   },
 });
