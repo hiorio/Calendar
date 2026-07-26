@@ -6,32 +6,63 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 공유 캘린더 앱. Expo (React Native) + Supabase.
 
-- 설계 기준 문서는 대화에서 받은 "공유 캘린더 앱 상세 설계안". 구현하며 바꾼 부분은
-  `docs/design-notes.md`에 이유와 함께 기록한다.
-- DB 스키마를 바꿀 때는 `supabase/migrations/`에 새 파일을 추가하고
+설계 기준 문서는 대화에서 받은 "공유 캘린더 앱 상세 설계안". 구현하며 바꾼 부분은
+`docs/design-notes.md`에 이유와 함께 기록한다.
+
+## 시작하기 (처음이라면 이것부터)
+
+환경 설정은 **`docs/setup.md`**에 전부 있다. 요약하면:
+
+```bash
+npm install && npm run db:start && npm run db:env && npm run db:reset
+```
+
+- **Docker Desktop이 켜져 있어야 한다.** 로컬 Supabase가 컨테이너로 뜬다.
+- **Node 24 권장**(최소 22.18). `npm run test:unit`이 빌드 없이 `.ts`를 직접 실행한다.
+- `.env`는 커밋되지 않는 생성물이다. `npm run db:env`가 만든다. 값을 손으로 적지 말 것.
+- 클라우드 Supabase 프로젝트는 필요 없다. 전부 로컬에서 돈다.
+
+개발 서버는 셸에서 직접 띄우지 않는다. `.claude/launch.json`의 `web` 설정을 preview
+도구로 실행한다 (포트 8081).
+
+## 고쳤으면 돌릴 것
+
+커밋 전에 해당하는 것을 **전부** 통과시킨다.
+
+| 바꾼 것 | 확인 |
+|---|---|
+| 아무거나 | `npm run lint` · `npm run typecheck` |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (77개) |
+| `src/lib/`의 계산 로직 | `npm run test:unit` (28개) |
+| 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
+
+## DB
+
+- 스키마를 바꿀 때는 `supabase/migrations/`에 **새 파일을 추가**하고
   `src/types/database.ts`를 함께 갱신한다. 기존 마이그레이션은 수정하지 않는다.
 - **테이블을 추가하면 RLS 정책뿐 아니라 GRANT도 줘야 한다.** Supabase 기본 권한에는
   SELECT/INSERT/UPDATE/DELETE가 없어서 정책만 쓰면 42501로 막힌다.
   `20260726000500_grants.sql`의 목록을 정책과 1:1로 유지할 것.
-- 스키마·정책을 바꿨으면 `npm run db:reset && npm run db:smoke`로 확인한다.
-- 시간 처리 원칙(설계안 3장)은 전역 규칙이다. 종일 일정은 타임존 변환 대상이 아니고,
-  반복 전개는 `events.timezone` 기준으로 한다.
-- **가입을 앞세우지 않는다.** 첫 실행은 게스트(익명) 세션으로 시작하고, 계정은 공유처럼
-  꼭 필요한 순간에만 요구한다. 그 경계는 UI가 아니라 RLS로 강제한다
-  (`is_guest()` 참고). 새 기능이 계정을 요구한다면 정책에도 함께 넣을 것.
-- 화면 문구는 한국어.
+- PostgREST 임베드는 두 테이블 사이 경로가 둘 이상이면 300으로 막힌다. 정션이 될 수
+  있는 테이블을 추가했으면 기존 `select=…profiles(...)` 쿼리를 다시 확인할 것.
 
-- 디자인 토큰은 `src/constants/theme.ts` 하나뿐이다. 화면에 hex를 직접 쓰지 않는다.
+## 시간 처리 (설계안 3장 — 전역 규칙)
 
 - 일정의 시간 계산은 `src/lib/event-time.ts`, 반복은 `src/lib/recurrence.ts`,
   타임존 변환은 `src/lib/timezone.ts`. 화면에서 `start_at`/`start_date`나 RRULE
   문자열을 직접 만지지 않는다.
-- 반복 전개는 **벽시계 기준**이다. 순간(UTC)으로 회차를 세면 서머타임에서 어긋난다.
+- 종일 일정은 타임존 변환 대상이 아니다.
+- 반복 전개는 `events.timezone`의 **벽시계 기준**이다. 순간(UTC)으로 회차를 세면
+  서머타임에서 어긋난다.
 - `events.rrule`을 바꾸면 `rrule_until`도 함께 다시 계산해야 한다
   (`computeRruleUntil`). 이 값이 기간 조회의 `range_end`가 된다.
-- 순수 함수(반복·타임존·시간 보정)를 고쳤으면 `npm run test:unit`으로 확인한다.
 
-- PostgREST 임베드는 두 테이블 사이 경로가 둘 이상이면 300으로 막힌다. 정션이 될 수
-  있는 테이블을 추가했으면 기존 `select=…profiles(...)` 쿼리를 다시 확인할 것.
+## 제품 원칙
+
+- **가입을 앞세우지 않는다.** 첫 실행은 게스트(익명) 세션으로 시작하고, 계정은 공유처럼
+  꼭 필요한 순간에만 요구한다. 그 경계는 UI가 아니라 RLS로 강제한다
+  (`is_guest()` 참고). 새 기능이 계정을 요구한다면 정책에도 함께 넣을 것.
+- 디자인 토큰은 `src/constants/theme.ts` 하나뿐이다. 화면에 hex를 직접 쓰지 않는다.
+- 화면 문구는 한국어.
 
 현재 진행 단계: 5단계(참여자 · 댓글) 완료. 다음은 6단계(푸시 알림).

@@ -2,8 +2,13 @@
 
 가족·연인·친구·소모임이 하나의 캘린더를 공유하고, 일정마다 대화 스레드를 갖는 모바일 앱.
 
-Expo (React Native) + Supabase. 설계안 11장의 **1단계** — Supabase 스키마 · RLS · Auth,
-그리고 로그인이 동작하는 앱 셸 — 까지 구현되어 있습니다.
+Expo (React Native) + Supabase. 설계안 11장 기준 **5단계(참여자 · 댓글)까지** 구현되어
+있습니다.
+
+> **개발 환경을 세우려면 [`docs/setup.md`](docs/setup.md)를 보세요.** 필요한 것,
+> 첫 실행 순서, 확인 방법이 전부 있습니다. 클라우드 계정 없이 로컬에서 돌아갑니다.
+> 작업 규칙은 [`AGENTS.md`](AGENTS.md), 설계안에서 바꾼 것과 이유는
+> [`docs/design-notes.md`](docs/design-notes.md)에 있습니다.
 
 ## 지금 되는 것
 
@@ -48,10 +53,11 @@ npm run web        # 환경변수 반영을 위해 개발 서버를 새로 띄�
 ```
 
 `migrations/`는 `db:start` 때 자동 적용됩니다. 브라우저를 열면 로그인 화면 없이 바로
-홈("안녕하세요, 나님")이 떠야 정상입니다. 설정 탭에서 계정을 만들면 게스트 기록을 유지한 채
+캘린더 화면이 떠야 정상입니다. 설정 탭에서 계정을 만들면 게스트 기록을 유지한 채
 정식 계정으로 바뀝니다. DB 상태는 Studio(`http://127.0.0.1:54323`)에서 볼 수 있습니다.
 
-RLS·트리거·게스트 흐름은 `npm run db:smoke`로 한 번에 확인할 수 있습니다.
+RLS·트리거·게스트 흐름은 `npm run db:smoke`(77개), 반복·타임존 같은 순수 계산은
+`npm run test:unit`(28개)으로 확인합니다.
 
 클라우드 프로젝트를 쓰거나 Google/Apple 로그인까지 확인하려면 `supabase/README.md`를
 보세요. 소셜 로그인은 커스텀 스킴(`calendar://`)을 쓰므로 Expo Go가 아닌
@@ -83,9 +89,16 @@ src/
     events/               일정 쿼리와 공용 폼
     profile/              내 프로필 조회
   stores/                 Zustand (캘린더 표시 필터)
-  lib/                    supabase 클라이언트, 날짜·일정 시간 유틸, 환경변수
+  lib/
+    date.ts               달력 격자용 날짜 (화면 좌표)
+    event-time.ts         일정의 시간 의미 (설계안 3장)
+    recurrence.ts         RRULE 생성 · 전개 · 회차 예외
+    timezone.ts           IANA 벽시계 ↔ 순간 변환
+    supabase.ts           클라이언트, confirm.ts, env.ts
   types/database.ts       DB 스키마 타입 (마이그레이션과 1:1)
 supabase/migrations/      스키마 · RLS · 권한 · Storage
+scripts/                  스모크 · 단위 테스트, .env 생성
+docs/setup.md             개발 환경 설정 ← 처음이면 여기부터
 docs/design-notes.md      설계안 대비 변경점과 남은 결정
 docs/external-calendars.md  타 서비스 캘린더 가져오기 설계 (미구현)
 ```
@@ -107,6 +120,7 @@ Segmented · EmptyState · Notice · Txt).
 | `npm run web` | 브라우저에서 실행 |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `expo lint` |
+| `npm run test:unit` | 순수 함수 검사 (반복 · 타임존 · 시간 보정) |
 | `npm run db:start` / `db:stop` | 로컬 Supabase 기동 / 정지 |
 | `npm run db:reset` | 초기화 후 마이그레이션 재적용 |
 | `npm run db:env` | 로컬 Supabase 값을 `.env`에 기록 |
@@ -115,4 +129,6 @@ Segmented · EmptyState · Notice · Txt).
 
 ## 다음 단계
 
-설계안 11장 기준 2단계 — 캘린더 생성, 초대 링크 발급/수락(Edge Function), 구성원 관리.
+설계안 11장 기준 6단계 — 푸시 알림 (일정 등록·변경, 댓글, 리마인더). 이어서
+7단계 활동 로그, 8단계 계정 삭제입니다. 화면에 `"6단계"`처럼 표시된 자리가 그때
+채워질 곳입니다.

@@ -63,5 +63,8 @@
     "test:unit": "node scripts/unit-check.mjs",
     "db:types": "supabase gen types typescript --local > src/types/database.ts"
   },
+  "engines": {
+    "node": ">=22.18"
+  },
   "private": true
 }
