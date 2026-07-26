@@ -903,7 +903,95 @@ console.log('\n17. 기기 토큰 (6단계)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n18. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
+console.log('\n18. 활동 로그 (7단계)');
+{
+  const created = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '이사',
+      start_at: '2026-09-20T09:00:00+09:00',
+      end_at: '2026-09-20T18:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  const eventId = created.body?.[0]?.id;
+
+  const logs = () => rest(alice.token, `activity_logs?select=type,actor_id,ref_id,summary&ref_id=eq.${eventId}&order=id`);
+
+  let seen = await logs();
+  check('일정을 만들면 활동이 남는다',
+    seen.body?.[0]?.type === 'EVENT_CREATED' && seen.body?.[0]?.actor_id === alice.userId,
+    JSON.stringify(seen.body));
+  check('활동에 일정 이름이 들어 있다', seen.body?.[0]?.summary?.title === '이사', JSON.stringify(seen.body?.[0]));
+
+  // 알림과 달리 **본인 행동도** 남는다. 기록과 알림은 다른 문제다.
+  const notified = await outbox(`dedup_key=eq.EVENT_CREATED:${eventId}:${alice.userId}&select=id`);
+  check('본인 행동은 알림엔 없지만 활동엔 남는다', notified.length === 0 && seen.body?.length === 1,
+    `알림 ${notified.length}건 / 활동 ${seen.body?.length}건`);
+
+  // 무엇을 바꿨는지 기록한다
+  await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ start_at: '2026-09-21T09:00:00+09:00', end_at: '2026-09-21T18:00:00+09:00' }),
+  });
+  seen = await logs();
+  const updated = seen.body?.find((row) => row.type === 'EVENT_UPDATED');
+  check('바뀐 항목이 기록된다', JSON.stringify(updated?.summary?.changed) === '["time"]', JSON.stringify(updated?.summary));
+
+  // 알림은 가지 않지만 활동에는 남는 변화
+  await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ description: '트럭 예약함' }),
+  });
+  seen = await logs();
+  const memoLog = seen.body?.filter((row) => row.type === 'EVENT_UPDATED') ?? [];
+  check('메모만 고쳐도 활동엔 남는다',
+    memoLog.some((row) => JSON.stringify(row.summary?.changed) === '["description"]'),
+    JSON.stringify(memoLog.map((r) => r.summary?.changed)));
+
+  // 댓글
+  await rest(bob.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: bob.userId, content: '몇 시부터 도와줄까?' }),
+  });
+  seen = await logs();
+  const comment = seen.body?.find((row) => row.type === 'COMMENT_CREATED');
+  check('댓글도 활동에 남는다', comment?.actor_id === bob.userId, JSON.stringify(comment));
+  check('댓글 활동에 발췌가 들어 있다', comment?.summary?.excerpt === '몇 시부터 도와줄까?', JSON.stringify(comment?.summary));
+
+  // 삭제
+  await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  seen = await logs();
+  check('삭제도 활동에 남는다', seen.body?.some((row) => row.type === 'EVENT_DELETED'), JSON.stringify(seen.body?.map((r) => r.type)));
+
+  // 읽기 전용 — 쓰기 권한을 주지 않았다(0005)
+  const forged = await rest(alice.token, 'activity_logs', {
+    method: 'POST',
+    body: JSON.stringify({ calendar_id: calendarId, actor_id: bob.userId, type: 'EVENT_CREATED' }),
+  });
+  check('활동 로그는 직접 쓸 수 없다', forged.status >= 400, `${forged.status} ${JSON.stringify(forged.body)}`);
+
+  const outsider = await signUp('활동 구경꾼');
+  const leaked = await rest(outsider.token, 'activity_logs?select=id');
+  check('비구성원에게는 활동이 보이지 않는다', leaked.body?.length === 0, JSON.stringify(leaked.body));
+
+  // 앱이 실제로 쓰는 임베드 (작성자·캘린더 함께)
+  const embedded = await rest(
+    alice.token,
+    `activity_logs?select=id,summary,profiles!actor_id(nickname),calendars(name,color)&calendar_id=eq.${calendarId}&order=id.desc&limit=1`,
+  );
+  check('작성자와 캘린더를 함께 가져올 수 있다',
+    embedded.status === 200 && Boolean(embedded.body?.[0]?.profiles?.nickname && embedded.body?.[0]?.calendars?.name),
+    `${embedded.status} ${JSON.stringify(embedded.body)}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n19. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
 {
   const blocked = await rest(
     alice.token,
@@ -936,6 +1024,18 @@ console.log('\n18. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
     { method: 'DELETE' },
   );
   check('넘기고 나면 나갈 수 있다', left.status === 200, `status=${left.status}`);
+
+  // 나간 사람은 더 이상 못 읽으니 남은 사람(밥)이 확인한다
+  const leftLog = await rest(
+    bob.token,
+    `activity_logs?select=type,ref_id,summary&calendar_id=eq.${calendarId}&type=eq.MEMBER_LEFT`,
+  );
+  check('탈퇴가 활동에 남는다',
+    leftLog.body?.some((row) => row.ref_id === alice.userId && row.summary?.nickname === '앨리스'),
+    JSON.stringify(leftLog.body));
+  check('스스로 나간 것은 강퇴가 아니다',
+    leftLog.body?.find((row) => row.ref_id === alice.userId)?.summary?.kicked === false,
+    JSON.stringify(leftLog.body));
 
   const last = await rest(
     bob.token,

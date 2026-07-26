@@ -16,6 +16,7 @@ const { toWallClock, fromWallClock } = await import('../src/lib/timezone.ts');
 const { buildRrule, parseRrule, expandEvent, computeRruleUntil, truncateRruleBefore, applyExceptions } =
   await import('../src/lib/recurrence.ts');
 const { eventDayKeys, switchAllDay, moveStart, moveEnd } = await import('../src/lib/event-time.ts');
+const { objectParticle, subjectParticle } = await import('../src/lib/korean.ts');
 
 let passed = 0;
 let failed = 0;
@@ -269,6 +270,20 @@ console.log('\n7. 폼 시간 보정');
 
   const backToTimed = switchAllDay(allDay, false);
   check('시간 지정으로 되돌리면 종료가 시작보다 뒤다', backToTimed.end > backToTimed.start);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n8. 한국어 조사');
+{
+  eq('받침 있으면 을', objectParticle('저녁 약속'), '저녁 약속을');
+  eq('받침 없으면 를', objectParticle('이사'), '이사를');
+  eq('받침 있으면 이', subjectParticle('민준'), '민준이');
+  eq('받침 없으면 가', subjectParticle('앨리스'), '앨리스가');
+  eq('숫자도 읽는 소리로 (1=일)', objectParticle('회의 1'), '회의 1을');
+  eq('숫자도 읽는 소리로 (2=이)', objectParticle('회의 2'), '회의 2를');
+  eq('영문도 읽는 소리로 (l=엘)', objectParticle('Excel'), 'Excel을');
+  eq('영문도 읽는 소리로 (o=오)', objectParticle('Zoo'), 'Zoo를');
+  eq('판단할 수 없으면 받침 없는 쪽', objectParticle('회의 🎉'), '회의 🎉를');
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

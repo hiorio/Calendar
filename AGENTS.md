@@ -32,8 +32,8 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 바꾼 것 | 확인 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (77개) |
-| `src/lib/`의 계산 로직 | `npm run test:unit` (28개) |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (107개) |
+| `src/lib/`의 계산 로직 | `npm run test:unit` (40개) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
 
 ## DB
@@ -63,7 +63,6 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
   꼭 필요한 순간에만 요구한다. 그 경계는 UI가 아니라 RLS로 강제한다
   (`is_guest()` 참고). 새 기능이 계정을 요구한다면 정책에도 함께 넣을 것.
 - 디자인 토큰은 `src/constants/theme.ts` 하나뿐이다. 화면에 hex를 직접 쓰지 않는다.
-- 화면 문구는 한국어.
 
 ## 알림
 
@@ -76,4 +75,14 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 - **발송 워커는 아직 없다.** 큐는 쌓이기만 한다. 화면에도 그렇게 적혀 있으니 "알림이
   간다"고 바꾸지 말 것.
 
-현재 진행 단계: 6단계(알림 큐 · 설정 · 리마인더) 완료. 다음은 7단계(활동 로그).
+## 활동 로그
+
+- 알림(`0010`)과 **규칙이 다르다.** 활동은 "무슨 일이 있었나"라서 **본인 행동도 남기고
+  음소거와 무관하며 메모만 고쳐도 남는다.** 두 트리거를 합치지 말 것.
+- `activity_logs`는 클라이언트에게 읽기 전용이다. 쓰기는 security definer 트리거만.
+
+## 화면 문구
+
+- 한국어. 조사는 `src/lib/korean.ts`로 골라 쓴다. `을(를)` 같은 표기를 두지 않는다.
+
+현재 진행 단계: 7단계(활동 로그) 완료. 다음은 8단계(계정 삭제)와 알림 발송 워커.
