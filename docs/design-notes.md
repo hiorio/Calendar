@@ -197,7 +197,52 @@ delete from auth.users
 - 2차: 이미 계정이 있는 사람이 게스트로 쓰던 내용을 **병합**하는 흐름.
   지금은 병합하지 않고 경고만 합니다.
 
-## 11. 세션 저장소
+## 11. 홈 탭을 없앴다 (설계안 9장 변경)
+
+설계안 하단 탭은 홈(통합 뷰) · 캘린더(목록/개별) · ＋ · 활동 · 설정 다섯 개였습니다.
+그런데 홈과 캘린더가 결국 같은 월간 뷰였습니다. 캘린더 앱의 첫 화면은 캘린더여야 합니다.
+
+- 탭은 넷: **캘린더 · 추가 · 활동 · 설정**
+- 앱을 켜면 곧바로 월간 뷰
+- 여러 캘린더는 상단 **필터 칩**으로 켜고 끕니다 (설계안 홈의 칩을 그대로 가져옴).
+  선택 상태는 Zustand + AsyncStorage에 남습니다.
+- 캘린더 **목록·관리**는 탭이 아니라 칩 줄 끝의 "관리"에서 여는 화면으로 내렸습니다.
+
+## 12. 초대 수락을 Edge Function 대신 SQL 함수로 (설계안 6.2 변경)
+
+설계안은 `POST /invite/accept`를 Edge Function으로 뒀습니다. 그런데 하는 일이
+"코드 검증 → 멤버 등록 → use_count 증가 → 활동로그"로 **전부 DB 안에서 끝납니다.**
+
+`security definer` 함수로 만들면:
+
+- 한 트랜잭션으로 묶입니다. `for update`로 코드 행을 잠가 동시 수락 시 use_count가
+  어긋나지 않습니다.
+- 콜드스타트가 없고, 배포 단계도 사라집니다.
+- 로컬에서 `npm run db:smoke`로 바로 검증됩니다.
+
+`public.accept_invite(text)`와 미리보기용 `public.invite_preview(text)` 두 개입니다.
+비구성원은 `calendar_invites`를 읽을 수 없으므로(코드 목록이 새면 안 되므로) 조회도 이
+함수를 통해서만 합니다. 외부 호출이 필요해지면 그때 Edge Function으로 옮깁니다.
+
+수락에도 계정을 요구합니다. 공유 캘린더는 기기를 바꿔도 이어져야 하는데 게스트는 그럴
+수 없기 때문입니다.
+
+## 13. 소유권 이전이 자기 가드에 걸리던 버그 (실행하며 발견)
+
+`OWNER는 소유권을 넘길 수 있다` 검사가 403으로 실패했습니다.
+
+`guard_calendar_owner_change`는 `calendar_members`를 두 번 고칩니다 — 현 소유자를
+MEMBER로 강등하고, 새 소유자를 OWNER로 승격합니다. 그런데 첫 번째 update가 **호출자
+자신을 강등**해 버리고, 두 번째 update에서 `guard_member_role_change`가
+"auth.uid()가 calendar_members에서 OWNER인가"를 확인하며 막았습니다. 순서를 바꿔도
+두 번째에서 같은 문제가 납니다.
+
+`0009`에서 역할 변경 권한의 기준을 `calendar_members.role`이 아니라 **`calendars.owner_id`**로
+바꿨습니다. 소유자의 단일 출처는 원래 이쪽이고, BEFORE UPDATE 시점에는 아직 예전 소유자가
+들어 있어 두 update가 모두 통과합니다. 일반 구성원이 스스로 OWNER가 되는 것은 그대로
+막힙니다(`npm run db:smoke` 13번이 두 경우를 다 고정합니다).
+
+## 14. 세션 저장소
 
 Supabase 세션을 `AsyncStorage`에 둡니다(Supabase의 Expo 가이드 기본값).
 `expo-secure-store`는 안드로이드에서 2048바이트 제한이 있어 세션 JSON을 그대로 담기

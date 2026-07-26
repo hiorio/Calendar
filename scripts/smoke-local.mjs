@@ -146,30 +146,9 @@ async function rest(token, path, init = {}) {
   return { status: res.status, body };
 }
 
-/**
- * service_role로 호출. 초대 수락 Edge Function이 할 일을 대신할 때만 쓴다.
- * RLS를 우회하므로 검증에는 절대 쓰지 않는다.
- */
-async function restAsService(path, init = {}) {
-  const service = env.get('SERVICE_ROLE_KEY') ?? env.get('SECRET_KEY');
-  const res = await fetch(`${URL_BASE}/rest/v1/${path}`, {
-    ...init,
-    headers: {
-      apikey: service,
-      Authorization: `Bearer ${service}`,
-      'Content-Type': 'application/json',
-      Prefer: 'return=representation',
-      ...init.headers,
-    },
-  });
-  const text = await res.text();
-  let body;
-  try {
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = text;
-  }
-  return { status: res.status, body };
+/** RPC 호출 (security definer 함수) */
+async function rpc(token, fn, args) {
+  return rest(token, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
 }
 
 console.log(`대상: ${URL_BASE}\n`);
@@ -339,14 +318,38 @@ console.log('\n7. 구성원 설정');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n8. 합류 후 접근과 탈퇴 규칙 (5.3)');
+console.log('\n8. 초대 링크와 합류 (설계안 6.2)');
+const inviteCode = `smoke-${Date.now()}`;
 {
-  // 합류는 초대 수락 Edge Function(service_role)만 할 수 있다. 그 역할을 대신한다.
-  const joined = await restAsService(`calendar_members`, {
+  const created = await rest(alice.token, 'calendar_invites', {
     method: 'POST',
-    body: JSON.stringify({ calendar_id: calendarId, user_id: bob.userId, role: 'MEMBER' }),
+    body: JSON.stringify({ calendar_id: calendarId, code: inviteCode, created_by: alice.userId }),
   });
-  check('초대 수락(service_role)으로 합류시킬 수 있다', joined.status === 201, `${joined.status} ${JSON.stringify(joined.body)}`);
+  check('구성원은 초대 링크를 만들 수 있다', created.status === 201, `${created.status} ${JSON.stringify(created.body)}`);
+
+  const leaked = await rest(bob.token, 'calendar_invites?select=code');
+  check('비구성원에게 초대 코드 목록은 보이지 않는다', leaked.body?.length === 0, JSON.stringify(leaked.body));
+
+  const preview = await rpc(bob.token, 'invite_preview', { invite_code: inviteCode });
+  check(
+    '비구성원도 초대 미리보기는 볼 수 있다',
+    preview.body?.valid === true && preview.body?.calendar_name === '스모크 캘린더',
+    JSON.stringify(preview.body),
+  );
+  check('미리보기에 초대한 사람이 나온다', preview.body?.inviter === '앨리스', JSON.stringify(preview.body));
+
+  const accepted = await rpc(bob.token, 'accept_invite', { invite_code: inviteCode });
+  check(
+    '초대를 수락하면 합류된다',
+    accepted.status === 200 && accepted.body?.already_member === false,
+    `${accepted.status} ${JSON.stringify(accepted.body)}`,
+  );
+
+  const again = await rpc(bob.token, 'accept_invite', { invite_code: inviteCode });
+  check('두 번 수락해도 중복 가입되지 않는다', again.body?.already_member === true, JSON.stringify(again.body));
+
+  const counted = await rest(alice.token, `calendar_invites?select=use_count&code=eq.${inviteCode}`);
+  check('use_count는 한 번만 오른다', counted.body?.[0]?.use_count === 1, JSON.stringify(counted.body));
 
   const cals = await rest(bob.token, 'calendars?select=id');
   check('합류하면 캘린더가 보인다', cals.body?.length === 1, JSON.stringify(cals.body));
@@ -356,36 +359,36 @@ console.log('\n8. 합류 후 접근과 탈퇴 규칙 (5.3)');
 
   const profiles = await rest(bob.token, `profiles?select=nickname&id=eq.${alice.userId}`);
   check('같은 캘린더면 상대 프로필이 보인다', profiles.body?.[0]?.nickname === '앨리스', JSON.stringify(profiles.body));
-}
-{
-  const { status, body } = await rest(
-    alice.token,
-    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${alice.userId}`,
-    { method: 'DELETE' },
-  );
+
+  const activity = await rest(alice.token, `activity_logs?select=type&calendar_id=eq.${calendarId}`);
   check(
-    '다른 구성원이 있으면 OWNER는 나갈 수 없다',
-    status >= 400,
-    `${status} ${JSON.stringify(body)}`,
+    'MEMBER_JOINED 활동로그가 남는다',
+    Array.isArray(activity.body) && activity.body.some((a) => a.type === 'MEMBER_JOINED'),
+    JSON.stringify(activity.body),
   );
 }
+
+console.log('\n8-1. 못 쓰는 초대 링크');
 {
-  const { status } = await rest(
-    bob.token,
-    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${bob.userId}`,
-    { method: 'DELETE' },
-  );
-  check('MEMBER는 스스로 나갈 수 있다', status === 200, `status=${status}`);
+  const deadCode = `dead-${Date.now()}`;
+  await rest(alice.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      code: deadCode,
+      created_by: alice.userId,
+      expires_at: new Date(Date.now() - 60_000).toISOString(),
+    }),
+  });
 
-  const alone = await rest(
-    alice.token,
-    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${alice.userId}`,
-    { method: 'DELETE' },
-  );
-  check('마지막 1인은 나갈 수 있다', alone.status === 200, `status=${alone.status}`);
+  const preview = await rpc(bob.token, 'invite_preview', { invite_code: deadCode });
+  check('만료된 링크는 미리보기에서 걸린다', preview.body?.reason === 'EXPIRED', JSON.stringify(preview.body));
 
-  const cals = await rest(alice.token, `calendars?select=id&id=eq.${calendarId}`);
-  check('마지막 1인이 나가면 캘린더가 soft delete 된다', cals.body?.length === 0, JSON.stringify(cals.body));
+  const missing = await rpc(bob.token, 'invite_preview', { invite_code: 'no-such-code' });
+  check('없는 코드는 NOT_FOUND', missing.body?.reason === 'NOT_FOUND', JSON.stringify(missing.body));
+
+  const attempt = await rpc(bob.token, 'accept_invite', { invite_code: deadCode });
+  check('만료된 링크로는 수락되지 않는다', attempt.status >= 400, `${attempt.status} ${JSON.stringify(attempt.body)}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -442,6 +445,12 @@ console.log('\n11. 공유는 계정이 있어야 한다');
     }),
   });
   check('게스트는 초대 링크를 만들 수 없다', invite.status === 403, `${invite.status} ${JSON.stringify(invite.body)}`);
+
+  const preview = await rpc(guest.token, 'invite_preview', { invite_code: inviteCode });
+  check('게스트도 초대 미리보기는 볼 수 있다', preview.body?.valid === true, JSON.stringify(preview.body));
+
+  const accepted = await rpc(guest.token, 'accept_invite', { invite_code: inviteCode });
+  check('게스트는 초대를 수락할 수 없다', accepted.status >= 400, `${accepted.status} ${JSON.stringify(accepted.body)}`);
 }
 
 console.log('\n12. 게스트 → 계정 (데이터 유지)');
@@ -472,6 +481,52 @@ console.log('\n12. 게스트 → 계정 (데이터 유지)');
     }),
   });
   check('계정이 되면 초대 링크를 만들 수 있다', invite.status === 201, `${invite.status} ${JSON.stringify(invite.body)}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n13. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
+{
+  const blocked = await rest(
+    alice.token,
+    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${alice.userId}`,
+    { method: 'DELETE' },
+  );
+  check('다른 구성원이 있으면 OWNER는 나갈 수 없다', blocked.status >= 400, `${blocked.status} ${JSON.stringify(blocked.body)}`);
+
+  const escalate = await rest(
+    bob.token,
+    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${bob.userId}`,
+    { method: 'PATCH', body: JSON.stringify({ role: 'OWNER' }) },
+  );
+  check('구성원이 스스로 OWNER가 될 수 없다', escalate.status >= 400, `${escalate.status} ${JSON.stringify(escalate.body)}`);
+
+  const transferred = await rest(alice.token, `calendars?id=eq.${calendarId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ owner_id: bob.userId }),
+  });
+  check('OWNER는 소유권을 넘길 수 있다', transferred.status === 200, `${transferred.status} ${JSON.stringify(transferred.body)}`);
+
+  const roles = await rest(alice.token, `calendar_members?select=user_id,role&calendar_id=eq.${calendarId}`);
+  const roleOf = (id) => roles.body?.find((m) => m.user_id === id)?.role;
+  check('넘긴 사람은 MEMBER가 된다', roleOf(alice.userId) === 'MEMBER', JSON.stringify(roles.body));
+  check('받은 사람은 OWNER가 된다', roleOf(bob.userId) === 'OWNER', JSON.stringify(roles.body));
+
+  const left = await rest(
+    alice.token,
+    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${alice.userId}`,
+    { method: 'DELETE' },
+  );
+  check('넘기고 나면 나갈 수 있다', left.status === 200, `status=${left.status}`);
+
+  const last = await rest(
+    bob.token,
+    `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${bob.userId}`,
+    { method: 'DELETE' },
+  );
+  check('마지막 1인은 나갈 수 있다', last.status === 200, `status=${last.status}`);
+
+  const gone = await rest(bob.token, `calendars?select=id&id=eq.${calendarId}`);
+  check('마지막 1인이 나가면 캘린더가 soft delete 된다', gone.body?.length === 0, JSON.stringify(gone.body));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

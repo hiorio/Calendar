@@ -259,7 +259,9 @@ function toMessage(error: unknown) {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, justifyContent: 'center', paddingVertical: Spacing.xxl },
+  // 세로 가운데 정렬은 쓰지 않는다. 폼이 화면보다 길어지면 위쪽에 빈 공간이 생기고
+  // 내용이 아래로 밀린다.
+  scroll: { flexGrow: 1, paddingVertical: Spacing.xxl },
   content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
   intro: { gap: Spacing.xs, marginBottom: Spacing.xs },
   form: { gap: Spacing.lg },

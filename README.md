@@ -13,10 +13,14 @@ Expo (React Native) + Supabase. 설계안 11장의 **1단계** — Supabase 스�
 - 게스트(익명) 세션 자동 발급, `profiles` 자동 생성
 - 게스트 → 계정 전환 시 **쓰던 데이터 유지** (이메일/비밀번호 또는 Google·Apple 연결)
 - 이미 있는 계정으로 로그인 (게스트 기록은 따라오지 않는다고 화면에서 고지)
-- 초대 링크 발급은 계정이 있어야 가능 — UI가 아니라 RLS로 강제
+- 캘린더 만들기 · 이름/색 수정 · 필터 칩으로 표시 전환
+- 초대 링크 발급/공유/취소, 링크로 참여 (미리보기 → 수락)
+- 구성원 목록, 내보내기, 소유권 이전, 나가기
+- 공유(초대 링크 발급·수락)는 계정이 있어야 가능 — UI가 아니라 RLS로 강제
 - 전체 DB 스키마 + RLS 정책 + 권한(GRANT) + Storage 정책 마이그레이션
 
-아직 비어 있는 탭(캘린더 / 추가 / 활동)은 어느 단계에서 채워지는지만 표시합니다.
+아직 비어 있는 탭(추가 / 활동)은 어느 단계에서 채워지는지만 표시합니다.
+일정 CRUD는 3단계입니다.
 
 ## 로컬에서 확인하기
 
@@ -61,12 +65,19 @@ npm start          # QR 코드 → Expo Go 또는 개발 빌드
 ```
 src/
   app/                    Expo Router 라우트
-    (auth)/sign-in.tsx    로그인 / 회원가입
-    (app)/                로그인 필요 — 하단 5탭 (홈·캘린더·＋·활동·설정)
+    (app)/                하단 4탭 (캘린더 · 추가 · 활동 · 설정)
+    account.tsx           가입/로그인 (모달)
+    calendars.tsx         내 캘린더 목록 (모달)
+    calendar-new.tsx      캘린더 만들기 (모달)
+    calendar/[id].tsx     캘린더 설정 · 구성원 · 초대
+    join.tsx              초대 링크 수락 (?code=...)
   features/
     auth/                 세션 컨텍스트, OAuth
+    calendar/             월간 뷰
+    calendars/            캘린더·구성원·초대 쿼리
     profile/              내 프로필 조회
-  lib/                    supabase 클라이언트, 환경변수
+  stores/                 Zustand (캘린더 표시 필터)
+  lib/                    supabase 클라이언트, 날짜 유틸, 환경변수
   types/database.ts       DB 스키마 타입 (마이그레이션과 1:1)
 supabase/migrations/      스키마 · RLS · 권한 · Storage
 docs/design-notes.md      설계안 대비 변경점과 남은 결정

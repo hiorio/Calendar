@@ -46,6 +46,22 @@ export default function RootLayout() {
                   name="account"
                   options={{ presentation: 'modal', headerShown: true, title: '계정' }}
                 />
+                <Stack.Screen
+                  name="calendars"
+                  options={{ presentation: 'modal', headerShown: true, title: '내 캘린더' }}
+                />
+                <Stack.Screen
+                  name="calendar-new"
+                  options={{ presentation: 'modal', headerShown: true, title: '캘린더 만들기' }}
+                />
+                <Stack.Screen
+                  name="calendar/[id]"
+                  options={{ headerShown: true, title: '캘린더 설정' }}
+                />
+                <Stack.Screen
+                  name="join"
+                  options={{ presentation: 'modal', headerShown: true, title: '초대' }}
+                />
               </Stack>
               <StatusBar style="auto" />
             </ThemeProvider>

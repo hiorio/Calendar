@@ -8,9 +8,13 @@ import { useTheme } from '@/hooks/use-theme';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
+/**
+ * 홈 탭은 두지 않는다. 캘린더 앱의 첫 화면은 캘린더다.
+ * (설계안 9장은 홈=통합뷰 / 캘린더=목록으로 나눴지만 두 화면이 사실상 같았다.
+ *  캘린더 목록은 탭이 아니라 관리 화면으로 내렸다.)
+ */
 const TABS: { name: string; title: string; icon: IconName; activeIcon: IconName }[] = [
-  { name: 'index', title: '홈', icon: 'home-outline', activeIcon: 'home' },
-  { name: 'calendars', title: '캘린더', icon: 'people-outline', activeIcon: 'people' },
+  { name: 'index', title: '캘린더', icon: 'calendar-outline', activeIcon: 'calendar' },
   { name: 'new', title: '추가', icon: 'add-circle-outline', activeIcon: 'add-circle' },
   { name: 'activity', title: '활동', icon: 'pulse-outline', activeIcon: 'pulse' },
   { name: 'settings', title: '설정', icon: 'settings-outline', activeIcon: 'settings' },

@@ -289,6 +289,9 @@ export type Database = {
       can_access_event: { Args: { eid: string }; Returns: boolean };
       can_access_comment: { Args: { cid: string }; Returns: boolean };
       shares_calendar_with: { Args: { uid: string }; Returns: boolean };
+      is_guest: { Args: Record<string, never>; Returns: boolean };
+      invite_preview: { Args: { invite_code: string }; Returns: Json };
+      accept_invite: { Args: { invite_code: string }; Returns: Json };
     };
     Enums: {
       member_role: MemberRole;

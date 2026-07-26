@@ -21,4 +21,6 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   (`is_guest()` 참고). 새 기능이 계정을 요구한다면 정책에도 함께 넣을 것.
 - 화면 문구는 한국어.
 
-현재 진행 단계: 1단계(스키마 · RLS · Auth) 완료.
+- 디자인 토큰은 `src/constants/theme.ts` 하나뿐이다. 화면에 hex를 직접 쓰지 않는다.
+
+현재 진행 단계: 2단계(캘린더 생성 · 초대 · 구성원 관리) 완료. 다음은 3단계(일정 CRUD).

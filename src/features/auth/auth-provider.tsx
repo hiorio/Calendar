@@ -97,12 +97,15 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // profiles 닉네임은 가입 트리거가 채우므로 여기서는 직접 갱신한다
         if (nickname.trim() && data.user) {
           await supabase.from('profiles').update({ nickname: nickname.trim() }).eq('id', data.user.id);
-          await queryClient.invalidateQueries({ queryKey: ['profile'] });
         }
 
         // 계정이 됐어도 들고 있던 access token에는 is_anonymous=true가 그대로 남아 있다.
         // 갱신하지 않으면 만료될 때까지(최대 1시간) 공유 같은 기능이 계속 막힌다.
         await supabase.auth.refreshSession();
+
+        // 닉네임과 권한이 동시에 바뀐다. 프로필뿐 아니라 그 값을 품고 있는
+        // 구성원 목록 같은 캐시도 전부 다시 받아야 한다.
+        await queryClient.invalidateQueries();
 
         // 이메일 확인이 켜져 있으면 email은 아직 반영되지 않고 확인 메일만 나간다
         return data.user?.email === email.trim() ? { status: 'done' } : { status: 'confirmation-sent' };
