@@ -126,28 +126,47 @@ export function moveEnd(form: EventTimeForm, end: Date): EventTimeForm {
  * (22:00~24:00 짜리가 다음 날까지 번지면 안 된다).
  */
 export function eventDayKeys(event: EventTimeColumns): string[] {
-  const keys: string[] = [];
-
   if (event.is_all_day) {
-    const cursor = parseDateKey(event.start_date!);
+    const start = parseDateKey(event.start_date!);
     const last = parseDateKey(event.end_date!);
-    while (cursor <= last && keys.length < MAX_SPAN_DAYS) {
-      keys.push(toDateKey(cursor));
-      cursor.setDate(cursor.getDate() + 1);
-    }
-    return keys;
+    return dayKeysFrom(start, daysBetween(start, last) + 1);
   }
 
   const start = new Date(event.start_at!);
   const end = new Date(event.end_at!);
-  const cursor = startOfDay(start);
 
-  while (cursor < end && keys.length < MAX_SPAN_DAYS) {
-    keys.push(toDateKey(cursor));
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  // 시작과 끝이 같은 순간이면(길이 0) 최소 하루는 찍는다
-  return keys.length > 0 ? keys : [toDateKey(start)];
+  const firstDay = startOfDay(start);
+  const endDay = startOfDay(end);
+  // 종료는 배타적이다. 정확히 자정에 끝나면 그 날은 칠하지 않는다
+  // (22:00~24:00 짜리가 다음 날까지 번지면 안 된다).
+  const lastDay = end.getTime() === endDay.getTime() ? addDays(endDay, -1) : endDay;
+
+  return dayKeysFrom(firstDay, Math.max(1, daysBetween(firstDay, lastDay) + 1));
+}
+
+/**
+ * 날짜를 하루씩 더할 때 **정오를 기준으로 잡는다.**
+ *
+ * 자정 기준 Date에 `setDate(+1)`을 하면, 서머타임 때문에 자정이 존재하지 않는 날
+ * (예: America/Santiago의 전환일)에 같은 날짜로 되돌아온다. 그러면 같은 날짜 키가
+ * 두 번 나오고 목록이 어긋난다. 정오는 ±1시간이 움직여도 날짜를 넘지 않는다.
+ */
+function dayKeysFrom(start: Date, count: number): string[] {
+  const total = Math.min(Math.max(count, 0), MAX_SPAN_DAYS);
+  return Array.from({ length: total }, (_, index) =>
+    toDateKey(new Date(start.getFullYear(), start.getMonth(), start.getDate() + index, 12)),
+  );
+}
+
+function addDays(date: Date, amount: number): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate() + amount, 12);
+}
+
+/** 달력상 며칠 차이인가. 시각이 아니라 날짜만 본다. */
+function daysBetween(from: Date, to: Date): number {
+  const a = Date.UTC(from.getFullYear(), from.getMonth(), from.getDate());
+  const b = Date.UTC(to.getFullYear(), to.getMonth(), to.getDate());
+  return Math.round((b - a) / 86_400_000);
 }
 
 /** 잘못된 데이터 하나가 렌더링을 멈추게 두지 않는다 */

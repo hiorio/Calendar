@@ -13,6 +13,8 @@ export type MyCalendar = {
   /** 내 역할 */
   role: MemberRole;
   memberCount: number;
+  /** 이 캘린더의 알림을 껐는가 (나에게만 적용) */
+  muted: boolean;
 };
 
 export type CalendarMemberWithProfile = {
@@ -41,7 +43,7 @@ export function useMyCalendars() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('calendars')
-        .select('id, name, color, owner_id, calendar_members(user_id, role)')
+        .select('id, name, color, owner_id, calendar_members(user_id, role, muted)')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -51,17 +53,21 @@ export function useMyCalendars() {
         name: string;
         color: string;
         owner_id: string;
-        calendar_members: { user_id: string; role: MemberRole }[];
+        calendar_members: { user_id: string; role: MemberRole; muted: boolean }[];
       };
 
-      return (data as unknown as Row[]).map((row) => ({
-        id: row.id,
-        name: row.name,
-        color: row.color,
-        owner_id: row.owner_id,
-        role: row.calendar_members.find((m) => m.user_id === user!.id)?.role ?? 'MEMBER',
-        memberCount: row.calendar_members.length,
-      }));
+      return (data as unknown as Row[]).map((row) => {
+        const me = row.calendar_members.find((m) => m.user_id === user!.id);
+        return {
+          id: row.id,
+          name: row.name,
+          color: row.color,
+          owner_id: row.owner_id,
+          role: me?.role ?? 'MEMBER',
+          memberCount: row.calendar_members.length,
+          muted: me?.muted ?? false,
+        };
+      });
     },
   });
 }
@@ -91,6 +97,30 @@ export function useUpdateCalendar(calendarId: string) {
   return useMutation({
     mutationFn: async (patch: { name?: string; color?: string }) => {
       const { error } = await supabase.from('calendars').update(patch).eq('id', calendarId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+  });
+}
+
+/**
+ * 캘린더별 알림 끄기/켜기.
+ *
+ * 화면에서 거르는 것이 아니라 `calendar_members.muted`를 본다 — 알림 큐를 채우는
+ * 트리거가 이 값을 보고 아예 넣지 않는다(0010). 끈 사람 몫은 만들어지지도 않는다.
+ */
+export function useSetMuted() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: async ({ calendarId, muted }: { calendarId: string; muted: boolean }) => {
+      const { error } = await supabase
+        .from('calendar_members')
+        .update({ muted })
+        .eq('calendar_id', calendarId)
+        .eq('user_id', user!.id);
+
       if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: calendarKeys.all }),

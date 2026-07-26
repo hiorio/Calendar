@@ -170,6 +170,24 @@ console.log('\n4. 회차 전개 (종일)');
   eq('자정에 끝나는 일정은 다음 날을 칠하지 않는다',
     eventDayKeys({ is_all_day: false, start_at: start.toISOString(), end_at: end.toISOString(), start_date: null, end_date: null, timezone: 'Asia/Seoul' }),
     ['2026-08-05']);
+
+  const overnight = new Date(2026, 7, 5, 22, 0);
+  const nextMorning = new Date(2026, 7, 6, 2, 0);
+  eq('자정을 넘기면 이틀에 걸린다',
+    eventDayKeys({ is_all_day: false, start_at: overnight.toISOString(), end_at: nextMorning.toISOString(), start_date: null, end_date: null, timezone: 'Asia/Seoul' }),
+    ['2026-08-05', '2026-08-06']);
+}
+
+{
+  // 날짜를 하루씩 더할 때 자정을 기준으로 잡으면, 서머타임 때문에 자정이 존재하지
+  // 않는 날에 같은 날짜로 되돌아온다. 그러면 같은 키가 두 번 나온다.
+  // (전개 자체는 events.timezone 기준이지만, 격자에 칠하는 날짜는 기기 로컬 기준이다.)
+  const keys = eventDayKeys({
+    is_all_day: true, start_at: null, end_at: null,
+    start_date: '2026-09-05', end_date: '2026-09-09', timezone: 'America/Santiago',
+  });
+  eq('닷새짜리 종일은 닷새', keys, ['2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09']);
+  check('날짜 키에 중복이 없다', keys.length === new Set(keys).size, JSON.stringify(keys));
 }
 
 // ---------------------------------------------------------------------------

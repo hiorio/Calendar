@@ -4,7 +4,11 @@
  *   npm run db:start && npm run db:smoke
  *
  * 앱이 실제로 쓰는 경로(GoTrue + PostgREST + anon key)로만 접근해서
- * RLS 정책과 트리거가 의도대로 도는지 확인합니다. service_role은 쓰지 않습니다.
+ * RLS 정책과 트리거가 의도대로 도는지 확인합니다.
+ *
+ * 예외가 하나 있습니다 — `notification_outbox`는 클라이언트에 완전히 닫혀 있어서
+ * (정책 없음 + 권한 회수) anon key로는 들여다볼 방법이 자체가 없습니다. 그 섹션만
+ * 발송 워커와 같은 경로인 service_role로 읽습니다. 로컬 키라 밖으로 나가지 않습니다.
  *
  * 테스트 사용자를 실제로 만듭니다. 로컬 DB에만 쓰세요.
  * 되돌리려면 `npm run db:reset`.
@@ -26,6 +30,8 @@ const env = new Map(
 
 const URL_BASE = env.get('API_URL');
 const ANON = env.get('ANON_KEY') ?? env.get('PUBLISHABLE_KEY');
+/** 알림 큐 확인 전용. 앱은 이 키를 쓰지 않는다. */
+const SERVICE_ROLE = env.get('SERVICE_ROLE_KEY') ?? env.get('SECRET_KEY');
 
 if (!URL_BASE || !ANON) {
   console.error('supabase status에서 API_URL / ANON_KEY를 찾지 못했습니다. db:start 먼저.');
@@ -149,6 +155,17 @@ async function rest(token, path, init = {}) {
 /** RPC 호출 (security definer 함수) */
 async function rpc(token, fn, args) {
   return rest(token, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
+}
+
+/**
+ * 알림 큐 읽기. 발송 워커가 하는 것과 같은 방식이다.
+ * notification_outbox는 클라이언트에 닫혀 있어 다른 경로가 없다.
+ */
+async function outbox(query) {
+  const res = await fetch(`${URL_BASE}/rest/v1/notification_outbox?${query}`, {
+    headers: { apikey: SERVICE_ROLE, Authorization: `Bearer ${SERVICE_ROLE}` },
+  });
+  return res.ok ? res.json() : [];
 }
 
 console.log(`대상: ${URL_BASE}\n`);
@@ -336,6 +353,13 @@ console.log('\n7. 구성원 설정');
     body: JSON.stringify({ muted: true }),
   });
   check('본인 알림 설정은 바꿀 수 있다', status === 200, `status=${status}`);
+
+  // 되돌린다. 켜 둔 채로 두면 뒤에 오는 알림 검사가 조용히 통과해 버린다
+  // (음소거된 사람에게는 아무것도 안 쌓이므로 "알림이 간다"를 확인할 수 없다).
+  await rest(alice.token, `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${alice.userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ muted: false }),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -703,7 +727,183 @@ console.log('\n14. 참여자와 댓글 (5단계)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n15. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
+console.log('\n15. 알림 큐 (6단계)');
+{
+  // 앨리스와 밥이 같은 캘린더에 있다. 앨리스가 움직이면 밥에게 알림이 쌓여야 한다.
+  const created = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '장보기',
+      start_at: '2026-08-30T10:00:00+09:00',
+      end_at: '2026-08-30T11:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  const eventId = created.body?.[0]?.id;
+
+  // 개수로 세지 않는다. 앞 섹션도 일정을 만들어 큐에 쌓여 있다.
+  // dedup_key가 '{사건}:{event_id}:{수신자}' 꼴이라 정확히 짚을 수 있다.
+  const createdKey = `EVENT_CREATED:${eventId}:${bob.userId}`;
+  const forBob = await outbox(`dedup_key=eq.${createdKey}&select=payload`);
+  check('일정을 만들면 다른 구성원 앞으로 알림이 쌓인다', forBob.length === 1, JSON.stringify(forBob));
+  check('페이로드에 캘린더와 일정 정보가 들어 있다',
+    forBob[0]?.payload?.title === '장보기' && forBob[0]?.payload?.calendar_name === '스모크 캘린더',
+    JSON.stringify(forBob[0]?.payload));
+
+  const forSelf = await outbox(`dedup_key=eq.EVENT_CREATED:${eventId}:${alice.userId}&select=id`);
+  check('내 행동은 나에게 알리지 않는다', forSelf.length === 0, JSON.stringify(forSelf));
+
+  // --- 수정 / 삭제 --------------------------------------------------------
+  await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title: '장보기 (마트 변경)' }),
+  });
+  const updated = await outbox(`user_id=eq.${bob.userId}&type=eq.EVENT_UPDATED&dedup_key=like.*${eventId}*&select=id`);
+  check('제목을 바꾸면 알림이 간다', updated.length === 1, JSON.stringify(updated));
+
+  // 메모만 고치는 것은 남을 깨울 일이 아니다
+  await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ description: '우유, 계란' }),
+  });
+  const afterMemo = await outbox(`user_id=eq.${bob.userId}&type=eq.EVENT_UPDATED&dedup_key=like.*${eventId}*&select=id`);
+  check('메모만 고치면 알림이 가지 않는다', afterMemo.length === 1, JSON.stringify(afterMemo));
+
+  await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  const deleted = await outbox(`dedup_key=eq.EVENT_DELETED:${eventId}:${bob.userId}&select=id`);
+  check('삭제도 알림이 간다', deleted.length === 1, JSON.stringify(deleted));
+
+  // --- 댓글 ---------------------------------------------------------------
+  const live = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '주말 나들이',
+      start_at: '2026-09-05T10:00:00+09:00',
+      end_at: '2026-09-05T12:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  const liveId = live.body?.[0]?.id;
+
+  const posted = await rest(bob.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: liveId, user_id: bob.userId, content: '몇 시에 만날까?' }),
+  });
+  const commentId = posted.body?.[0]?.id;
+
+  const commentForAlice = await outbox(`dedup_key=eq.COMMENT:${commentId}:${alice.userId}&select=payload`);
+  check('댓글은 캘린더의 다른 구성원에게 간다', commentForAlice.length === 1, JSON.stringify(commentForAlice));
+  check('댓글 알림에 발췌가 들어 있다',
+    commentForAlice[0]?.payload?.excerpt === '몇 시에 만날까?',
+    JSON.stringify(commentForAlice[0]?.payload));
+
+  const commentForBob = await outbox(`dedup_key=eq.COMMENT:${commentId}:${bob.userId}&select=id`);
+  check('내 댓글은 나에게 알리지 않는다', commentForBob.length === 0, JSON.stringify(commentForBob));
+
+  // --- 음소거 -------------------------------------------------------------
+  await rest(bob.token, `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${bob.userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ muted: true }),
+  });
+
+  await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '조용히 추가',
+      start_at: '2026-09-07T10:00:00+09:00',
+      end_at: '2026-09-07T11:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+
+  const afterMute = await outbox(`user_id=eq.${bob.userId}&type=eq.EVENT_CREATED&select=payload`);
+  const mutedTitles = afterMute.map((row) => row.payload?.title);
+  check('음소거한 사람에게는 알림이 쌓이지 않는다', !mutedTitles.includes('조용히 추가'), JSON.stringify(mutedTitles));
+
+  await rest(bob.token, `calendar_members?calendar_id=eq.${calendarId}&user_id=eq.${bob.userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ muted: false }),
+  });
+
+  // --- 큐는 여전히 클라이언트에 닫혀 있다 ---------------------------------
+  const peek = await rest(alice.token, 'notification_outbox?select=id');
+  check('구성원도 알림 큐를 직접 읽을 수 없다', peek.status >= 400 || peek.body?.length === 0, `${peek.status} ${JSON.stringify(peek.body)}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n16. 리마인더 (6단계)');
+{
+  const created = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '병원',
+      start_at: '2026-09-10T10:00:00+09:00',
+      end_at: '2026-09-10T11:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  const eventId = created.body?.[0]?.id;
+
+  const mine = await rest(alice.token, 'event_reminders', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: alice.userId, minutes_before: 60 }),
+  });
+  check('내 리마인더를 걸 수 있다', mine.status === 201, `${mine.status} ${JSON.stringify(mine.body)}`);
+
+  const forOther = await rest(alice.token, 'event_reminders', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: bob.userId, minutes_before: 60 }),
+  });
+  check('남의 리마인더는 걸 수 없다', forOther.status >= 400, `${forOther.status} ${JSON.stringify(forOther.body)}`);
+
+  const dup = await rest(alice.token, 'event_reminders', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: alice.userId, minutes_before: 60 }),
+  });
+  check('같은 리마인더는 두 번 걸리지 않는다', dup.status === 409, `${dup.status} ${JSON.stringify(dup.body)}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n17. 기기 토큰 (6단계)');
+{
+  const registered = await rest(alice.token, 'device_tokens', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation,resolution=merge-duplicates' },
+    body: JSON.stringify({
+      user_id: alice.userId,
+      expo_token: 'ExponentPushToken[smoke-alice]',
+      platform: 'ios',
+    }),
+  });
+  check('내 기기 토큰을 등록할 수 있다', registered.status === 201, `${registered.status} ${JSON.stringify(registered.body)}`);
+
+  const spoofed = await rest(alice.token, 'device_tokens', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: bob.userId,
+      expo_token: 'ExponentPushToken[spoof]',
+      platform: 'ios',
+    }),
+  });
+  check('남의 기기 토큰은 등록할 수 없다', spoofed.status >= 400, `${spoofed.status} ${JSON.stringify(spoofed.body)}`);
+
+  const others = await rest(bob.token, 'device_tokens?select=expo_token');
+  check('남의 토큰은 보이지 않는다', others.body?.length === 0, JSON.stringify(others.body));
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n18. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
 {
   const blocked = await rest(
     alice.token,

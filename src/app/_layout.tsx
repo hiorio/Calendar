@@ -70,6 +70,10 @@ export default function RootLayout() {
                   name="event/[id]"
                   options={{ presentation: 'modal', headerShown: true, title: '일정' }}
                 />
+                <Stack.Screen
+                  name="notifications"
+                  options={{ presentation: 'modal', headerShown: true, title: '알림 설정' }}
+                />
               </Stack>
               <StatusBar style="auto" />
             </ThemeProvider>

@@ -11,6 +11,7 @@ import { useMyCalendars } from '@/features/calendars/queries';
 import { CommentThread } from '@/features/events/comment-thread';
 import { EventForm } from '@/features/events/event-form';
 import { ParticipantPicker } from '@/features/events/participant-picker';
+import { ReminderPicker } from '@/features/events/reminder-picker';
 import {
   useDeleteEvent,
   useEvent,
@@ -149,6 +150,8 @@ export default function EventDetailScreen() {
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <ParticipantPicker eventId={id} calendarId={master.calendar_id} />
+
+          <ReminderPicker eventId={id} />
 
           <CommentThread eventId={id} isRecurring={isRecurring} />
         </Content>

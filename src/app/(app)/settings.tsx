@@ -74,8 +74,7 @@ export default function SettingsScreen() {
                 icon="notifications-outline"
                 title="푸시 알림"
                 subtitle="일정 등록·변경, 댓글, 리마인더"
-                value="6단계"
-                disabled
+                onPress={() => router.push('/notifications')}
               />
             </Card>
           </Section>
