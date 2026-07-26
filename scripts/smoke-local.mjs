@@ -272,6 +272,27 @@ console.log('\n5. 종일 + 반복 일정 (설계안 6.1이 놓쳤던 조합)');
   );
   check('무한 반복이면 range_end는 NULL', row ? row.range_end === null : false, `range_end=${row?.range_end}`);
 
+  // 끝이 있는 반복은 range_end가 rrule_until을 따라간다. 클라이언트가
+  // rrule_until을 채워 보내면(lib/recurrence.ts) 트리거가 그대로 옮긴다.
+  const bounded = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '4주 스터디',
+      start_at: '2026-08-04T10:00:00+09:00',
+      end_at: '2026-08-04T11:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      rrule: 'FREQ=WEEKLY;UNTIL=20260825T235900Z',
+      rrule_until: '2026-08-25T02:00:00.000Z',
+      created_by: alice.userId,
+    }),
+  });
+  check(
+    '끝이 있는 반복은 range_end = rrule_until',
+    new Date(bounded.body?.[0]?.range_end).toISOString() === '2026-08-25T02:00:00.000Z',
+    `${bounded.status} range_end=${bounded.body?.[0]?.range_end}`,
+  );
+
   // 설계안 6.1의 원래 조건(start_at 기준)이라면 여기서 0건이 나온다
   const from = '2026-08-01T00:00:00+09:00';
   const to = '2026-09-01T00:00:00+09:00';
@@ -354,8 +375,14 @@ const inviteCode = `smoke-${Date.now()}`;
   const cals = await rest(bob.token, 'calendars?select=id');
   check('합류하면 캘린더가 보인다', cals.body?.length === 1, JSON.stringify(cals.body));
 
+  // 개수로 세지 않는다. 앞 섹션에 일정을 하나 더 넣으면 그때마다 깨진다.
   const events = await rest(bob.token, 'events?select=title');
-  check('합류하면 기존 일정도 보인다', events.body?.length === 2, JSON.stringify(events.body));
+  const titles = Array.isArray(events.body) ? events.body.map((e) => e.title) : [];
+  check(
+    '합류하면 기존 일정도 보인다',
+    titles.includes('팀 회의') && titles.includes('생일'),
+    JSON.stringify(events.body),
+  );
 
   const profiles = await rest(bob.token, `profiles?select=nickname&id=eq.${alice.userId}`);
   check('같은 캘린더면 상대 프로필이 보인다', profiles.body?.[0]?.nickname === '앨리스', JSON.stringify(profiles.body));

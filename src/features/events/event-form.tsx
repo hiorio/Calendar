@@ -17,6 +17,7 @@ import {
   toTimeColumns,
   type EventTimeForm,
 } from '@/lib/event-time';
+import { FREQ_LABELS, buildRrule, type Freq, type RecurrenceForm } from '@/lib/recurrence';
 
 export type EventFormValues = {
   calendarId: string;
@@ -24,6 +25,7 @@ export type EventFormValues = {
   location: string;
   description: string;
   time: EventTimeForm;
+  recurrence: RecurrenceForm;
 };
 
 export type EventFormProps = {
@@ -31,18 +33,30 @@ export type EventFormProps = {
   initial: EventFormValues;
   submitLabel: string;
   pending?: boolean;
+  /** 반복 입력을 숨긴다. 회차 하나만 고치는 중이면 규칙을 만질 수 없다. */
+  lockRecurrence?: boolean;
   onSubmit: (input: EventInput) => void;
+  /** 저장 버튼 위에 끼워 넣을 것 (수정 범위 선택 등) */
+  children?: React.ReactNode;
+  submitDisabled?: boolean;
   /** 수정 화면에서만 준다 */
   onDelete?: () => void;
+  deleteLabel?: string;
 };
+
+const FREQ_OPTIONS: (Freq | null)[] = [null, 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'];
 
 export function EventForm({
   calendars,
   initial,
   submitLabel,
   pending = false,
+  lockRecurrence = false,
   onSubmit,
+  children,
+  submitDisabled = false,
   onDelete,
+  deleteLabel = '일정 삭제',
 }: EventFormProps) {
   const { colors } = useTheme();
 
@@ -51,6 +65,7 @@ export function EventForm({
   const [location, setLocation] = useState(initial.location);
   const [description, setDescription] = useState(initial.description);
   const [time, setTime] = useState<EventTimeForm>(initial.time);
+  const [recurrence, setRecurrence] = useState<RecurrenceForm>(initial.recurrence);
   const [error, setError] = useState<string | null>(null);
 
   function submit() {
@@ -62,6 +77,10 @@ export function EventForm({
       setError('어느 캘린더에 넣을지 골라 주세요');
       return;
     }
+    if (recurrence.freq && recurrence.until && recurrence.until < time.start) {
+      setError('반복 종료일이 시작보다 앞섭니다');
+      return;
+    }
     setError(null);
 
     onSubmit({
@@ -70,6 +89,7 @@ export function EventForm({
       location: location.trim() || null,
       description: description.trim() || null,
       ...toTimeColumns(time),
+      rrule: lockRecurrence ? null : buildRrule(recurrence),
     });
   }
 
@@ -164,6 +184,72 @@ export function EventForm({
         </View>
       </Card>
 
+      {!lockRecurrence ? (
+        <View style={styles.section}>
+          <Txt variant="label" tone="secondary">
+            반복
+          </Txt>
+          <View style={styles.calendarPicker}>
+            {FREQ_OPTIONS.map((freq) => {
+              const selected = freq === recurrence.freq;
+              const label = freq ? FREQ_LABELS[freq] : '안 함';
+              return (
+                <Pressable
+                  key={label}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  accessibilityLabel={`반복 ${label}`}
+                  onPress={() => setRecurrence((current) => ({ ...current, freq }))}
+                  style={[
+                    styles.calendarChip,
+                    {
+                      backgroundColor: selected ? colors.accentSoft : colors.surface,
+                      borderColor: selected ? colors.accent : colors.border,
+                    },
+                  ]}>
+                  <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
+                    {label}
+                  </Txt>
+                </Pressable>
+              );
+            })}
+          </View>
+
+          {recurrence.freq ? (
+            <Card flat style={styles.timeCard}>
+              <View style={styles.allDayRow}>
+                <Txt variant="body">종료일 정하기</Txt>
+                <Switch
+                  value={recurrence.until !== null}
+                  onValueChange={(on) =>
+                    setRecurrence((current) => ({
+                      ...current,
+                      // 켤 때는 1년 뒤를 기본으로 준다. 대부분 그 안에서 끝난다.
+                      until: on ? defaultUntil(time.start) : null,
+                    }))
+                  }
+                  trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
+                />
+              </View>
+
+              {recurrence.until ? (
+                <>
+                  <Divider />
+                  <View style={styles.timeRows}>
+                    <DateTimeField
+                      label="이 날까지"
+                      mode="date"
+                      value={recurrence.until}
+                      onChange={(next) => setRecurrence((current) => ({ ...current, until: next }))}
+                    />
+                  </View>
+                </>
+              ) : null}
+            </Card>
+          ) : null}
+        </View>
+      ) : null}
+
       <Field
         label="장소"
         value={location}
@@ -181,19 +267,33 @@ export function EventForm({
         style={styles.memo}
       />
 
+      {children}
+
       {error ? (
         <Txt variant="caption" tone="danger">
           {error}
         </Txt>
       ) : null}
 
-      <Button label={submitLabel} loading={pending} onPress={submit} />
+      <Button
+        label={submitLabel}
+        loading={pending}
+        onPress={submit}
+        disabled={submitDisabled}
+      />
 
       {onDelete ? (
-        <Button label="일정 삭제" variant="danger" onPress={onDelete} disabled={pending} />
+        <Button label={deleteLabel} variant="danger" onPress={onDelete} disabled={pending} />
       ) : null}
     </View>
   );
+}
+
+/** 반복 종료일 기본값 — 시작 1년 뒤 */
+function defaultUntil(start: Date): Date {
+  const until = new Date(start);
+  until.setFullYear(until.getFullYear() + 1);
+  return until;
 }
 
 const styles = StyleSheet.create({

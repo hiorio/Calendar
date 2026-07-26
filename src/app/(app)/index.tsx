@@ -45,7 +45,7 @@ export default function CalendarScreen() {
     const marks: Record<string, DayMark[]> = {};
     for (const [key, list] of Object.entries(byDate)) {
       marks[key] = list.map((event) => ({
-        id: event.id,
+        id: event.key,
         title: event.title,
         color: event.displayColor,
       }));
@@ -173,13 +173,18 @@ export default function CalendarScreen() {
                   />
                 ) : (
                   dayEvents.map((event, index) => (
-                    <View key={event.id}>
+                    <View key={event.key}>
                       {index > 0 ? <Divider /> : null}
                       <Pressable
                         accessibilityRole="button"
                         accessibilityLabel={`${event.title} 열기`}
                         onPress={() =>
-                          router.push({ pathname: '/event/[id]', params: { id: event.id } })
+                          router.push({
+                            pathname: '/event/[id]',
+                            // 어느 회차를 열었는지 함께 넘긴다. 반복 일정에서
+                            // "이 일정만" 수정·삭제의 대상이 된다.
+                            params: { id: event.id, occ: event.originalStart },
+                          })
                         }
                         style={({ pressed }) => [
                           styles.eventRow,
@@ -187,9 +192,14 @@ export default function CalendarScreen() {
                         ]}>
                         <View style={[styles.eventBar, { backgroundColor: event.displayColor }]} />
                         <View style={styles.eventText}>
-                          <Txt variant="body" numberOfLines={1}>
-                            {event.title}
-                          </Txt>
+                          <View style={styles.eventTitleRow}>
+                            <Txt variant="body" numberOfLines={1} style={styles.eventTitle}>
+                              {event.title}
+                            </Txt>
+                            {event.isRecurring ? (
+                              <Ionicons name="repeat" size={14} color={colors.textTertiary} />
+                            ) : null}
+                          </View>
                           <Txt variant="caption" tone="secondary" numberOfLines={1}>
                             {formatEventTimeRange(event)}
                             {event.location ? ` · ${event.location}` : ''}
@@ -314,6 +324,8 @@ const styles = StyleSheet.create({
   },
   eventBar: { width: 4, alignSelf: 'stretch', borderRadius: Radius.pill },
   eventText: { flex: 1, gap: 1 },
+  eventTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  eventTitle: { flexShrink: 1 },
   guestBanner: {
     flexDirection: 'row',
     alignItems: 'center',

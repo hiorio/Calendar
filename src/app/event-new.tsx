@@ -72,6 +72,7 @@ export default function NewEventScreen() {
               location: '',
               description: '',
               time: { isAllDay: false, start, end },
+              recurrence: { freq: null, until: null },
             }}
             onSubmit={(input) =>
               create.mutate(input, {
