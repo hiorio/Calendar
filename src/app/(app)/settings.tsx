@@ -118,12 +118,17 @@ export default function SettingsScreen() {
                   />
                 </>
               )}
+
+              <Divider />
+              <ListRow
+                icon="trash-outline"
+                title="계정 삭제"
+                subtitle="되돌릴 수 없습니다"
+                danger
+                onPress={() => router.push('/account-delete')}
+              />
             </Card>
           </Section>
-
-          <Txt variant="caption" tone="tertiary" style={styles.footnote}>
-            계정 삭제는 스토어 심사 필수 요건이라 8단계에서 붙습니다.
-          </Txt>
         </Content>
       </ScrollView>
     </Screen>
@@ -160,5 +165,4 @@ const styles = StyleSheet.create({
   },
   identityText: { flex: 1, gap: 2 },
   upgrade: { gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
-  footnote: { paddingHorizontal: Spacing.xl },
 });

@@ -65,7 +65,8 @@ export type CalendarInvite = {
   id: string;
   calendar_id: string;
   code: string;
-  created_by: string;
+  /** 계정을 지우면 NULL이 된다 (0012) */
+  created_by: string | null;
   expires_at: string | null;
   max_uses: number | null;
   use_count: number;
@@ -133,7 +134,8 @@ export type EventReminder = {
 export type EventComment = {
   id: string;
   event_id: string;
-  user_id: string;
+  /** 계정을 지우면 NULL이 된다 — 내용은 남고 작성자만 사라진다 (0012) */
+  user_id: string | null;
   content: string | null;
   created_at: string;
   updated_at: string;
@@ -151,7 +153,8 @@ export type Memo = {
   id: string;
   calendar_id: string;
   content: string;
-  created_by: string;
+  /** 계정을 지우면 NULL이 된다 (0012) */
+  created_by: string | null;
   done: boolean;
   created_at: string;
   updated_at: string;
@@ -166,7 +169,8 @@ export type Attachment = {
   storage_path: string;
   mime_type: string;
   size_bytes: number;
-  uploaded_by: string;
+  /** 계정을 지우면 NULL이 된다 (0012) */
+  uploaded_by: string | null;
   created_at: string;
 };
 
@@ -292,6 +296,8 @@ export type Database = {
       is_guest: { Args: Record<string, never>; Returns: boolean };
       invite_preview: { Args: { invite_code: string }; Returns: Json };
       accept_invite: { Args: { invite_code: string }; Returns: Json };
+      account_deletion_preview: { Args: Record<string, never>; Returns: Json };
+      delete_my_account: { Args: Record<string, never>; Returns: undefined };
     };
     Enums: {
       member_role: MemberRole;

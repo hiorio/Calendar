@@ -20,6 +20,8 @@ type AuthContextValue = {
   signInWithEmail: (email: string, password: string) => Promise<void>;
   /** 로그아웃하고 다시 게스트로 돌아간다 */
   signOut: () => Promise<void>;
+  /** 계정과 데이터를 지우고, 처음 켠 것처럼 새 게스트로 시작한다 */
+  deleteAccount: () => Promise<void>;
 };
 
 export type CreateAccountResult =
@@ -123,6 +125,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
         // 로그인 화면에 가두지 않는다. 곧바로 새 게스트 세션으로 되돌린다.
+        const { error: guestError } = await supabase.auth.signInAnonymously();
+        if (guestError) setBootstrapError(guestError);
+      },
+
+      async deleteAccount() {
+        // 캘린더 이전·삭제까지 한 트랜잭션으로 처리한다 (0012)
+        const { error } = await supabase.rpc('delete_my_account');
+        if (error) throw error;
+
+        // 서버에서 사용자가 사라졌다. 남은 토큰을 들고 있으면 계속 401을 맞는다.
+        await supabase.auth.signOut();
+        queryClient.clear();
+
+        // 로그아웃과 같은 규칙 — 로그인 화면에 가두지 않는다. 계정을 지웠으니
+        // 앱을 처음 켠 것과 같은 상태로 돌려놓는다.
         const { error: guestError } = await supabase.auth.signInAnonymously();
         if (guestError) setBootstrapError(guestError);
       },

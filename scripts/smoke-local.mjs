@@ -1048,5 +1048,114 @@ console.log('\n19. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
   check('마지막 1인이 나가면 캘린더가 soft delete 된다', gone.body?.length === 0, JSON.stringify(gone.body));
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n20. 계정 삭제 (8단계)');
+{
+  // 지우는 사람(다나)과 남는 사람(에런)으로 새 판을 짠다.
+  // 앞 섹션의 캘린더는 이미 정리돼서 쓸 수 없다.
+  const dana = await signUp('다나');
+  const erin = await signUp('에런');
+
+  // (1) 함께 쓰는 캘린더 — 다나가 소유자, 에런이 구성원
+  const shared = await rest(dana.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '함께 쓰는 것', owner_id: dana.userId }),
+  });
+  const sharedId = shared.body?.[0]?.id;
+
+  const code = `del-${Date.now()}`;
+  await rest(dana.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({ calendar_id: sharedId, code, created_by: dana.userId }),
+  });
+  await rpc(erin.token, 'accept_invite', { invite_code: code });
+
+  const sharedEvent = await rest(dana.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: sharedId,
+      title: '다나가 만든 일정',
+      start_at: '2026-10-01T10:00:00+09:00',
+      end_at: '2026-10-01T11:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: dana.userId,
+    }),
+  });
+  const sharedEventId = sharedEvent.body?.[0]?.id;
+
+  await rest(dana.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: sharedEventId, user_id: dana.userId, content: '제가 준비할게요' }),
+  });
+
+  // (2) 혼자 쓰는 캘린더
+  const solo = await rest(dana.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '나만 보는 것', owner_id: dana.userId }),
+  });
+  const soloId = solo.body?.[0]?.id;
+
+  // --- 미리보기 -----------------------------------------------------------
+  const preview = await rpc(dana.token, 'account_deletion_preview', {});
+  check('미리보기가 넘어갈 캘린더를 알려 준다',
+    JSON.stringify(preview.body?.transferred) === '["함께 쓰는 것"]', JSON.stringify(preview.body));
+  check('미리보기가 지워질 캘린더를 알려 준다',
+    JSON.stringify(preview.body?.deleted) === '["나만 보는 것"]', JSON.stringify(preview.body));
+
+  // --- 삭제 ---------------------------------------------------------------
+  const deleted = await rpc(dana.token, 'delete_my_account', {});
+  check('계정을 지울 수 있다', deleted.status === 200 || deleted.status === 204, `${deleted.status} ${JSON.stringify(deleted.body)}`);
+
+  // --- 남은 사람 쪽에서 확인 ----------------------------------------------
+  const erinCalendars = await rest(erin.token, 'calendars?select=id,name,owner_id');
+  check('함께 쓰던 캘린더는 남는다',
+    erinCalendars.body?.some((c) => c.id === sharedId), JSON.stringify(erinCalendars.body));
+  check('소유권이 남은 구성원에게 넘어간다',
+    erinCalendars.body?.find((c) => c.id === sharedId)?.owner_id === erin.userId,
+    JSON.stringify(erinCalendars.body));
+  check('혼자 쓰던 캘린더는 사라진다',
+    !erinCalendars.body?.some((c) => c.id === soloId), JSON.stringify(erinCalendars.body));
+
+  const roles = await rest(erin.token, `calendar_members?select=user_id,role&calendar_id=eq.${sharedId}`);
+  check('넘겨받은 사람이 OWNER가 된다',
+    roles.body?.length === 1 && roles.body[0].user_id === erin.userId && roles.body[0].role === 'OWNER',
+    JSON.stringify(roles.body));
+
+  // 남이 함께 보던 내용은 남고 작성자만 비워진다 (설계안 5.3과 같은 원칙)
+  const events = await rest(erin.token, `events?select=title,created_by&id=eq.${sharedEventId}`);
+  check('내가 만든 일정은 남는다', events.body?.[0]?.title === '다나가 만든 일정', JSON.stringify(events.body));
+  check('일정의 작성자만 비워진다', events.body?.[0]?.created_by === null, JSON.stringify(events.body));
+
+  const comments = await rest(erin.token, `event_comments?select=content,user_id&event_id=eq.${sharedEventId}`);
+  check('내가 쓴 댓글도 남는다', comments.body?.[0]?.content === '제가 준비할게요', JSON.stringify(comments.body));
+  check('댓글의 작성자만 비워진다', comments.body?.[0]?.user_id === null, JSON.stringify(comments.body));
+
+  const profiles = await rest(erin.token, `profiles?select=id&id=eq.${dana.userId}`);
+  check('프로필은 사라진다', profiles.body?.length === 0, JSON.stringify(profiles.body));
+
+  // 로그인도 안 돼야 한다
+  const relogin = await fetch(`${URL_BASE}/auth/v1/token?grant_type=password`, {
+    method: 'POST',
+    headers: { apikey: ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: dana.email, password: 'smoke-test-1234' }),
+  });
+  check('지운 계정으로는 로그인할 수 없다', relogin.status >= 400, `status=${relogin.status}`);
+}
+
+{
+  // 게스트도 지울 수 있어야 한다. 가입을 요구하지 않는 앱이니 지우는 것도 그래야 한다.
+  const ghost = await signInAnonymously();
+  await rest(ghost.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '게스트가 만든 것', owner_id: ghost.userId }),
+  });
+
+  const gone = await rpc(ghost.token, 'delete_my_account', {});
+  check('게스트도 계정을 지울 수 있다', gone.status === 200 || gone.status === 204, `${gone.status} ${JSON.stringify(gone.body)}`);
+
+  const after = await rest(ghost.token, 'calendars?select=id');
+  check('지운 뒤 토큰으로는 아무것도 안 보인다', after.status >= 400 || after.body?.length === 0, `${after.status} ${JSON.stringify(after.body)}`);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

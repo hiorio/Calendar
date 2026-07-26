@@ -74,6 +74,10 @@ export default function RootLayout() {
                   name="notifications"
                   options={{ presentation: 'modal', headerShown: true, title: '알림 설정' }}
                 />
+                <Stack.Screen
+                  name="account-delete"
+                  options={{ presentation: 'modal', headerShown: true, title: '계정 삭제' }}
+                />
               </Stack>
               <StatusBar style="auto" />
             </ThemeProvider>

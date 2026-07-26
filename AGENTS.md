@@ -32,7 +32,7 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 바꾼 것 | 확인 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (107개) |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (122개) |
 | `src/lib/`의 계산 로직 | `npm run test:unit` (40개) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
 
@@ -85,4 +85,14 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 
 - 한국어. 조사는 `src/lib/korean.ts`로 골라 쓴다. `을(를)` 같은 표기를 두지 않는다.
 
-현재 진행 단계: 7단계(활동 로그) 완료. 다음은 8단계(계정 삭제)와 알림 발송 워커.
+## 계정과 데이터 수명
+
+- 작성자 컬럼(`events.created_by`, `event_comments.user_id` 등)은 **nullable**이다.
+  계정을 지우면 NULL이 되고 화면은 "알 수 없는 사용자"로 표시한다. 새 화면에서
+  작성자를 쓸 때 NULL을 가정할 것.
+- 계정 삭제는 `delete_my_account()` 한 함수가 처리한다. 소유 캘린더는 남은 구성원이
+  있으면 넘기고, 혼자면 지운다.
+- **로그아웃도 계정 삭제도 로그인 화면에 가두지 않는다.** 끝나면 새 게스트 세션으로
+  돌아간다 (`AuthProvider`).
+
+현재 진행 단계: 설계안 11장 1~8단계 완료. 남은 것은 알림 발송 워커와 유니버설 링크.
