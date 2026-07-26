@@ -132,7 +132,50 @@ OWNER 구성원 행을 만드는 `on_calendar_created`는 **AFTER INSERT** 트�
 > 교훈: "행을 만든 뒤에야 볼 수 있게 되는" 정책은 INSERT ... RETURNING과 충돌합니다.
 > 앞으로 정책을 쓸 때 삽입 직후의 가시성을 항상 같이 확인할 것.
 
-## 10. 세션 저장소
+## 10. 가입을 시작 조건에서 뺐다 (설계안 10장 변경)
+
+설계안 1차 범위는 "회원가입/로그인"이 첫 관문이었습니다. 앱을 처음 켠 사람에게 가입부터
+요구하면 이탈이 큽니다. 캘린더에 일정 하나 적어보는 것까지는 계정이 없어도 됩니다.
+
+**바꾼 것:** Supabase 익명 로그인으로 게스트 세션을 발급해 바로 시작합니다.
+가입은 계정이 실제로 필요해지는 순간(공유)에만 요구합니다.
+
+- 첫 실행 → `signInAnonymously()`. 로그인 화면을 거치지 않습니다.
+- 게스트도 캘린더·일정·메모를 만들 수 있습니다. 스키마와 RLS는 그대로입니다.
+  익명 사용자도 JWT의 `role`은 `authenticated`이기 때문입니다.
+- 가입은 `/account` **모달**입니다. 설정 탭이나 게이트에 걸린 기능에서 엽니다.
+- 게스트 → 계정은 `updateUser({ email, password })`로 **연결**합니다. `user.id`가 그대로라
+  지금까지 쓴 데이터가 유지됩니다. 소셜은 `linkIdentity()`.
+- 이미 있는 계정으로 **로그인**하면 게스트 기록은 따라오지 않습니다. 화면에서 경고합니다.
+
+### 어디서 가입을 요구하는가
+
+"공유"가 경계입니다. 초대 링크 발급에 계정을 요구하고, 이걸 **RLS로 강제**합니다
+(`0007_guest_first.sql`). UI에서만 막으면 anon key로 우회됩니다.
+
+```sql
+create policy "invites: signed-up member can create" on public.calendar_invites
+  for insert to authenticated
+  with check (... and not public.is_guest());
+```
+
+`is_guest()`는 JWT의 `is_anonymous` 클레임을 봅니다.
+
+### 함정: 계정이 돼도 토큰은 한동안 게스트다
+
+`updateUser()`로 계정을 만들어도 **들고 있던 access token의 `is_anonymous`는 여전히
+true**입니다. 갱신될 때까지(기본 1시간) `is_guest()`가 true라 공유가 계속 막힙니다.
+`createAccount()`에서 `refreshSession()`을 명시적으로 호출합니다.
+(`npm run db:smoke`의 12번 항목이 이 동작을 고정합니다.)
+
+### 남은 것
+
+- 게스트 상태로 앱을 지우면 데이터가 사라집니다. 화면에서 고지합니다.
+- 익명 사용자가 쌓이므로 오래된 빈 익명 계정 정리 배치가 언젠가 필요합니다.
+- 2차: 이미 계정이 있는 사람이 게스트로 쓰던 내용을 **병합**하는 흐름.
+  지금은 병합하지 않고 경고만 합니다.
+
+## 11. 세션 저장소
 
 Supabase 세션을 `AsyncStorage`에 둡니다(Supabase의 Expo 가이드 기본값).
 `expo-secure-store`는 안드로이드에서 2048바이트 제한이 있어 세션 JSON을 그대로 담기

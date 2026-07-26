@@ -81,6 +81,49 @@ async function signUp(nickname) {
   return { email, token, userId };
 }
 
+/** 가입 없이 시작하는 게스트 세션 (supabase-js의 signInAnonymously와 같은 엔드포인트) */
+async function signInAnonymously() {
+  const res = await fetch(`${URL_BASE}/auth/v1/signup`, {
+    method: 'POST',
+    headers: { apikey: ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`익명 로그인 실패 (${res.status}): ${JSON.stringify(body)}`);
+  return {
+    token: body.access_token,
+    refreshToken: body.refresh_token,
+    userId: body.user?.id,
+    isAnonymous: body.user?.is_anonymous,
+  };
+}
+
+/** GoTrue PUT /user — 게스트에 이메일/비밀번호를 붙인다 */
+async function updateUser(token, payload) {
+  const res = await fetch(`${URL_BASE}/auth/v1/user`, {
+    method: 'PUT',
+    headers: { apikey: ANON, Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  return { status: res.status, body: await res.json() };
+}
+
+async function refreshSession(refreshToken) {
+  const res = await fetch(`${URL_BASE}/auth/v1/token?grant_type=refresh_token`, {
+    method: 'POST',
+    headers: { apikey: ANON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error(`토큰 갱신 실패 (${res.status}): ${JSON.stringify(body)}`);
+  return { token: body.access_token, refreshToken: body.refresh_token, user: body.user };
+}
+
+/** access token의 is_anonymous 클레임 */
+function claims(token) {
+  return JSON.parse(Buffer.from(token.split('.')[1], 'base64url').toString());
+}
+
 /** PostgREST 호출. { status, body } 반환 */
 async function rest(token, path, init = {}) {
   const res = await fetch(`${URL_BASE}/rest/v1/${path}`, {
@@ -352,6 +395,83 @@ console.log('\n9. 알림 큐는 클라이언트에게 닫혀 있다');
   // 권한 자체가 없거나(42501), 있더라도 정책이 없어 0건이거나 — 둘 다 통과
   const blocked = body?.code === '42501' || (Array.isArray(body) && body.length === 0);
   check('notification_outbox는 클라이언트에게 닫혀 있다', blocked, JSON.stringify(body));
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n10. 게스트로 시작하기 (가입 없이 사용)');
+let guest;
+{
+  guest = await signInAnonymously();
+  check('가입 없이 세션이 발급된다', Boolean(guest.token && guest.userId), JSON.stringify(guest));
+  check('익명 사용자로 표시된다', guest.isAnonymous === true, `is_anonymous=${guest.isAnonymous}`);
+
+  const profile = await rest(guest.token, 'profiles?select=nickname');
+  check('게스트에게도 프로필이 생긴다', profile.body?.[0]?.nickname === '나', JSON.stringify(profile.body));
+}
+
+let guestCalendarId;
+{
+  const created = await rest(guest.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '게스트 캘린더', owner_id: guest.userId }),
+  });
+  guestCalendarId = created.body?.[0]?.id;
+  check('게스트도 캘린더를 만들 수 있다', created.status === 201 && Boolean(guestCalendarId), `${created.status} ${JSON.stringify(created.body)}`);
+
+  const event = await rest(guest.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: guestCalendarId,
+      title: '게스트 일정',
+      start_at: '2026-08-05T09:00:00+09:00',
+      end_at: '2026-08-05T10:00:00+09:00',
+      created_by: guest.userId,
+    }),
+  });
+  check('게스트도 일정을 넣을 수 있다', event.status === 201, `${event.status} ${JSON.stringify(event.body)}`);
+}
+
+console.log('\n11. 공유는 계정이 있어야 한다');
+{
+  const invite = await rest(guest.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: guestCalendarId,
+      code: `guest-${Date.now()}`,
+      created_by: guest.userId,
+    }),
+  });
+  check('게스트는 초대 링크를 만들 수 없다', invite.status === 403, `${invite.status} ${JSON.stringify(invite.body)}`);
+}
+
+console.log('\n12. 게스트 → 계정 (데이터 유지)');
+{
+  const email = `upgraded-${Date.now()}@example.com`;
+  const upgraded = await updateUser(guest.token, { email, password: 'smoke-test-1234' });
+  check('게스트에 이메일·비밀번호를 붙일 수 있다', upgraded.status === 200, `${upgraded.status} ${JSON.stringify(upgraded.body)}`);
+  check('user.id가 그대로다 (= 데이터 유지)', upgraded.body?.id === guest.userId, `${upgraded.body?.id} vs ${guest.userId}`);
+
+  // 계정이 된 뒤에도 이전 토큰의 is_anonymous 클레임은 true다. 갱신해야 반영된다.
+  check('갱신 전 토큰은 여전히 게스트 클레임', claims(guest.token).is_anonymous === true);
+
+  const fresh = await refreshSession(guest.refreshToken);
+  check('토큰을 갱신하면 게스트가 아니다', claims(fresh.token).is_anonymous === false, JSON.stringify(claims(fresh.token).is_anonymous));
+
+  const cals = await rest(fresh.token, 'calendars?select=name');
+  check('게스트 때 만든 캘린더가 그대로 보인다', cals.body?.some((c) => c.name === '게스트 캘린더'), JSON.stringify(cals.body));
+
+  const events = await rest(fresh.token, 'events?select=title');
+  check('게스트 때 만든 일정도 그대로다', events.body?.some((e) => e.title === '게스트 일정'), JSON.stringify(events.body));
+
+  const invite = await rest(fresh.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: guestCalendarId,
+      code: `upgraded-${Date.now()}`,
+      created_by: guest.userId,
+    }),
+  });
+  check('계정이 되면 초대 링크를 만들 수 있다', invite.status === 201, `${invite.status} ${JSON.stringify(invite.body)}`);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

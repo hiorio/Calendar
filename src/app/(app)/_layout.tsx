@@ -10,7 +10,9 @@ export default function AppLayout() {
 
   // 스플래시가 아직 떠 있는 상태. 라우팅을 결정하지 않는다.
   if (isLoading) return null;
-  if (!session) return <Redirect href="/sign-in" />;
+  // 정상 경로에서는 게스트 세션이 항상 있다. 여기 오는 건 익명 로그인이
+  // 꺼져 있는 프로젝트뿐이라, 그때만 계정 화면으로 보낸다.
+  if (!session) return <Redirect href="/account" />;
 
   return (
     <Tabs

@@ -16,6 +16,9 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 - 스키마·정책을 바꿨으면 `npm run db:reset && npm run db:smoke`로 확인한다.
 - 시간 처리 원칙(설계안 3장)은 전역 규칙이다. 종일 일정은 타임존 변환 대상이 아니고,
   반복 전개는 `events.timezone` 기준으로 한다.
+- **가입을 앞세우지 않는다.** 첫 실행은 게스트(익명) 세션으로 시작하고, 계정은 공유처럼
+  꼭 필요한 순간에만 요구한다. 그 경계는 UI가 아니라 RLS로 강제한다
+  (`is_guest()` 참고). 새 기능이 계정을 요구한다면 정책에도 함께 넣을 것.
 - 화면 문구는 한국어.
 
 현재 진행 단계: 1단계(스키마 · RLS · Auth) 완료.

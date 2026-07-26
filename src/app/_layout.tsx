@@ -42,7 +42,10 @@ export default function RootLayout() {
             <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
               <Stack screenOptions={{ headerShown: false }}>
                 <Stack.Screen name="(app)" />
-                <Stack.Screen name="(auth)" />
+                <Stack.Screen
+                  name="account"
+                  options={{ presentation: 'modal', headerShown: true, title: '계정' }}
+                />
               </Stack>
               <StatusBar style="auto" />
             </ThemeProvider>

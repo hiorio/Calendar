@@ -65,6 +65,9 @@ npx supabase db push
 | `20260726000200_membership_rules.sql` | 소유권 이전, 역할 변경, 탈퇴 규칙 (5.3) |
 | `20260726000300_rls.sql` | 헬퍼 함수 + 전 테이블 RLS 정책 (5장) |
 | `20260726000400_storage.sql` | 버킷 2개와 경로 기반 정책 |
+| `20260726000500_grants.sql` | 테이블 권한. **없으면 RLS 이전에 42501로 막힌다** |
+| `20260726000600_fix_calendar_insert_returning.sql` | 캘린더 생성 시 RETURNING 차단 수정 |
+| `20260726000700_guest_first.sql` | 게스트(익명) 사용, 공유는 계정 필요 |
 
 `0004`는 `storage.objects`에 정책을 만들기 때문에 SQL Editor(= `postgres` 역할)에서
 실행해야 합니다.
@@ -73,9 +76,15 @@ npx supabase db push
 
 Authentication → Providers
 
+- **Anonymous sign-ins** — **켜야 합니다.** 이 앱은 가입 없이 게스트로 시작합니다.
+  꺼져 있으면 앱이 계정 화면으로 떨어집니다.
+- **Manual linking** — 켜야 게스트가 Google/Apple 계정을 *연결*(데이터 유지)할 수 있습니다.
+  꺼져 있으면 소셜 가입 시 게스트 기록이 사라집니다.
 - **Email** — 켬. 개발 중에는 "Confirm email"을 꺼두면 가입 즉시 로그인됩니다.
 - **Google** — 클라이언트 ID/시크릿 등록
 - **Apple** — Services ID / Team ID / Key ID / Private Key 등록
+
+익명 로그인은 남용될 수 있으니 Rate Limits의 anonymous 항목도 함께 확인하세요.
 
 Authentication → URL Configuration → **Redirect URLs**:
 
