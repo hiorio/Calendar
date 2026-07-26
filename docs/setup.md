@@ -173,7 +173,10 @@ src/
 
 supabase/migrations/      번호순. 기존 파일은 수정하지 않고 새로 추가한다.
 scripts/                  스모크·단위 테스트, .env 생성
+
 docs/design-notes.md      설계안에서 바꾼 것과 그 이유 ← 먼저 읽어 볼 것
+docs/design-decisions.md  UI 시안의 결정 사항 ← 색을 만지기 전에 읽을 것
+docs/design/ui-proposal.html  시안 원본. 브라우저로 열면 된다 (단일 파일)
 ```
 
 ---
@@ -192,5 +195,15 @@ docs/design-notes.md      설계안에서 바꾼 것과 그 이유 ← 먼저 �
 **유니버설 링크**입니다(지금은 `calendar://` 스킴이라 카카오톡 등에서 눌리지 않습니다).
 그 밖에 미룬 것은 `docs/design-notes.md`에 이유와 함께 적혀 있습니다.
 
+### UI 시안 — 끝났지만 코드에는 안 들어갔습니다
+
+별도로 UI 디자인 시안 작업이 끝나 있습니다. 기본 테마가 **살구**(`#E2673F` 계열)로
+확정됐는데, **`theme.ts`는 여전히 파란색(`#3F7FD4`)이고 라벨 팔레트도 8색입니다.**
+색을 만지기 전에 `docs/design-decisions.md`를 읽으세요 — 5장에 토큰 대응표가 있습니다.
+
+시안은 `docs/design/ui-proposal.html`을 브라우저로 열면 봅니다. 세 방향과 앱 다크모드를
+실시간으로 전환할 수 있고, 필수·중요 범위 16화면이 들어 있습니다.
+
 작업 규칙과 이 프로젝트의 원칙은 **`AGENTS.md`**, 설계안에서 바꾼 부분과 이유는
-**`docs/design-notes.md`**에 있습니다. 코드를 고치기 전에 두 파일을 먼저 읽으세요.
+**`docs/design-notes.md`**, UI 결정 사항은 **`docs/design-decisions.md`**에 있습니다.
+코드를 고치기 전에 먼저 읽으세요.

@@ -107,6 +107,8 @@ supabase/migrations/      스키마 · RLS · 권한 · Storage
 scripts/                  스모크 · 단위 테스트, .env 생성
 docs/setup.md             개발 환경 설정 ← 처음이면 여기부터
 docs/design-notes.md      설계안 대비 변경점과 남은 결정
+docs/design-decisions.md  UI 시안 결정 사항 ← 색을 만지기 전에
+docs/design/ui-proposal.html  시안 원본 (브라우저로 열기)
 docs/external-calendars.md  타 서비스 캘린더 가져오기 설계 (미구현)
 ```
 
@@ -134,9 +136,20 @@ Segmented · EmptyState · Notice · Txt).
 | `npm run db:smoke` | RLS·트리거 스모크 테스트 (로컬 전용) |
 | `npm run db:types` | 실제 스키마에서 DB 타입 재생성 |
 
+## 디자인
+
+UI 시안이 별도로 끝나 있습니다 — 브랜드 3안 중 **살구**를 기본으로 확정했고,
+필수·중요 범위 16화면과 라벨 팔레트 12색을 정했습니다.
+[`docs/design/ui-proposal.html`](docs/design/ui-proposal.html)을 브라우저로 열면 봅니다.
+
+> **아직 코드에 반영되지 않았습니다.** `theme.ts`는 여전히 파란색 기준입니다.
+> 옮기는 방법은 [`docs/design-decisions.md`](docs/design-decisions.md) 5장에 있습니다.
+
 ## 남은 것
 
-설계안 11장의 1~8단계는 모두 구현했습니다. 출시 전에 필요한 것은 두 가지입니다.
+설계안 11장의 1~8단계는 모두 구현했습니다. 출시 전에 필요한 것은 세 가지입니다.
+
+- **시안의 색 토큰 적용** — 위 참고. 화면 코드는 손대지 않습니다.
 
 - **알림 발송 워커** — 큐는 쌓이지만 보내는 쪽이 없습니다. EAS 프로젝트와 개발
   빌드가 있어야 실제 동작을 확인할 수 있습니다.
