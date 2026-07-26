@@ -31,4 +31,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
   (`computeRruleUntil`). 이 값이 기간 조회의 `range_end`가 된다.
 - 순수 함수(반복·타임존·시간 보정)를 고쳤으면 `npm run test:unit`으로 확인한다.
 
-현재 진행 단계: 4단계(반복 일정) 완료. 다음은 5단계.
+- PostgREST 임베드는 두 테이블 사이 경로가 둘 이상이면 300으로 막힌다. 정션이 될 수
+  있는 테이블을 추가했으면 기존 `select=…profiles(...)` 쿼리를 다시 확인할 것.
+
+현재 진행 단계: 5단계(참여자 · 댓글) 완료. 다음은 6단계(푸시 알림).

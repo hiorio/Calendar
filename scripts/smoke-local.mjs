@@ -606,7 +606,104 @@ console.log('\n13. 일정 수정과 삭제 (3단계)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n14. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
+console.log('\n14. 참여자와 댓글 (5단계)');
+{
+  const outsider = await signUp('구경꾼');
+
+  const created = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '집들이',
+      start_at: '2026-08-22T18:00:00+09:00',
+      end_at: '2026-08-22T21:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  const eventId = created.body?.[0]?.id;
+
+  // --- 참여자 -------------------------------------------------------------
+  const joined = await rest(alice.token, 'event_participants', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: bob.userId }),
+  });
+  check('구성원은 다른 구성원을 참여자로 넣을 수 있다', joined.status === 201, `${joined.status} ${JSON.stringify(joined.body)}`);
+
+  const seen = await rest(bob.token, `event_participants?select=user_id&event_id=eq.${eventId}`);
+  check('참여자 목록이 구성원에게 보인다', seen.body?.[0]?.user_id === bob.userId, JSON.stringify(seen.body));
+
+  const intruder = await rest(outsider.token, 'event_participants', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: outsider.userId }),
+  });
+  check('비구성원은 참여자로 끼어들 수 없다', intruder.status >= 400, `${intruder.status} ${JSON.stringify(intruder.body)}`);
+
+  // --- 댓글 ---------------------------------------------------------------
+  const comment = await rest(bob.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: bob.userId, content: '뭐 사갈까?' }),
+  });
+  const commentId = comment.body?.[0]?.id;
+  check('구성원은 댓글을 쓸 수 있다', comment.status === 201 && Boolean(commentId), `${comment.status} ${JSON.stringify(comment.body)}`);
+
+  const impersonated = await rest(bob.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: eventId, user_id: alice.userId, content: '앨리스인 척' }),
+  });
+  check('남의 이름으로는 댓글을 쓸 수 없다', impersonated.status >= 400, `${impersonated.status} ${JSON.stringify(impersonated.body)}`);
+
+  const leaked = await rest(outsider.token, `event_comments?select=content&event_id=eq.${eventId}`);
+  check('비구성원에게는 댓글이 보이지 않는다', leaked.body?.length === 0, JSON.stringify(leaked.body));
+
+  // 삭제는 작성자 본인만. 앨리스는 캘린더 OWNER지만 밥의 댓글은 못 지운다.
+  const otherDelete = await rest(alice.token, `event_comments?id=eq.${commentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  const stillThere = await rest(alice.token, `event_comments?select=deleted_at&id=eq.${commentId}`);
+  check(
+    '남의 댓글은 지울 수 없다',
+    stillThere.body?.[0]?.deleted_at === null,
+    `${otherDelete.status} ${JSON.stringify(stillThere.body)}`,
+  );
+
+  // event_comments에는 DELETE 권한을 주지 않았다 (0005). 대화 흐름을 남긴다.
+  const hardDelete = await rest(bob.token, `event_comments?id=eq.${commentId}`, { method: 'DELETE' });
+  check('댓글은 하드 삭제할 수 없다', hardDelete.status >= 400, `status=${hardDelete.status}`);
+
+  const softDelete = await rest(bob.token, `event_comments?id=eq.${commentId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  check('본인 댓글은 soft delete 된다', softDelete.status === 200, `${softDelete.status} ${JSON.stringify(softDelete.body)}`);
+
+  const listed = await rest(alice.token, `event_comments?select=id&event_id=eq.${eventId}&deleted_at=is.null`);
+  check('지운 댓글은 목록에서 빠진다', listed.body?.length === 0, JSON.stringify(listed.body));
+
+  // --- 앱이 실제로 쓰는 임베드 쿼리 --------------------------------------
+  // comment_reactions가 event_comments와 profiles 사이의 정션이라, 그냥
+  // `profiles(...)`로 묻으면 PostgREST가 300 Multiple Choices를 돌려준다.
+  // 화면이 통째로 비는 버그라 여기서 고정한다.
+  const ambiguous = await rest(alice.token, `event_comments?select=id,profiles(nickname)&event_id=eq.${eventId}`);
+  check('경로가 둘이라 profiles 임베드는 모호하다', ambiguous.status === 300, `status=${ambiguous.status}`);
+
+  const hinted = await rest(alice.token, `event_comments?select=id,profiles!user_id(nickname)&event_id=eq.${eventId}`);
+  check('컬럼을 지정하면 작성자 프로필이 붙는다', hinted.status === 200, `${hinted.status} ${JSON.stringify(hinted.body)}`);
+
+  const withParticipants = await rest(
+    alice.token,
+    `event_participants?select=user_id,profiles(nickname)&event_id=eq.${eventId}`,
+  );
+  check(
+    '참여자 프로필 임베드는 모호하지 않다',
+    withParticipants.status === 200 && withParticipants.body?.[0]?.profiles?.nickname === '밥',
+    `${withParticipants.status} ${JSON.stringify(withParticipants.body)}`,
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n15. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
 {
   const blocked = await rest(
     alice.token,

@@ -314,6 +314,41 @@ UNTIL을 직전으로 당김), 전체(soft delete).
 셋을 합친 것과 비슷합니다. 화면에서 그 범위를 고르면 왜 안 되는지 알리고 삭제만
 열어 둡니다. 반쯤 동작하는 것보다 없는 편이 낫습니다.
 
+## 16-e. 참여자·댓글은 회차가 아니라 일정에 붙는다 (5단계)
+
+스키마가 `event_participants(event_id, user_id)`, `event_comments(event_id, …)`라
+**회차를 구분하지 않습니다.** 반복 일정이라면 3월 회차에 남긴 댓글이 4월 회차에도
+보입니다.
+
+바꾸지 않았습니다. 대부분의 경우 "이 모임"에 대한 대화지 "3월 12일의 그 모임"에
+대한 대화가 아니고, 회차별로 나누려면 `event_exceptions`처럼 회차 키를 하나 더
+들고 다녀야 합니다. 대신 **화면에서 그 사실을 알립니다** — 반복 일정의 댓글창 위에
+"모든 회차가 함께 봅니다"를 띄웁니다. 모르고 쓰는 것이 문제지, 공유되는 것 자체는
+문제가 아닙니다.
+
+## 16-f. `event_comments`의 프로필 임베드는 외래키를 지정해야 한다 (5단계에서 발견)
+
+```
+GET /event_comments?select=id,profiles(nickname)   → 300 Multiple Choices
+GET /event_comments?select=id,profiles!user_id(nickname) → 200
+```
+
+`comment_reactions(comment_id, user_id)`가 `event_comments`와 `profiles` 사이의
+**정션 테이블**이라, PostgREST 입장에서 두 테이블을 잇는 경로가 두 개입니다
+(직접 FK `user_id`, 그리고 reactions를 통한 다대다). 어느 쪽인지 말해 줘야 합니다.
+
+같은 이유로 `calendar_members`나 `event_participants`는 문제가 없습니다 — 정션이
+하나뿐입니다. 정션이 될 수 있는 테이블을 추가하면 기존 임베드 쿼리가 깨질 수 있으니
+`npm run db:smoke`가 이 두 경우를 다 확인합니다.
+
+## 16-g. 5단계에서 뺀 것
+
+- **댓글 반응(`comment_reactions`)** — 테이블과 정책은 있지만 화면에 넣지 않았습니다.
+  이모지 선택 UI가 붙으면 댓글 영역이 커지는데, 지금은 대화가 되는지가 먼저입니다.
+- **댓글 수정** — 삭제(soft delete)만 넣었습니다. 짧은 대화에서는 지우고 다시 쓰는
+  편이 빠릅니다.
+- **첨부 이미지** — Storage 정책은 1단계에 있지만 업로드 화면은 별도 단계입니다.
+
 ## 16. 3단계에서 일부러 뺀 것
 
 - **반복(RRULE)** — 스키마와 `rrule_until`, 예외 테이블은 1단계에 이미 있지만 전개 로직은

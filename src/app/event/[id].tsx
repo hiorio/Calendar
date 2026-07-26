@@ -8,7 +8,9 @@ import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { useMyCalendars } from '@/features/calendars/queries';
+import { CommentThread } from '@/features/events/comment-thread';
 import { EventForm } from '@/features/events/event-form';
+import { ParticipantPicker } from '@/features/events/participant-picker';
 import {
   useDeleteEvent,
   useEvent,
@@ -141,6 +143,14 @@ export default function EventDetailScreen() {
               {((update.error ?? updateOccurrence.error ?? remove.error) as Error).message}
             </Txt>
           ) : null}
+
+          {/* 참여자와 댓글은 저장 버튼과 무관하게 바로 반영된다.
+              폼과 섞이지 않도록 아래에 따로 둔다. */}
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <ParticipantPicker eventId={id} calendarId={master.calendar_id} />
+
+          <CommentThread eventId={id} isRecurring={isRecurring} />
         </Content>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -186,4 +196,5 @@ const styles = StyleSheet.create({
   content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
   scopeSection: { gap: Spacing.sm },
+  divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.sm },
 });
