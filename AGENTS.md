@@ -23,4 +23,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 - 디자인 토큰은 `src/constants/theme.ts` 하나뿐이다. 화면에 hex를 직접 쓰지 않는다.
 
-현재 진행 단계: 2단계(캘린더 생성 · 초대 · 구성원 관리) 완료. 다음은 3단계(일정 CRUD).
+- 일정의 시간 계산은 `src/lib/event-time.ts` 한 곳에만 둔다. 화면에서 `start_at`과
+  `start_date`를 직접 만지지 않는다.
+
+현재 진행 단계: 3단계(일정 CRUD) 완료. 다음은 4단계(반복 일정 전개).

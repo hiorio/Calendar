@@ -242,7 +242,41 @@ MEMBER로 강등하고, 새 소유자를 OWNER로 승격합니다. 그런데 첫
 들어 있어 두 update가 모두 통과합니다. 일반 구성원이 스스로 OWNER가 되는 것은 그대로
 막힙니다(`npm run db:smoke` 13번이 두 경우를 다 고정합니다).
 
-## 14. 세션 저장소
+## 14. 웹에서는 날짜 선택기를 갈랐다 (3단계)
+
+Expo가 안내하는 `@react-native-community/datetimepicker`는 **Android·iOS만 지원합니다.**
+그런데 이 프로젝트의 확인 경로는 웹 미리보기입니다. 웹에서 날짜 입력이 통째로 비면
+개발 중에 일정 기능을 손댈 수가 없습니다.
+
+`src/components/ui/date-time-field.tsx` / `.web.tsx`로 갈랐습니다. 이미 저장소에 있던
+`use-color-scheme.web.ts`와 같은 방식입니다.
+
+- 네이티브: 시스템 선택기 (iOS는 compact 위젯, Android는 눌러서 다이얼로그)
+- 웹: `input[type=date]` / `input[type=time]`. 브라우저가 이미 좋은 선택기를 갖고 있어서
+  흉내 낼 이유가 없습니다. `colorScheme`을 넘겨 달력 팝업까지 같은 배색을 씁니다.
+
+화면 쪽 코드는 어느 플랫폼인지 모릅니다. `DateTimeField` 하나만 씁니다.
+
+## 15. 종일 ↔ 시간 지정 전환은 값까지 바꾼다 (3단계)
+
+`events_time_shape` 검사 때문에 토글만 뒤집으면 저장이 400으로 실패합니다. 종일은
+`start_date`/`end_date`만, 시간 지정은 `start_at`/`end_at`만 있어야 합니다.
+
+`lib/event-time.ts`의 `switchAllDay`가 전환하는 순간 값을 그 모양으로 맞춥니다.
+같은 이유로 `moveStart`는 시작을 옮길 때 종료를 같은 간격으로 끌고 가고, `moveEnd`는
+종료가 시작보다 앞서면 밀어 줍니다. **에러를 보여 주고 고치게 하는 대신 애초에 그
+상태를 만들지 않습니다.**
+
+## 16. 3단계에서 일부러 뺀 것
+
+- **반복(RRULE)** — 스키마와 `rrule_until`, 예외 테이블은 1단계에 이미 있지만 전개 로직은
+  4단계입니다. 지금 만드는 일정은 전부 단일 일정입니다.
+- **일정별 색(`events.color`)** — 컬럼은 있지만 화면에 넣지 않았습니다. 공유 캘린더에서
+  색은 "어느 캘린더인가"를 가리키는 정보라, 일정마다 색을 다르게 두면 그 뜻이 흐려집니다.
+  필요해지면 그때 넣습니다.
+- **참여자·리마인더·댓글** — 설계안의 별도 단계.
+
+## 17. 세션 저장소
 
 Supabase 세션을 `AsyncStorage`에 둡니다(Supabase의 Expo 가이드 기본값).
 `expo-secure-store`는 안드로이드에서 2048바이트 제한이 있어 세션 JSON을 그대로 담기

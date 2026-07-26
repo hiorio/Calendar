@@ -1,13 +1,11 @@
-import { PlaceholderScreen } from '@/components/placeholder-screen';
+import { Redirect } from 'expo-router';
 
-export default function NewEventScreen() {
-  return (
-    <PlaceholderScreen
-      title="일정 추가"
-      icon="add-circle-outline"
-      emptyTitle="일정을 적을 수 있게 됩니다"
-      emptyDescription={'제목·시간·장소·반복까지.\n종일 일정은 시간 입력이 숨겨집니다.'}
-      step="3단계 · 일정 CRUD / 4단계 · 반복"
-    />
-  );
+/**
+ * "추가" 탭의 자리를 지키는 라우트.
+ *
+ * 탭을 누르면 `(app)/_layout.tsx`가 이동을 막고 일정 추가 모달을 연다. 이 화면이
+ * 실제로 그려지는 경우는 /new로 직접 들어왔을 때뿐이라, 그때도 같은 곳으로 보낸다.
+ */
+export default function NewTabRoute() {
+  return <Redirect href="/event-new" />;
 }

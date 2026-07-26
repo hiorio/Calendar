@@ -1,20 +1,22 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
+import { Card, Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
-import { MonthView } from '@/features/calendar/month-view';
+import { MonthView, type DayMark } from '@/features/calendar/month-view';
 import { useMyCalendars } from '@/features/calendars/queries';
+import { groupByDate, useMonthEvents } from '@/features/events/queries';
 import { useProfile } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
-import { addMonths, formatDayTitle, startOfMonth } from '@/lib/date';
+import { addMonths, formatDayTitle, startOfMonth, toDateKey } from '@/lib/date';
+import { formatEventTimeRange } from '@/lib/event-time';
 import { useCalendarFilter } from '@/stores/calendar-filter';
 
 export default function CalendarScreen() {
@@ -28,6 +30,30 @@ export default function CalendarScreen() {
   const [selected, setSelected] = useState(() => new Date());
 
   const hasCalendars = (calendars.data?.length ?? 0) > 0;
+
+  const events = useMonthEvents(month);
+
+  // 숨긴 캘린더는 서버가 아니라 여기서 거른다. 칩을 눌렀을 때 바로 반영된다.
+  const visibleEvents = useMemo(
+    () => (events.data ?? []).filter((event) => !hidden.includes(event.calendar_id)),
+    [events.data, hidden],
+  );
+
+  const byDate = useMemo(() => groupByDate(visibleEvents), [visibleEvents]);
+
+  const marksByDate = useMemo(() => {
+    const marks: Record<string, DayMark[]> = {};
+    for (const [key, list] of Object.entries(byDate)) {
+      marks[key] = list.map((event) => ({
+        id: event.id,
+        title: event.title,
+        color: event.displayColor,
+      }));
+    }
+    return marks;
+  }, [byDate]);
+
+  const dayEvents = byDate[toDateKey(selected)] ?? [];
 
   return (
     <Screen>
@@ -109,6 +135,7 @@ export default function CalendarScreen() {
                 setMonth(startOfMonth(today));
                 setSelected(today);
               }}
+              marksByDate={marksByDate}
             />
           </Card>
 
@@ -116,18 +143,63 @@ export default function CalendarScreen() {
             <View style={styles.section}>
               <View style={styles.sectionHead}>
                 <Txt variant="subtitle">{formatDayTitle(selected)}</Txt>
-                <Txt variant="caption" tone="tertiary">
-                  일정 0개
-                </Txt>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="이 날에 일정 추가"
+                  onPress={() =>
+                    router.push({
+                      pathname: '/event-new',
+                      params: { date: toDateKey(selected) },
+                    })
+                  }
+                  style={({ pressed }) => [
+                    styles.addDay,
+                    { backgroundColor: pressed ? colors.accentPressed : colors.accentSoft },
+                  ]}>
+                  <Ionicons name="add" size={16} color={colors.accent} />
+                  <Txt variant="label" tone="accent">
+                    추가
+                  </Txt>
+                </Pressable>
               </View>
 
-              <Card flat>
-                <EmptyState
-                  compact
-                  icon="sunny-outline"
-                  title="이 날은 비어 있어요"
-                  description="일정 추가는 3단계에서 붙습니다."
-                />
+              <Card flat padded={dayEvents.length === 0}>
+                {dayEvents.length === 0 ? (
+                  <EmptyState
+                    compact
+                    icon="sunny-outline"
+                    title="이 날은 비어 있어요"
+                    description="위 추가를 눌러 첫 일정을 넣어 보세요."
+                  />
+                ) : (
+                  dayEvents.map((event, index) => (
+                    <View key={event.id}>
+                      {index > 0 ? <Divider /> : null}
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel={`${event.title} 열기`}
+                        onPress={() =>
+                          router.push({ pathname: '/event/[id]', params: { id: event.id } })
+                        }
+                        style={({ pressed }) => [
+                          styles.eventRow,
+                          { backgroundColor: pressed ? colors.surfacePressed : 'transparent' },
+                        ]}>
+                        <View style={[styles.eventBar, { backgroundColor: event.displayColor }]} />
+                        <View style={styles.eventText}>
+                          <Txt variant="body" numberOfLines={1}>
+                            {event.title}
+                          </Txt>
+                          <Txt variant="caption" tone="secondary" numberOfLines={1}>
+                            {formatEventTimeRange(event)}
+                            {event.location ? ` · ${event.location}` : ''}
+                          </Txt>
+                        </View>
+                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
+                      </Pressable>
+                    </View>
+                  ))
+                )}
               </Card>
             </View>
           ) : (
@@ -178,6 +250,12 @@ export default function CalendarScreen() {
               캘린더를 불러오지 못했습니다: {(calendars.error as Error).message}
             </Txt>
           ) : null}
+
+          {events.isError ? (
+            <Txt variant="caption" tone="danger" style={styles.error}>
+              일정을 불러오지 못했습니다: {(events.error as Error).message}
+            </Txt>
+          ) : null}
         </Content>
       </ScrollView>
     </Screen>
@@ -217,7 +295,25 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: Radius.pill },
   calendarCard: { marginHorizontal: Spacing.md, paddingVertical: Spacing.lg },
   section: { gap: Spacing.sm, paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl },
-  sectionHead: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
+  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  addDay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    height: 30,
+    paddingHorizontal: Spacing.md,
+    borderRadius: Radius.pill,
+  },
+  eventRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    minHeight: 56,
+  },
+  eventBar: { width: 4, alignSelf: 'stretch', borderRadius: Radius.pill },
+  eventText: { flex: 1, gap: 1 },
   guestBanner: {
     flexDirection: 'row',
     alignItems: 'center',

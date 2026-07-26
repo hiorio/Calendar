@@ -62,6 +62,14 @@ export default function RootLayout() {
                   name="join"
                   options={{ presentation: 'modal', headerShown: true, title: '초대' }}
                 />
+                <Stack.Screen
+                  name="event-new"
+                  options={{ presentation: 'modal', headerShown: true, title: '일정 추가' }}
+                />
+                <Stack.Screen
+                  name="event/[id]"
+                  options={{ presentation: 'modal', headerShown: true, title: '일정' }}
+                />
               </Stack>
               <StatusBar style="auto" />
             </ThemeProvider>

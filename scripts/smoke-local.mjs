@@ -484,7 +484,102 @@ console.log('\n12. 게스트 → 계정 (데이터 유지)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n13. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
+console.log('\n13. 일정 수정과 삭제 (3단계)');
+{
+  const created = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '치과',
+      start_at: '2026-08-10T14:00:00+09:00',
+      end_at: '2026-08-10T15:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  const eventId = created.body?.[0]?.id;
+  check('일정이 만들어진다', created.status === 201 && Boolean(eventId), `${created.status} ${JSON.stringify(created.body)}`);
+
+  // 공유 캘린더의 일정은 만든 사람만의 것이 아니다. 구성원이면 고칠 수 있어야 한다.
+  const edited = await rest(bob.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ title: '치과 (시간 변경)', start_at: '2026-08-10T16:00:00+09:00', end_at: '2026-08-10T17:00:00+09:00' }),
+  });
+  check('다른 구성원도 일정을 고칠 수 있다', edited.status === 200, `${edited.status} ${JSON.stringify(edited.body)}`);
+  check(
+    '수정하면 range_start도 따라 움직인다',
+    new Date(edited.body?.[0]?.range_start).toISOString() === new Date('2026-08-10T16:00:00+09:00').toISOString(),
+    `range_start=${edited.body?.[0]?.range_start}`,
+  );
+
+  const outsider = await rest(bob.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '밥 혼자 캘린더', owner_id: bob.userId }),
+  });
+  const bobOnlyCalendar = outsider.body?.[0]?.id;
+
+  // 앨리스는 밥의 개인 캘린더 구성원이 아니다. 거기로 옮기는 것은 WITH CHECK에 걸려야 한다.
+  const moved = await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ calendar_id: bobOnlyCalendar }),
+  });
+  check('내가 못 보는 캘린더로는 일정을 옮길 수 없다', moved.status >= 400, `${moved.status} ${JSON.stringify(moved.body)}`);
+
+  // 삭제는 행을 지우지 않고 deleted_at을 채운다 (설계안 4.2)
+  const deleted = await rest(alice.token, `events?id=eq.${eventId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  check('일정 삭제는 soft delete로 처리된다', deleted.status === 200, `${deleted.status} ${JSON.stringify(deleted.body)}`);
+
+  // 앱이 실제로 쓰는 기간 조회 (features/events/queries.ts와 같은 조건)
+  const from = '2026-08-01T00:00:00+09:00';
+  const to = '2026-09-01T00:00:00+09:00';
+  const listed = await rest(
+    alice.token,
+    `events?select=title&deleted_at=is.null&range_start=lt.${encodeURIComponent(to)}` +
+      `&or=(range_end.is.null,range_end.gt.${encodeURIComponent(from)})`,
+  );
+  const titles = Array.isArray(listed.body) ? listed.body.map((e) => e.title) : [];
+  check('삭제한 일정은 기간 조회에서 빠진다', !titles.includes('치과 (시간 변경)'), JSON.stringify(titles));
+}
+
+{
+  // 종일 일정의 range_end는 "마지막 날 다음 날 00:00"(배타적)이다.
+  // 화면이 칩을 며칠에 찍을지 이 규칙 위에서 계산한다 (lib/event-time.ts).
+  const { body } = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '여름 휴가',
+      is_all_day: true,
+      start_date: '2026-08-14',
+      end_date: '2026-08-16',
+      timezone: 'Asia/Seoul',
+      created_by: alice.userId,
+    }),
+  });
+  check(
+    '종일 일정의 range_end는 마지막 날 다음 자정',
+    new Date(body?.[0]?.range_end).toISOString() === new Date('2026-08-17T00:00:00+09:00').toISOString(),
+    `range_end=${body?.[0]?.range_end}`,
+  );
+
+  const bad = await rest(alice.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      title: '거꾸로',
+      start_at: '2026-08-10T15:00:00+09:00',
+      end_at: '2026-08-10T14:00:00+09:00',
+      created_by: alice.userId,
+    }),
+  });
+  check('종료가 시작보다 앞서면 거부된다', bad.status === 400, `status=${bad.status}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n14. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
 {
   const blocked = await rest(
     alice.token,

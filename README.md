@@ -17,10 +17,11 @@ Expo (React Native) + Supabase. 설계안 11장의 **1단계** — Supabase 스�
 - 초대 링크 발급/공유/취소, 링크로 참여 (미리보기 → 수락)
 - 구성원 목록, 내보내기, 소유권 이전, 나가기
 - 공유(초대 링크 발급·수락)는 계정이 있어야 가능 — UI가 아니라 RLS로 강제
+- 일정 추가·수정·삭제. 종일/시간 지정, 장소, 메모
+- 월간 격자에 일정 칩, 선택한 날의 일정 목록
 - 전체 DB 스키마 + RLS 정책 + 권한(GRANT) + Storage 정책 마이그레이션
 
-아직 비어 있는 탭(추가 / 활동)은 어느 단계에서 채워지는지만 표시합니다.
-일정 CRUD는 3단계입니다.
+반복 일정(RRULE 전개)과 활동 탭은 다음 단계입니다.
 
 ## 로컬에서 확인하기
 
@@ -71,13 +72,16 @@ src/
     calendar-new.tsx      캘린더 만들기 (모달)
     calendar/[id].tsx     캘린더 설정 · 구성원 · 초대
     join.tsx              초대 링크 수락 (?code=...)
+    event-new.tsx         일정 추가 (?date=YYYY-MM-DD)
+    event/[id].tsx        일정 수정 · 삭제
   features/
     auth/                 세션 컨텍스트, OAuth
     calendar/             월간 뷰
     calendars/            캘린더·구성원·초대 쿼리
+    events/               일정 쿼리와 공용 폼
     profile/              내 프로필 조회
   stores/                 Zustand (캘린더 표시 필터)
-  lib/                    supabase 클라이언트, 날짜 유틸, 환경변수
+  lib/                    supabase 클라이언트, 날짜·일정 시간 유틸, 환경변수
   types/database.ts       DB 스키마 타입 (마이그레이션과 1:1)
 supabase/migrations/      스키마 · RLS · 권한 · Storage
 docs/design-notes.md      설계안 대비 변경점과 남은 결정
