@@ -77,6 +77,7 @@ docs/design-notes.md      설계안 대비 변경점과 남은 결정
 | `npm run db:start` / `db:stop` | 로컬 Supabase 기동 / 정지 |
 | `npm run db:reset` | 초기화 후 마이그레이션 재적용 |
 | `npm run db:env` | 로컬 Supabase 값을 `.env`에 기록 |
+| `npm run db:smoke` | RLS·트리거 스모크 테스트 (로컬 전용) |
 | `npm run db:types` | 실제 스키마에서 DB 타입 재생성 |
 
 ## 다음 단계

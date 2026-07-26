@@ -57,6 +57,7 @@
     "db:status": "supabase status",
     "db:studio": "supabase status -o json",
     "db:env": "node scripts/write-env.mjs",
+    "db:smoke": "node scripts/smoke-local.mjs",
     "db:types": "supabase gen types typescript --local > src/types/database.ts"
   },
   "private": true

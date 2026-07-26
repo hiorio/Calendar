@@ -22,7 +22,14 @@ npm run web        # 또는 npm start
 
 ```bash
 npm run db:reset   # 볼륨을 지우고 마이그레이션을 처음부터 다시 적용
+npm run db:smoke   # RLS·트리거가 의도대로 도는지 확인
 ```
+
+`db:reset` 직후 API가 502를 내면 Kong이 재시작된 컨테이너를 아직 못 잡은 것입니다.
+`docker restart supabase_kong_calendar` 후 10초쯤 기다리면 됩니다.
+
+`db:smoke`는 앱과 같은 경로(anon key + GoTrue + PostgREST)로만 접근해 RLS를 검증합니다.
+테스트 사용자를 실제로 만드니 로컬에서만 쓰세요. 되돌리려면 `db:reset`.
 
 로컬 설정은 `config.toml`에 있습니다. 이 프로젝트에서 손댄 값:
 

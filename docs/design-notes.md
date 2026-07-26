@@ -103,7 +103,36 @@ Edge Function(service_role)을 통해서만** 일어납니다. 2단계 구현 �
 설계안에 없던 `avatars`를 추가했습니다. `profiles.avatar_url`이 채워지려면 어딘가에는
 올려야 합니다.
 
-## 8. 세션 저장소
+## 8. RLS만으로는 부족하다 — GRANT가 먼저다 (실행하며 발견)
+
+`authenticated`에게 테이블 권한을 주지 않아 **모든 요청이 42501로 막혔습니다.**
+RLS는 GRANT 위에 얹히는 필터라, GRANT가 없으면 정책이 무엇이든 통과하지 못합니다.
+
+Supabase의 `public` 스키마 기본 권한은 `authenticated`에게 `Dxtm`(TRUNCATE, REFERENCES,
+TRIGGER, MAINTAIN)만 주고 SELECT/INSERT/UPDATE/DELETE는 주지 않습니다. `service_role`도
+같은 상태여서 Edge Function도 전부 막힙니다.
+
+`20260726000500_grants.sql`에서 명시적으로 부여합니다. 부여 목록은 0003의 정책 목록과
+1:1로 맞췄습니다. **새 테이블을 추가하면 이 파일도 함께 갱신해야 합니다.**
+
+## 9. 캘린더 생성 시 RETURNING이 막히던 문제 (실행하며 발견)
+
+`calendars`에 INSERT하면 `new row violates row-level security policy`가 났습니다.
+RETURNING 없이 INSERT하면 성공하는 것으로 원인이 확인됐습니다.
+
+PostgREST는 삽입 결과를 돌려주려고 항상 RETURNING을 붙이고(= supabase-js의
+`.insert().select()`), PostgreSQL은 RETURNING 행에 SELECT 정책을 적용합니다. 그런데
+OWNER 구성원 행을 만드는 `on_calendar_created`는 **AFTER INSERT** 트리거라 그 시점엔
+아직 실행되지 않았고, 따라서 `is_calendar_member(id)`가 false였습니다.
+
+`20260726000600_fix_calendar_insert_returning.sql`에서 SELECT 정책에
+`owner_id = auth.uid()`를 더했습니다. 의미상으로도 소유자는 구성원 행과 무관하게 자기
+캘린더를 봐야 하고, 소유권 이전 시 `owner_id`가 함께 바뀌므로 권한이 남지 않습니다.
+
+> 교훈: "행을 만든 뒤에야 볼 수 있게 되는" 정책은 INSERT ... RETURNING과 충돌합니다.
+> 앞으로 정책을 쓸 때 삽입 직후의 가시성을 항상 같이 확인할 것.
+
+## 10. 세션 저장소
 
 Supabase 세션을 `AsyncStorage`에 둡니다(Supabase의 Expo 가이드 기본값).
 `expo-secure-store`는 안드로이드에서 2048바이트 제한이 있어 세션 JSON을 그대로 담기
