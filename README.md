@@ -1,56 +1,69 @@
-# Welcome to your Expo app 👋
+# 함께캘린더
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+가족·연인·친구·소모임이 하나의 캘린더를 공유하고, 일정마다 대화 스레드를 갖는 모바일 앱.
 
-## Get started
+Expo (React Native) + Supabase. 설계안 11장의 **1단계** — Supabase 스키마 · RLS · Auth,
+그리고 로그인이 동작하는 앱 셸 — 까지 구현되어 있습니다.
 
-1. Install dependencies
+## 지금 되는 것
 
-   ```bash
-   npm install
-   ```
+- 이메일 회원가입/로그인, Google 로그인, Apple 로그인(iOS)
+- 가입 시 `profiles` 자동 생성, 세션 영속화 및 자동 갱신
+- 로그인 여부에 따른 라우팅 가드, 로그아웃
+- 전체 DB 스키마 + RLS 정책 + Storage 정책 마이그레이션
 
-2. Start the app
+아직 비어 있는 탭(캘린더 / 추가 / 활동)은 어느 단계에서 채워지는지만 표시합니다.
 
-   ```bash
-   npx expo start
-   ```
+## 시작하기
 
-In the output, you'll find options to open the app in a
+### 1. Supabase 프로젝트 준비
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+`supabase/README.md`의 순서대로 마이그레이션을 적용하고 Auth 공급자를 설정합니다.
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+### 2. 환경변수
 
 ```bash
-npm run reset-project
+cp .env.example .env
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+`.env`에 프로젝트 URL과 anon key를 채웁니다. 값을 바꾼 뒤에는 개발 서버를 다시 시작해야
+합니다(`EXPO_PUBLIC_*`는 번들 타임에 주입됩니다).
 
-### Other setup steps
+### 3. 실행
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+```bash
+npm install
+npx expo start
+```
 
-## Learn more
+Google/Apple 로그인은 커스텀 스킴(`calendar://`)이 필요하므로 Expo Go가 아닌
+[개발 빌드](https://docs.expo.dev/develop/development-builds/introduction/)에서 테스트하세요.
+이메일 로그인은 Expo Go에서도 동작합니다.
 
-To learn more about developing your project with Expo, look at the following resources:
+## 구조
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```
+src/
+  app/                    Expo Router 라우트
+    (auth)/sign-in.tsx    로그인 / 회원가입
+    (app)/                로그인 필요 — 하단 5탭 (홈·캘린더·＋·활동·설정)
+  features/
+    auth/                 세션 컨텍스트, OAuth
+    profile/              내 프로필 조회
+  lib/                    supabase 클라이언트, 환경변수
+  types/database.ts       DB 스키마 타입 (마이그레이션과 1:1)
+supabase/migrations/      스키마 · RLS · Storage
+docs/design-notes.md      설계안 대비 변경점과 남은 결정
+```
 
-## Join the community
+## 스크립트
 
-Join our community of developers creating universal apps.
+| 명령 | 설명 |
+|---|---|
+| `npm start` | 개발 서버 |
+| `npm run typecheck` | `tsc --noEmit` |
+| `npm run lint` | `expo lint` |
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## 다음 단계
+
+설계안 11장 기준 2단계 — 캘린더 생성, 초대 링크 발급/수락(Edge Function), 구성원 관리.

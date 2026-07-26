@@ -31,7 +31,12 @@ yarn-error.*
 *.pem
 
 # local env files
+.env
 .env*.local
+!.env.example
+
+# 개인 설정 (머신마다 다름)
+.claude/settings.local.json
 
 # typescript
 *.tsbuildinfo
