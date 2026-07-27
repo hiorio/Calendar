@@ -1157,5 +1157,201 @@ console.log('\n20. 계정 삭제 (8단계)');
   check('지운 뒤 토큰으로는 아무것도 안 보인다', after.status >= 400 || after.body?.length === 0, `${after.status} ${JSON.stringify(after.body)}`);
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n21. 컬럼 단위 권한 — UPDATE 우회 차단 (0013)');
+{
+  // 공격자와 피해자를 새로 만든다. 공격자는 피해자 캘린더의 구성원이 아니다.
+  const victim = await signUp('피해자');
+  const attacker = await signUp('공격자');
+
+  const victimCal = await rest(victim.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '남의 캘린더', owner_id: victim.userId }),
+  });
+  const victimCalId = victimCal.body?.[0]?.id;
+
+  const attackerCal = await rest(attacker.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '공격자 캘린더', owner_id: attacker.userId }),
+  });
+  const attackerCalId = attackerCal.body?.[0]?.id;
+
+  // (1) 내 멤버십 행의 calendar_id를 남의 캘린더로 — 초대 우회
+  const hop = await rest(
+    attacker.token,
+    `calendar_members?calendar_id=eq.${attackerCalId}&user_id=eq.${attacker.userId}`,
+    { method: 'PATCH', body: JSON.stringify({ calendar_id: victimCalId }) },
+  );
+  check('멤버십의 calendar_id는 바꿀 수 없다', hop.status >= 400, `${hop.status} ${JSON.stringify(hop.body)}`);
+
+  const peek = await rest(attacker.token, `calendars?select=id&id=eq.${victimCalId}`);
+  check('그래서 남의 캘린더가 보이지 않는다', peek.body?.length === 0, JSON.stringify(peek.body));
+
+  // (2) 내가 만든 초대를 남의 캘린더로 돌리기
+  const code = `hop-${Date.now()}`;
+  const inv = await rest(attacker.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({ calendar_id: attackerCalId, code, created_by: attacker.userId }),
+  });
+  const invId = inv.body?.[0]?.id;
+  const repoint = await rest(attacker.token, `calendar_invites?id=eq.${invId}`, {
+    method: 'PATCH', body: JSON.stringify({ calendar_id: victimCalId }),
+  });
+  check('초대의 calendar_id는 바꿀 수 없다', repoint.status >= 400, `${repoint.status} ${JSON.stringify(repoint.body)}`);
+
+  const revoke = await rest(attacker.token, `calendar_invites?id=eq.${invId}`, {
+    method: 'PATCH', body: JSON.stringify({ revoked_at: new Date().toISOString() }),
+  });
+  check('초대 취소는 그대로 된다', revoke.status === 200, `${revoke.status} ${JSON.stringify(revoke.body)}`);
+
+  // (3) 구성원이 캘린더를 soft delete
+  const nuke = await rest(attacker.token, `calendars?id=eq.${attackerCalId}`, {
+    method: 'PATCH', body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  check('구성원이 캘린더를 지울 수 없다', nuke.status >= 400, `${nuke.status} ${JSON.stringify(nuke.body)}`);
+
+  const rename = await rest(attacker.token, `calendars?id=eq.${attackerCalId}`, {
+    method: 'PATCH', body: JSON.stringify({ name: '이름 변경' }),
+  });
+  check('이름 변경은 그대로 된다', rename.status === 200, `${rename.status} ${JSON.stringify(rename.body)}`);
+
+  // (4) 댓글을 남의 일정으로 옮기기
+  const ev = await rest(attacker.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: attackerCalId, title: '내 일정',
+      start_at: '2026-10-05T10:00:00+09:00', end_at: '2026-10-05T11:00:00+09:00',
+      timezone: 'Asia/Seoul', created_by: attacker.userId,
+    }),
+  });
+  const evId = ev.body?.[0]?.id;
+  const cm = await rest(attacker.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: evId, user_id: attacker.userId, content: '내 댓글' }),
+  });
+  const cmId = cm.body?.[0]?.id;
+
+  const move = await rest(attacker.token, `event_comments?id=eq.${cmId}`, {
+    method: 'PATCH', body: JSON.stringify({ event_id: evId }),
+  });
+  check('댓글의 event_id는 바꿀 수 없다', move.status >= 400, `${move.status} ${JSON.stringify(move.body)}`);
+
+  const softDel = await rest(attacker.token, `event_comments?id=eq.${cmId}`, {
+    method: 'PATCH', body: JSON.stringify({ deleted_at: new Date().toISOString() }),
+  });
+  check('본인 댓글 삭제는 그대로 된다', softDel.status === 200, `${softDel.status} ${JSON.stringify(softDel.body)}`);
+
+  // (5) 일정의 작성자 위조
+  const forge = await rest(attacker.token, `events?id=eq.${evId}`, {
+    method: 'PATCH', body: JSON.stringify({ created_by: victim.userId }),
+  });
+  check('일정의 created_by는 바꿀 수 없다', forge.status >= 400, `${forge.status} ${JSON.stringify(forge.body)}`);
+
+  const retitle = await rest(attacker.token, `events?id=eq.${evId}`, {
+    method: 'PATCH', body: JSON.stringify({ title: '제목 변경' }),
+  });
+  check('일정 제목 변경은 그대로 된다', retitle.status === 200, `${retitle.status} ${JSON.stringify(retitle.body)}`);
+
+  // (6) 프로필 id 위조
+  const idSwap = await rest(attacker.token, `profiles?id=eq.${attacker.userId}`, {
+    method: 'PATCH', body: JSON.stringify({ id: victim.userId }),
+  });
+  check('프로필 id는 바꿀 수 없다', idSwap.status >= 400, `${idSwap.status} ${JSON.stringify(idSwap.body)}`);
+
+  const nick = await rest(attacker.token, `profiles?id=eq.${attacker.userId}`, {
+    method: 'PATCH', body: JSON.stringify({ nickname: '새 이름' }),
+  });
+  check('닉네임 변경은 그대로 된다', nick.status === 200, `${nick.status} ${JSON.stringify(nick.body)}`);
+
+  // (7) 음소거는 본인 것만
+  await rest(victim.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({ calendar_id: victimCalId, code: `join-${Date.now()}`, created_by: victim.userId }),
+  });
+  const joinCode = `join2-${Date.now()}`;
+  await rest(victim.token, 'calendar_invites', {
+    method: 'POST',
+    body: JSON.stringify({ calendar_id: victimCalId, code: joinCode, created_by: victim.userId }),
+  });
+  await rpc(attacker.token, 'accept_invite', { invite_code: joinCode });
+
+  // (8) 클라이언트는 회차 예외를 upsert 로 쓴다. PostgREST 의 upsert 는 충돌 키까지
+  //     UPDATE 권한을 요구하므로, 컬럼을 좁히면 여기서 42501 이 난다.
+  const recurring = await rest(attacker.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: attackerCalId, title: '매주 회의',
+      start_at: '2026-11-03T10:00:00+09:00', end_at: '2026-11-03T11:00:00+09:00',
+      timezone: 'Asia/Seoul', rrule: 'FREQ=WEEKLY', created_by: attacker.userId,
+    }),
+  });
+  const recId = recurring.body?.[0]?.id;
+  const occAt = '2026-11-10T01:00:00.000Z';
+
+  // on_conflict 를 줘야 한다. PostgREST 의 기본 충돌 대상은 PK(id)라
+  // 그냥 두면 unique (event_id, original_start) 에 걸려 23505 가 난다.
+  const upsertOnce = await rest(attacker.token, 'event_exceptions?on_conflict=event_id,original_start', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation,resolution=merge-duplicates' },
+    body: JSON.stringify({
+      event_id: recId, original_start: occAt, type: 'MODIFIED',
+      title: '이 주만 다른 제목', is_all_day: false,
+      start_at: '2026-11-10T02:00:00.000Z', end_at: '2026-11-10T03:00:00.000Z',
+      // 안 쓰는 쪽은 명시적으로 비운다. 클라이언트의 toTimeColumns 가 그렇게 보낸다 —
+      // 빠뜨리면 upsert 가 옛 값을 남겨 at/date 가 섞인 행이 된다.
+      start_date: null, end_date: null,
+    }),
+  });
+  check('회차 예외 upsert 가 된다', upsertOnce.status === 201, `${upsertOnce.status} ${JSON.stringify(upsertOnce.body)}`);
+
+  const upsertTwice = await rest(attacker.token, 'event_exceptions?on_conflict=event_id,original_start', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation,resolution=merge-duplicates' },
+    body: JSON.stringify({
+      event_id: recId, original_start: occAt, type: 'MODIFIED',
+      title: '한 번 더 고침', is_all_day: true,
+      start_date: '2026-11-10', end_date: '2026-11-10',
+      start_at: null, end_at: null,
+    }),
+  });
+  // 갱신으로 떨어지면 200, 새로 넣으면 201
+  check('같은 회차를 다시 고치면 덮어쓴다',
+    upsertTwice.status === 200 || upsertTwice.status === 201,
+    `${upsertTwice.status} ${JSON.stringify(upsertTwice.body)}`);
+  check(
+    '회차만 종일로 바꾼 것이 저장된다 (0014)',
+    upsertTwice.body?.[0]?.is_all_day === true && upsertTwice.body?.[0]?.title === '한 번 더 고침',
+    JSON.stringify(upsertTwice.body?.[0]),
+  );
+  check(
+    '종일로 바뀌면 시각 컬럼이 비워진다',
+    upsertTwice.body?.[0]?.start_at === null && upsertTwice.body?.[0]?.end_at === null,
+    JSON.stringify(upsertTwice.body?.[0]),
+  );
+
+  // 회차 수정도 다른 구성원에게 알림이 가고 활동에 남아야 한다 (0014)
+  const occLog = await rest(attacker.token, `activity_logs?select=type,summary&ref_id=eq.${recId}&order=id`);
+  check(
+    '회차 수정이 활동에 남는다',
+    occLog.body?.some((r) => r.summary?.occurrence !== undefined),
+    JSON.stringify(occLog.body?.map((r) => r.type)),
+  );
+
+  const muteOther = await rest(
+    attacker.token,
+    `calendar_members?calendar_id=eq.${victimCalId}&user_id=eq.${victim.userId}`,
+    { method: 'PATCH', body: JSON.stringify({ muted: true }) },
+  );
+  const victimStill = await rest(
+    victim.token,
+    `calendar_members?select=muted&calendar_id=eq.${victimCalId}&user_id=eq.${victim.userId}`,
+  );
+  check(
+    '남의 음소거를 대신 켤 수 없다',
+    victimStill.body?.[0]?.muted === false,
+    `${muteOther.status} → muted=${victimStill.body?.[0]?.muted}`,
+  );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

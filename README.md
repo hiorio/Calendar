@@ -63,8 +63,8 @@ npm run web        # 환경변수 반영을 위해 개발 서버를 새로 띄�
 캘린더 화면이 떠야 정상입니다. 설정 탭에서 계정을 만들면 게스트 기록을 유지한 채
 정식 계정으로 바뀝니다. DB 상태는 Studio(`http://127.0.0.1:54323`)에서 볼 수 있습니다.
 
-RLS·트리거·게스트 흐름은 `npm run db:smoke`(77개), 반복·타임존 같은 순수 계산은
-`npm run test:unit`(28개)으로 확인합니다.
+RLS·트리거·게스트 흐름은 `npm run db:smoke`, 반복·타임존 같은 순수 계산은
+`npm run test:unit`으로 확인합니다. 통과해야 할 개수는 `AGENTS.md`의 표에 있습니다.
 
 클라우드 프로젝트를 쓰거나 Google/Apple 로그인까지 확인하려면 `supabase/README.md`를
 보세요. 소셜 로그인은 커스텀 스킴(`calendar://`)을 쓰므로 Expo Go가 아닌

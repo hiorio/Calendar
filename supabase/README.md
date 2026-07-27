@@ -68,9 +68,19 @@ npx supabase db push
 | `20260726000500_grants.sql` | 테이블 권한. **없으면 RLS 이전에 42501로 막힌다** |
 | `20260726000600_fix_calendar_insert_returning.sql` | 캘린더 생성 시 RETURNING 차단 수정 |
 | `20260726000700_guest_first.sql` | 게스트(익명) 사용, 공유는 계정 필요 |
+| `20260726000800_invites.sql` | 초대 미리보기·수락 RPC (`accept_invite`) |
+| `20260726000900_fix_ownership_transfer.sql` | 소유권 이전이 자기 가드에 걸리던 버그 |
+| `20260726001000_notification_triggers.sql` | 알림 큐 적재 트리거 |
+| `20260726001100_activity_log.sql` | 활동 로그 적재 트리거 |
+| `20260726001200_delete_account.sql` | 계정 삭제 (`delete_my_account`), 작성자 컬럼 nullable |
+| `20260726001300_column_grants.sql` | **컬럼 단위 UPDATE 권한.** 없으면 초대 우회가 뚫린다 |
 
 `0004`는 `storage.objects`에 정책을 만들기 때문에 SQL Editor(= `postgres` 역할)에서
 실행해야 합니다.
+
+> **목록을 손으로 관리하지 마세요.** 위 표는 설명용이고, 실제 적용은
+> `npx supabase db push`가 `migrations/` 전체를 파일명 순서대로 적용합니다.
+> 새 마이그레이션을 추가하면 이 표에도 한 줄 더하되, **표에 없다고 빠뜨리면 안 됩니다.**
 
 ### 2. Auth 공급자
 

@@ -51,7 +51,7 @@ npm run db:smoke
 ```
 
 앱이 실제로 쓰는 경로(GoTrue + PostgREST + anon key)로 RLS와 트리거를 확인합니다.
-**122개 전부 통과해야 정상입니다.**
+**140개 전부 통과해야 정상입니다.**
 
 ```bash
 npm run test:unit

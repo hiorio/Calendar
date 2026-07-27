@@ -1,8 +1,13 @@
 /**
  * DB 스키마 타입. `supabase/migrations/`와 1:1로 대응한다.
  *
- * 스키마를 바꿨다면 손으로 고치지 말고 재생성할 것:
- *   npx supabase gen types typescript --linked > src/types/database.ts
+ * **이 파일은 손으로 관리한다.** 생성기 출력에는 없는 것들이 들어 있다 —
+ * 도메인 별칭(`EventRow`, `MemberRole` …), 컬럼별 주석, `Optional<>` 헬퍼.
+ * 마이그레이션을 추가했으면 여기도 함께 고칠 것.
+ *
+ * `npm run db:types`는 이 파일을 덮어쓰지 않는다. 실제 스키마에서 만든 타입을
+ * `database.generated.ts`(git에 올리지 않음)로 뽑아 주므로, 빠뜨린 컬럼이 있는지
+ * 비교하는 용도로 쓴다.
  */
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
@@ -95,7 +100,8 @@ export type EventRow = {
   /** 트리거가 유지하는 조회용 파생 컬럼. 직접 쓰지 말 것 */
   range_start: string;
   range_end: string | null;
-  created_by: string;
+  /** 계정을 지우면 NULL이 된다 (0012) */
+  created_by: string | null;
   created_at: string;
   updated_at: string;
   deleted_at: string | null;
@@ -109,6 +115,8 @@ export type EventException = {
   title: string | null;
   description: string | null;
   location: string | null;
+  /** NULL이면 마스터를 따른다 (0014) */
+  is_all_day: boolean | null;
   start_at: string | null;
   end_at: string | null;
   start_date: string | null;
@@ -259,6 +267,7 @@ export type Database = {
           | 'title'
           | 'description'
           | 'location'
+          | 'is_all_day'
           | 'start_at'
           | 'end_at'
           | 'start_date'

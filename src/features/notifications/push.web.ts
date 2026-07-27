@@ -1,3 +1,5 @@
+import { supabase } from '@/lib/supabase';
+
 import type { PushStatus } from './push';
 
 /**
@@ -19,7 +21,19 @@ export async function registerForPush(): Promise<PushStatus> {
   };
 }
 
-export async function unregisterPush() {
+/** 웹에서 등록한 기기는 없지만, 다른 기기에서 등록한 것은 세어 준다. */
+export async function countRegisteredDevices(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('device_tokens')
+    .select('expo_token', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('disabled_at', null);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+export async function unregisterPush(_userId: string) {
   // 등록한 적이 없으므로 해제할 것도 없다
 }
 

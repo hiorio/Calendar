@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
+import { onColor } from '@/features/calendars/colors';
 import { useTheme } from '@/hooks/use-theme';
 import {
   WEEKDAY_LABELS,
@@ -135,7 +136,12 @@ export function MonthView({
                   <View style={styles.chips}>
                     {marks.slice(0, MAX_CHIPS).map((mark) => (
                       <View key={mark.id} style={[styles.chip, { backgroundColor: mark.color }]}>
-                        <Txt variant="caption" numberOfLines={1} style={styles.chipText}>
+                        {/* 글자색은 라벨 색에서 계산한다. 흰색으로 고정하면
+                            밝은 라벨(금·연두 등) 위에서 읽히지 않는다. */}
+                        <Txt
+                          variant="caption"
+                          numberOfLines={1}
+                          style={[styles.chipText, { color: onColor(mark.color) }]}>
                           {mark.title}
                         </Txt>
                       </View>
@@ -230,6 +236,6 @@ const styles = StyleSheet.create({
   outside: { opacity: 0.5 },
   chips: { gap: 2 },
   chip: { borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
-  chipText: { color: '#FFFFFF', fontSize: 10, lineHeight: 14 },
+  chipText: { fontSize: 10, lineHeight: 14 },
   more: { paddingLeft: 4, fontSize: 10, lineHeight: 12 },
 });

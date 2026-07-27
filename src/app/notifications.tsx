@@ -1,3 +1,4 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, View } from 'react-native';
 
@@ -11,7 +12,11 @@ import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useMyCalendars, useSetMuted } from '@/features/calendars/queries';
-import { registerForPush, type PushStatus } from '@/features/notifications/push';
+import {
+  countRegisteredDevices,
+  registerForPush,
+  type PushStatus,
+} from '@/features/notifications/push';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function NotificationsScreen() {
@@ -19,15 +24,25 @@ export default function NotificationsScreen() {
   const { user } = useAuth();
   const calendars = useMyCalendars();
   const setMuted = useSetMuted();
+  const queryClient = useQueryClient();
 
   const [status, setStatus] = useState<PushStatus | null>(null);
   const [checking, setChecking] = useState(false);
+
+  // 화면을 닫았다 열어도 상태가 남도록 서버에서 읽는다.
+  // 로컬 state 만 쓰면 매번 "등록 안 됨"으로 보인다.
+  const devices = useQuery({
+    queryKey: ['device-tokens', user?.id],
+    enabled: Boolean(user),
+    queryFn: () => countRegisteredDevices(user!.id),
+  });
 
   async function enable() {
     if (!user) return;
     setChecking(true);
     try {
       setStatus(await registerForPush(user.id));
+      await queryClient.invalidateQueries({ queryKey: ['device-tokens', user.id] });
     } finally {
       setChecking(false);
     }
@@ -61,7 +76,9 @@ export default function NotificationsScreen() {
             {status === null ? (
               <View style={styles.deviceBlock}>
                 <Txt variant="body" tone="secondary">
-                  아직 이 기기에서 알림을 켜지 않았습니다.
+                  {devices.data
+                    ? `알림을 받도록 등록된 기기 ${devices.data}대입니다. 이 기기도 켜려면 아래를 눌러 주세요.`
+                    : '아직 알림을 켠 기기가 없습니다.'}
                 </Txt>
                 <Button label="알림 켜기" loading={checking} onPress={enable} />
               </View>

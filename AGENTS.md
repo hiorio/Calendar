@@ -32,7 +32,7 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 바꾼 것 | 확인 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (122개) |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (140개) |
 | `src/lib/`의 계산 로직 | `npm run test:unit` (40개) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
 
@@ -45,6 +45,12 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
   `20260726000500_grants.sql`의 목록을 정책과 1:1로 유지할 것.
 - PostgREST 임베드는 두 테이블 사이 경로가 둘 이상이면 300으로 막힌다. 정션이 될 수
   있는 테이블을 추가했으면 기존 `select=…profiles(...)` 쿼리를 다시 확인할 것.
+- **RLS UPDATE 정책은 "이 행"만 보고 "어느 컬럼"은 보지 않는다.** 정책이 참조하지 않는
+  컬럼은 무방비다 — 실제로 `calendar_members.calendar_id`를 바꿔 초대를 우회할 수
+  있었다. 컬럼 단위 GRANT(`0013`)로 막는다. 새 테이블·컬럼을 더할 때
+  **"정책이 이 컬럼을 보는가"**를 먼저 묻고, 안 보면 GRANT에서 빼라.
+- 클라이언트가 upsert 로 쓰는 테이블은 컬럼을 좁히면 안 된다. PostgREST 의 upsert 는
+  충돌 키까지 UPDATE 권한을 요구한다 (`event_exceptions`, `device_tokens`).
 
 ## 시간 처리 (설계안 3장 — 전역 규칙)
 
@@ -105,7 +111,12 @@ UI 시안 작업이 따로 끝나 있다. **`docs/design-decisions.md`를 먼저
 - 계정 삭제는 `delete_my_account()` 한 함수가 처리한다. 소유 캘린더는 남은 구성원이
   있으면 넘기고, 혼자면 지운다.
 - **로그아웃도 계정 삭제도 로그인 화면에 가두지 않는다.** 끝나면 새 게스트 세션으로
-  돌아간다 (`AuthProvider`).
+  돌아간다 (`AuthProvider`). 세션이 잠깐 null 인 사이 `(app)` 레이아웃이 계정 화면으로
+  보내므로, **끝난 뒤 `router.replace('/')` 로 돌려놓는 것까지가 한 세트다.**
+- **사용자가 바뀌면 쿼리 캐시를 비운다.** 쿼리 키에 사용자 id 가 없어서, 기존 계정으로
+  로그인하면(세션이 null 을 거치지 않는다) 이전 사용자의 캘린더·일정이 그대로 넘어간다.
+  판단은 `AuthProvider` 한 곳에서만 한다 — 키마다 id 를 넣는 방식은 하나만 빠뜨려도
+  같은 사고가 난다.
 
 현재 진행 단계: 설계안 11장 1~8단계 완료. UI 시안은 필수·중요 범위까지 완료(코드 미반영).
 남은 것은 시안의 색 토큰 적용, 알림 발송 워커, 유니버설 링크.

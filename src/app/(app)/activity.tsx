@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -48,7 +48,16 @@ export default function ActivityScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={activity.isRefetching}
+            onRefresh={() => activity.refetch()}
+            tintColor={colors.textTertiary}
+          />
+        }>
         <Content>
           <Header title="활동" subtitle="누가 무엇을 바꿨는지 모아 봅니다" />
 

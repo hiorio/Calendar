@@ -150,6 +150,31 @@ export function useEvent(eventId: string) {
   });
 }
 
+/**
+ * 이 회차에 걸린 예외 하나. 없으면 null.
+ *
+ * 상세 화면이 마스터만 읽으면, 회차를 고쳐 놓고 다시 열었을 때 마스터 값이 보인다.
+ */
+export function useOccurrenceException(eventId: string, originalStart: string | null) {
+  return useQuery<EventException | null>({
+    queryKey: ['events', 'exception', eventId, originalStart],
+    enabled: Boolean(eventId && originalStart),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('event_exceptions')
+        .select(
+          'event_id, original_start, type, title, description, location, is_all_day, start_at, end_at, start_date, end_date',
+        )
+        .eq('event_id', eventId)
+        .eq('original_start', originalStart!)
+        .maybeSingle();
+
+      if (error) throw error;
+      return (data as unknown as EventException) ?? null;
+    },
+  });
+}
+
 /** 화면이 넘겨주는 일정 내용. 시간 컬럼은 lib/event-time에서 만든다. */
 export type EventInput = EventTimeColumns & {
   calendar_id: string;
@@ -212,6 +237,9 @@ export function useUpdateOccurrence(eventId: string) {
           title: input.title,
           description: input.description,
           location: input.location,
+          // 이 회차만 종일↔시간 지정을 바꾼 경우까지 적어 둔다 (0014).
+          // 없으면 전개할 때 마스터의 종일 여부를 따라가 값이 어긋난다.
+          is_all_day: input.is_all_day,
           start_at: input.start_at,
           end_at: input.end_at,
           start_date: input.start_date,

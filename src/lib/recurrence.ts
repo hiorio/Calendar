@@ -214,6 +214,8 @@ export type EventException = {
   title: string | null;
   description: string | null;
   location: string | null;
+  /** NULL이면 마스터를 따른다 (0014) */
+  is_all_day: boolean | null;
   start_at: string | null;
   end_at: string | null;
   start_date: string | null;
@@ -252,15 +254,21 @@ export function applyExceptions<T extends Occurrence>(
     }
     if (exception.type === 'CANCELLED') continue;
 
+    // 종일 여부를 바꾼 회차는 시간 컬럼도 통째로 예외 것을 쓴다. 마스터와 섞으면
+    // start_at 과 start_date 가 함께 채워진 모양이 나와 events_time_shape 와 어긋난다.
+    const allDay = exception.is_all_day ?? occurrence.is_all_day;
+    const shapeChanged = exception.is_all_day !== null && exception.is_all_day !== occurrence.is_all_day;
+
     result.push({
       ...occurrence,
       title: exception.title ?? (occurrence as unknown as { title: string }).title,
       description: exception.description ?? (occurrence as unknown as { description: string | null }).description,
       location: exception.location ?? (occurrence as unknown as { location: string | null }).location,
-      start_at: exception.start_at ?? occurrence.start_at,
-      end_at: exception.end_at ?? occurrence.end_at,
-      start_date: exception.start_date ?? occurrence.start_date,
-      end_date: exception.end_date ?? occurrence.end_date,
+      is_all_day: allDay,
+      start_at: shapeChanged ? exception.start_at : (exception.start_at ?? occurrence.start_at),
+      end_at: shapeChanged ? exception.end_at : (exception.end_at ?? occurrence.end_at),
+      start_date: shapeChanged ? exception.start_date : (exception.start_date ?? occurrence.start_date),
+      end_date: shapeChanged ? exception.end_date : (exception.end_date ?? occurrence.end_date),
     });
   }
 

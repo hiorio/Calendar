@@ -46,3 +46,6 @@ example
 # generated native folders
 /ios
 /android
+
+# db:types 가 뽑는 대조용 파일. database.ts 가 진짜다.
+src/types/database.generated.ts

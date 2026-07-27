@@ -1,9 +1,19 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
 import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
 import { supabase } from '@/lib/supabase';
+
+/**
+ * 이 기기에 발급된 토큰을 기억해 둔다.
+ *
+ * 로그아웃할 때 "이 기기의 토큰만" 지우려면 그 값을 알아야 하는데, 로그아웃
+ * 시점에는 다시 발급받을 수 없다(권한·네트워크가 없을 수 있다). 등록할 때
+ * 적어 두는 것이 유일하게 확실한 방법이다.
+ */
+const TOKEN_KEY = 'push.expoToken';
 
 /**
  * 푸시 알림 등록 (네이티브 전용).
@@ -81,6 +91,7 @@ export async function registerForPush(userId: string): Promise<PushStatus> {
     );
 
     if (error) throw error;
+    await AsyncStorage.setItem(TOKEN_KEY, token);
     return { state: 'registered', token };
   } catch (e) {
     return {
@@ -90,7 +101,34 @@ export async function registerForPush(userId: string): Promise<PushStatus> {
   }
 }
 
-/** 로그아웃하거나 알림을 끌 때. 남겨 두면 남의 기기로 알림이 간다. */
-export async function unregisterPush(userId: string, token: string) {
+/**
+ * 서버에 등록된 내 기기 수. 화면이 다시 열려도 상태가 남아 있게 한다.
+ *
+ * 로컬 state 만 쓰면 화면을 닫았다 열 때마다 "등록 안 됨"으로 보인다.
+ */
+export async function countRegisteredDevices(userId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('device_tokens')
+    .select('expo_token', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .is('disabled_at', null);
+
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/**
+ * 로그아웃할 때 이 기기의 토큰을 떼어 낸다.
+ *
+ * 안 지우면 기기를 넘겨받은 다음 사용자의 화면에 **이전 사용자 앞으로 온 알림**이
+ * 뜬다. 발송 워커가 붙기 전에 반드시 정리돼 있어야 하는 부분이다.
+ *
+ * 계정 삭제는 `device_tokens`가 cascade로 함께 지워지므로 따로 부르지 않아도 된다.
+ */
+export async function unregisterPush(userId: string) {
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  if (!token) return;
+
   await supabase.from('device_tokens').delete().eq('user_id', userId).eq('expo_token', token);
+  await AsyncStorage.removeItem(TOKEN_KEY);
 }

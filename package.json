@@ -62,7 +62,7 @@
     "db:env": "node scripts/write-env.mjs",
     "db:smoke": "node scripts/smoke-local.mjs",
     "test:unit": "node scripts/unit-check.mjs",
-    "db:types": "supabase gen types typescript --local > src/types/database.ts"
+    "db:types": "supabase gen types typescript --local > src/types/database.generated.ts"
   },
   "engines": {
     "node": ">=22.18"

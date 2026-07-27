@@ -22,6 +22,10 @@ export default function SettingsScreen() {
     setSigningOut(true);
     try {
       await signOut();
+      // signOut 은 새 게스트 세션까지 만들어 준다. 그런데 세션이 잠깐 null 인 사이
+      // (app) 레이아웃이 계정 화면으로 보내 버리고, 게스트가 들어와도 거기 그대로
+      // 남는다. 끝난 뒤 캘린더로 돌려놓는다 — 로그인 화면에 가두지 않는다.
+      router.replace('/');
     } catch (e) {
       Alert.alert('로그아웃 실패', e instanceof Error ? e.message : String(e));
     } finally {

@@ -15,6 +15,7 @@ import { ReminderPicker } from '@/features/events/reminder-picker';
 import {
   useDeleteEvent,
   useEvent,
+  useOccurrenceException,
   useUpdateEvent,
   useUpdateOccurrence,
   type EditScope,
@@ -37,23 +38,31 @@ export default function EventDetailScreen() {
 
   const calendars = useMyCalendars();
   const event = useEvent(id);
+  const exception = useOccurrenceException(id, occ ?? null);
   const update = useUpdateEvent(id);
   const updateOccurrence = useUpdateOccurrence(id);
   const remove = useDeleteEvent(id);
 
   const [scope, setScope] = useState<EditScope>('THIS');
 
-  if (!event.data || !calendars.data) {
+  // 예외 조회가 끝나기 전에는 폼을 그리지 않는다.
+  // EventForm 은 initial 을 useState 로 한 번만 받으므로, 나중에 도착한 값은
+  // 반영되지 않는다 — 고쳐 둔 회차를 열었는데 마스터 값이 보이게 된다.
+  const exceptionPending = Boolean(occ) && !exception.isFetched;
+
+  if (!event.data || !calendars.data || exceptionPending) {
     return (
       <Content style={[styles.empty, { backgroundColor: colors.background }]}>
         <Txt variant="body" tone="secondary">
-          {event.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
+          {event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
         </Txt>
       </Content>
     );
   }
 
   const master = event.data;
+  // MODIFIED 예외만 값을 덮는다. CANCELLED는 목록에서 이미 빠져 여기 오지 않는다.
+  const patch = exception.data?.type === 'MODIFIED' ? exception.data : null;
   const isRecurring = Boolean(master.rrule);
   // 회차 정보가 없으면(예: 링크로 직접 들어옴) 회차 단위 작업을 할 수 없다
   const originalStart = occ ?? null;
@@ -104,11 +113,11 @@ export default function EventDetailScreen() {
             lockRecurrence={canScope && scope === 'THIS'}
             initial={{
               calendarId: master.calendar_id,
-              title: master.title,
-              location: master.location ?? '',
-              description: master.description ?? '',
-              // 회차로 들어왔으면 그 회차의 시각을 보여 준다
-              time: fromTimeColumns(occurrenceTime(master, occ)),
+              // 이 회차만 고쳐 둔 값이 있으면 그것을 보여 준다
+              title: patch?.title ?? master.title,
+              location: patch?.location ?? master.location ?? '',
+              description: patch?.description ?? master.description ?? '',
+              time: fromTimeColumns(occurrenceTime(master, occ, patch)),
               recurrence: parseRrule(master.rrule),
             }}
             onSubmit={(input) => {
@@ -160,16 +169,42 @@ export default function EventDetailScreen() {
   );
 }
 
+type TimeShape = {
+  is_all_day: boolean;
+  start_at: string | null;
+  end_at: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  timezone: string;
+};
+
 /**
  * 마스터의 시간 컬럼을 이 회차의 시각으로 갈아 끼운다.
  *
  * 반복 일정의 마스터는 첫 회차의 시각만 갖고 있다. 3월 회차를 열었는데 1월
  * 날짜가 보이면 안 된다.
+ *
+ * 이 회차만 시간을 고쳐 둔 예외가 있으면 계산하지 않고 그 값을 그대로 쓴다.
  */
-function occurrenceTime<T extends { is_all_day: boolean; start_at: string | null; end_at: string | null; start_date: string | null; end_date: string | null; timezone: string }>(
+function occurrenceTime<T extends TimeShape>(
   master: T,
   occ: string | undefined,
+  // 예외의 컬럼은 "안 정함"을 NULL로 표현한다
+  patch?: { [K in keyof TimeShape]?: TimeShape[K] | null } | null,
 ): T {
+  if (patch) {
+    const allDay = patch.is_all_day ?? master.is_all_day;
+    // 종일이면 date 쪽만, 시간 지정이면 at 쪽만 채운다. 섞으면 폼이 어긋난다.
+    if (allDay && patch.start_date) {
+      return { ...master, is_all_day: true, start_at: null, end_at: null,
+        start_date: patch.start_date, end_date: patch.end_date ?? patch.start_date };
+    }
+    if (!allDay && patch.start_at) {
+      return { ...master, is_all_day: false, start_date: null, end_date: null,
+        start_at: patch.start_at, end_at: patch.end_at ?? patch.start_at };
+    }
+  }
+
   if (!occ) return master;
 
   const start = new Date(occ);

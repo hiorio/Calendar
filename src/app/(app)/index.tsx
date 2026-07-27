@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -57,7 +57,20 @@ export default function CalendarScreen() {
 
   return (
     <Screen>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          // 함께 쓰는 캘린더라 남이 고친 것을 당겨서 받아올 수 있어야 한다
+          <RefreshControl
+            refreshing={calendars.isRefetching || events.isRefetching}
+            onRefresh={() => {
+              calendars.refetch();
+              events.refetch();
+            }}
+            tintColor={colors.textTertiary}
+          />
+        }>
         <Content>
           <View style={styles.topBar}>
             <View style={styles.topBarText}>

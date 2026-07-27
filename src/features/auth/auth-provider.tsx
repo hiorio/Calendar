@@ -2,6 +2,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
+import { unregisterPush } from '@/features/notifications/push';
 import { supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
@@ -40,16 +41,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
   useEffect(() => {
     let active = true;
+    // 캐시를 비울지 판단하는 기준. 세션이 아니라 **사용자 id**를 본다.
+    let lastUserId: string | null = null;
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!active) return;
+
+      const nextUserId = nextSession?.user?.id ?? null;
+
+      // 사용자가 바뀌면 이전 사용자의 데이터를 지운다.
+      //
+      // 세션이 null일 때만 지우면 부족하다. 기존 계정으로 로그인하면 세션이
+      // **null을 거치지 않고 바로 교체**되는데, 쿼리 키에는 사용자 id가 없어서
+      // (`['calendars','mine']` 등) 새 사용자가 이전 사용자의 캘린더·일정을
+      // 그대로 넘겨받는다. staleTime이 30초라 그동안 남의 데이터가 보인다.
+      //
+      // 키마다 id를 넣는 방법도 있지만 하나만 빠뜨려도 같은 사고가 난다.
+      // 판단을 한 곳에 두는 편이 안전하다.
+      if (nextUserId !== lastUserId) {
+        queryClient.clear();
+        lastUserId = nextUserId;
+      }
+
       setSession(nextSession);
       if (nextSession) {
         setBootstrapError(null);
         setIsLoading(false);
-      } else {
-        // 계정이 바뀌었을 수 있다. 이전 사용자의 캐시를 남기지 않는다.
-        queryClient.clear();
       }
     });
 
@@ -122,6 +139,17 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
 
       async signOut() {
+        // 세션이 살아 있는 동안 이 기기의 푸시 토큰을 떼어 낸다.
+        // 남겨 두면 다음 사용자 화면에 이전 사용자 앞으로 온 알림이 뜬다.
+        const leavingUserId = session?.user?.id;
+        if (leavingUserId) {
+          try {
+            await unregisterPush(leavingUserId);
+          } catch {
+            // 토큰 정리 실패로 로그아웃을 막지는 않는다. 다음 등록 때 덮인다.
+          }
+        }
+
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
         // 로그인 화면에 가두지 않는다. 곧바로 새 게스트 세션으로 되돌린다.
