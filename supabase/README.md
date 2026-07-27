@@ -33,7 +33,7 @@ npm run db:smoke   # RLS·트리거가 의도대로 도는지 확인
 
 로컬 설정은 `config.toml`에 있습니다. 이 프로젝트에서 손댄 값:
 
-- `site_url` / `additional_redirect_urls` — 웹(8081)과 앱 스킴(`calendar://auth-callback`)
+- `site_url` / `additional_redirect_urls` — 웹(8081)과 앱 스킴(`timeline://auth-callback`)
 - `auth.email.enable_confirmations = false` (기본값) — 가입 즉시 로그인됩니다
 
 | 명령 | 설명 |
@@ -43,7 +43,7 @@ npm run db:smoke   # RLS·트리거가 의도대로 도는지 확인
 | `npm run db:reset` | 초기화 후 마이그레이션 재적용 |
 | `npm run db:status` | URL·키 확인 |
 | `npm run db:env` | `.env`에 URL/anon key 기록 |
-| `npm run db:types` | 실제 스키마에서 `src/types/database.ts` 재생성 |
+| `npm run db:types` | 대조용 `src/types/database.generated.ts` 생성 (진짜는 손으로 관리하는 `database.ts`) |
 
 ---
 
@@ -99,7 +99,7 @@ Authentication → Providers
 Authentication → URL Configuration → **Redirect URLs**:
 
 ```
-calendar://auth-callback
+timeline://auth-callback
 exp://127.0.0.1:8081/--/auth-callback
 ```
 
@@ -118,6 +118,8 @@ exp://127.0.0.1:8081/--/auth-callback
 
 ## 아직 없는 것
 
-- Edge Functions (`invite/accept`, `events/mutate`, `push/dispatch`, `reminder/scan`)
-- `activity_logs` / `notification_outbox` 적재 트리거 (6단계)
-- 계정 삭제 RPC (8단계, 스토어 심사 필수)
+- **푸시 발송 워커** — `notification_outbox`는 트리거가 채우지만 비우는 쪽이 없습니다.
+- **리마인더 스캐너** — `event_reminders`를 때맞춰 큐에 넣는 주기 작업.
+
+초대 수락(`accept_invite`)과 계정 삭제(`delete_my_account`)는 Edge Function 대신
+security definer RPC로 구현했습니다. 이유는 `docs/design-notes.md` 12번을 보세요.

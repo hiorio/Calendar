@@ -92,7 +92,8 @@ npm run web
 | `npm run db:smoke` | RLS·트리거 스모크 테스트 |
 | `npm run db:env` | 로컬 URL/anon key를 `.env`에 기록 |
 | `npm run db:status` | 로컬 서비스 주소·키 확인 |
-| `npm run db:types` | 스키마에서 `src/types/database.ts` 재생성 |
+| `npm run db:types` | 대조용 타입 생성 (`database.generated.ts`) |
+| `npm run icons` | 앱 아이콘 재생성 |
 
 ---
 
@@ -192,7 +193,7 @@ docs/design/ui-proposal.html  시안 원본. 브라우저로 열면 된다 (단�
 앱 화면에도 그렇게 적혀 있으니 "알림이 간다"고 바꾸지 마세요.
 
 출시 전에 남은 것은 그 **발송 워커**와, 초대 링크를 메신저에서 열 수 있게 하는
-**유니버설 링크**입니다(지금은 `calendar://` 스킴이라 카카오톡 등에서 눌리지 않습니다).
+**유니버설 링크**입니다(지금은 `timeline://` 스킴이라 카카오톡 등에서 눌리지 않습니다).
 그 밖에 미룬 것은 `docs/design-notes.md`에 이유와 함께 적혀 있습니다.
 
 ### UI 시안 — 끝났지만 코드에는 안 들어갔습니다

@@ -15,7 +15,7 @@ import { useMyCalendars } from '@/features/calendars/queries';
 import { groupByDate, useMonthEvents } from '@/features/events/queries';
 import { useProfile } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
-import { addMonths, formatDayTitle, startOfMonth, toDateKey } from '@/lib/date';
+import { addMonths, formatDayTitle, formatMonthTitle, startOfMonth, toDateKey } from '@/lib/date';
 import { formatEventTimeRange } from '@/lib/event-time';
 import { useCalendarFilter } from '@/stores/calendar-filter';
 
@@ -72,12 +72,15 @@ export default function CalendarScreen() {
           />
         }>
         <Content>
+          {/* 앱 이름은 두지 않는다. 사용자는 자기가 어떤 앱을 열었는지 알고,
+              이 자리는 화면에서 가장 값진 곳이다. 대신 가장 자주 보고 만지는
+              것 — 지금 보고 있는 달 — 을 올린다. */}
           <View style={styles.topBar}>
             <View style={styles.topBarText}>
               <Txt variant="caption" tone="tertiary">
                 {profile.data ? `${profile.data.nickname}님` : ' '}
               </Txt>
-              <Txt variant="title">함께캘린더</Txt>
+              <Txt variant="title">{formatMonthTitle(month)}</Txt>
             </View>
 
             <Pressable

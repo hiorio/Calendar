@@ -8,7 +8,6 @@ import { useTheme } from '@/hooks/use-theme';
 import {
   WEEKDAY_LABELS,
   buildMonthMatrix,
-  formatMonthTitle,
   isSameDay,
   isSameMonth,
   toDateKey,
@@ -50,9 +49,8 @@ export function MonthView({
 
   return (
     <View style={styles.wrap}>
+      {/* 월 제목은 화면 상단이 갖는다(그 화면의 제목이므로). 여기는 이동만. */}
       <View style={styles.monthBar}>
-        <Txt variant="title">{formatMonthTitle(month)}</Txt>
-
         <View style={styles.monthNav}>
           <NavButton icon="chevron-back" label="이전 달" onPress={() => onShiftMonth(-1)} />
           <Pressable
@@ -192,7 +190,7 @@ const styles = StyleSheet.create({
   monthBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-end',
     paddingHorizontal: Spacing.xl,
   },
   monthNav: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },

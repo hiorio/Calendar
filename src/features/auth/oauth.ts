@@ -10,7 +10,7 @@ WebBrowser.maybeCompleteAuthSession();
 
 /**
  * Supabase 대시보드 → Authentication → URL Configuration →
- * Redirect URLs 에 이 값을 등록해야 한다. (예: `calendar://auth-callback`)
+ * Redirect URLs 에 이 값을 등록해야 한다. (예: `timeline://auth-callback`)
  */
 export const oauthRedirectTo = AuthSession.makeRedirectUri({ path: 'auth-callback' });
 

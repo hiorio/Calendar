@@ -1,4 +1,4 @@
-# 함께캘린더
+# TimeLine
 
 가족·연인·친구·소모임이 하나의 캘린더를 공유하고, 일정마다 대화 스레드를 갖는 모바일 앱.
 
@@ -67,7 +67,7 @@ RLS·트리거·게스트 흐름은 `npm run db:smoke`, 반복·타임존 같은
 `npm run test:unit`으로 확인합니다. 통과해야 할 개수는 `AGENTS.md`의 표에 있습니다.
 
 클라우드 프로젝트를 쓰거나 Google/Apple 로그인까지 확인하려면 `supabase/README.md`를
-보세요. 소셜 로그인은 커스텀 스킴(`calendar://`)을 쓰므로 Expo Go가 아닌
+보세요. 소셜 로그인은 커스텀 스킴(`timeline://`)을 쓰므로 Expo Go가 아닌
 [개발 빌드](https://docs.expo.dev/develop/development-builds/introduction/)가 필요합니다.
 
 ### 기기/시뮬레이터에서
@@ -112,15 +112,6 @@ docs/design/ui-proposal.html  시안 원본 (브라우저로 열기)
 docs/external-calendars.md  타 서비스 캘린더 가져오기 설계 (미구현)
 ```
 
-## 디자인
-
-`src/constants/theme.ts`가 유일한 색·간격·타이포 출처입니다. 화면에 hex를 직접 쓰지 않습니다.
-공통 컴포넌트는 `src/components/ui/`에 있습니다 (Screen · Card · Button · ListRow · Field ·
-Segmented · EmptyState · Notice · Txt).
-
-월간 뷰는 `src/features/calendar/month-view.tsx`입니다. 한국 달력 관례대로 일요일은 빨강,
-토요일은 파랑이고, 달을 넘길 때 격자가 출렁이지 않도록 항상 6주를 그립니다.
-
 ## 스크립트
 
 | 명령 | 설명 |
@@ -129,7 +120,8 @@ Segmented · EmptyState · Notice · Txt).
 | `npm run web` | 브라우저에서 실행 |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run lint` | `expo lint` |
-| `npm run test:unit` | 순수 함수 검사 (반복 · 타임존 · 시간 보정) |
+| `npm run test:unit` | 순수 함수 검사 (반복 · 타임존 · 시간 보정 · 조사) |
+| `npm run icons` | 앱 아이콘 재생성 (`scripts/make-icons.mjs`) |
 | `npm run db:start` / `db:stop` | 로컬 Supabase 기동 / 정지 |
 | `npm run db:reset` | 초기화 후 마이그레이션 재적용 |
 | `npm run db:env` | 로컬 Supabase 값을 `.env`에 기록 |
@@ -138,11 +130,21 @@ Segmented · EmptyState · Notice · Txt).
 
 ## 디자인
 
+`src/constants/theme.ts`가 유일한 색·간격·타이포 출처입니다. 화면에 hex를 직접 쓰지 않습니다.
+공통 컴포넌트는 `src/components/ui/`에 있습니다 (Screen · Card · Button · ListRow · Field ·
+Segmented · EmptyState · Notice · Txt).
+
+월간 뷰는 `src/features/calendar/month-view.tsx`입니다. 한국 달력 관례대로 일요일은 빨강,
+토요일은 파랑이고, 달을 넘길 때 격자가 출렁이지 않도록 항상 6주를 그립니다.
+**홈 화면에는 서비스명을 두지 않습니다** — 그 자리에는 지금 보고 있는 달이 옵니다.
+
 UI 시안이 별도로 끝나 있습니다 — 브랜드 3안 중 **살구**를 기본으로 확정했고,
 필수·중요 범위 16화면과 라벨 팔레트 12색을 정했습니다.
 [`docs/design/ui-proposal.html`](docs/design/ui-proposal.html)을 브라우저로 열면 봅니다.
+앱 아이콘과 스플래시는 그 색으로 이미 적용돼 있습니다.
 
-> **아직 코드에 반영되지 않았습니다.** `theme.ts`는 여전히 파란색 기준입니다.
+> **화면 색은 아직 반영되지 않았습니다.** `theme.ts`는 여전히 파란색 기준이라
+> 아이콘(살구)과 앱 화면(파랑)이 지금은 어긋나 있습니다.
 > 옮기는 방법은 [`docs/design-decisions.md`](docs/design-decisions.md) 5장에 있습니다.
 
 ## 남은 것
@@ -153,7 +155,7 @@ UI 시안이 별도로 끝나 있습니다 — 브랜드 3안 중 **살구**를 
 
 - **알림 발송 워커** — 큐는 쌓이지만 보내는 쪽이 없습니다. EAS 프로젝트와 개발
   빌드가 있어야 실제 동작을 확인할 수 있습니다.
-- **유니버설 링크** — 초대 링크가 아직 `calendar://` 스킴이라 메신저에서 눌리지
+- **유니버설 링크** — 초대 링크가 아직 `timeline://` 스킴이라 메신저에서 눌리지
   않습니다. 웹 도메인이 정해지면 붙일 수 있습니다.
 
 그 밖에 미룬 것들은 [`docs/design-notes.md`](docs/design-notes.md)에 이유와 함께

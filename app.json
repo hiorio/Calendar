@@ -1,20 +1,19 @@
 {
   "expo": {
-    "name": "함께캘린더",
-    "slug": "calendar",
+    "name": "TimeLine",
+    "slug": "timeline",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "calendar",
+    "scheme": "timeline",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon",
-      "bundleIdentifier": "com.example.calendar",
+      "bundleIdentifier": "com.example.timeline",
       "usesAppleSignIn": true,
       "supportsTablet": true
     },
     "android": {
-      "package": "com.example.calendar",
+      "package": "com.example.timeline",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
@@ -33,9 +32,9 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#4A90D9",
+          "backgroundColor": "#E2673F",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 112
         }
       ],
       "@react-native-community/datetimepicker"
