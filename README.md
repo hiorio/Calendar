@@ -27,15 +27,15 @@ Expo (React Native) + Supabase. 설계안 11장의 **1~8단계를 모두** 구�
 - 일정 참여자 지정, 일정 댓글(본인 것 삭제)
 - 월간 격자에 일정 칩, 선택한 날의 일정 목록
 - 알림 큐 — 일정 등록·변경·삭제와 댓글이 DB 트리거로 쌓인다. 캘린더별 음소거,
-  일정별 미리 알림. **발송 워커는 아직 없다** (아래 참고)
+  일정별 미리 알림. Expo Push 발송·재시도·영수증 확인 워커까지 구현되어 있다
 - 활동 내역 — 누가 무엇을 바꿨는지 시간순으로. 항목에서 일정으로 바로 이동
 - 계정 삭제 — 무엇이 넘어가고 무엇이 사라지는지 미리 보여 준 뒤 처리
 - 전체 DB 스키마 + RLS 정책 + 권한(GRANT) + Storage 정책 마이그레이션
 
-> **알림은 쌓이기만 하고 아직 전송되지 않습니다.** Expo 푸시로 실제 보내는 워커가
-> 없습니다 — Expo Go(Android)는 SDK 53부터 원격 푸시를 지원하지 않고
-> `getExpoPushTokenAsync`는 EAS projectId를 요구하는데 아직 EAS 프로젝트가 없어서,
-> 지금 환경에서는 확인할 방법이 없기 때문입니다. 앱 화면에도 그렇게 표시됩니다.
+> **로컬 기본 환경에서는 원격 알림을 보내지 않습니다.** 발송 워커는 구현되어 있지만
+> 실제 전송에는 Expo EAS 프로젝트와 클라우드 Supabase 설정이 필요합니다.
+> `docs/deployment.md`의 값을 연결한 개발 빌드에서는 Expo Push 발송·재시도·영수증
+> 확인까지 동작합니다. Expo Go가 아니라 development build로 확인합니다.
 
 ## 로컬에서 확인하기
 
@@ -127,6 +127,9 @@ docs/external-calendars.md  타 서비스 캘린더 가져오기 설계 (미구�
 | `npm run db:env` | 로컬 Supabase 값을 `.env`에 기록 |
 | `npm run db:smoke` | RLS·트리거 스모크 테스트 (로컬 전용) |
 | `npm run db:types` | 실제 스키마에서 DB 타입 재생성 |
+| `npm run deploy:check` | EAS/Supabase 배포 환경값 검사 |
+| `npm run links:generate` | iOS 유니버설 링크 연결 파일 생성 |
+| `npm run sentry:upload-update` | EAS Update의 `dist` 소스맵을 Sentry에 업로드 |
 
 ## 디자인
 
@@ -143,20 +146,19 @@ UI 시안이 별도로 끝나 있습니다 — 브랜드 3안 중 **살구**를 
 [`docs/design/ui-proposal.html`](docs/design/ui-proposal.html)을 브라우저로 열면 봅니다.
 앱 아이콘과 스플래시는 그 색으로 이미 적용돼 있습니다.
 
-> **화면 색은 아직 반영되지 않았습니다.** `theme.ts`는 여전히 파란색 기준이라
-> 아이콘(살구)과 앱 화면(파랑)이 지금은 어긋나 있습니다.
-> 옮기는 방법은 [`docs/design-decisions.md`](docs/design-decisions.md) 5장에 있습니다.
+화면에도 같은 살구 토큰과 12색 캘린더 라벨 팔레트를 적용했습니다. 라벨은 DB에 light 값을
+저장하고, 화면의 밝기에 따라 대응하는 배경·글자 쌍을 사용합니다.
+살구를 기본값으로 두고 설정에서 쪽빛·먹빛 테마를 기기별로 선택할 수 있습니다.
 
-## 남은 것
+## 배포 준비
 
-설계안 11장의 1~8단계는 모두 구현했습니다. 출시 전에 필요한 것은 세 가지입니다.
+EAS의 development/preview/production 프로필, 환경별 앱 식별자, Supabase Edge Function
+알림 워커, 반복 일정 리마인더 스캔, Expo ticket/receipt 처리, 유니버설 링크 구성이
+코드에 들어 있습니다.
 
-- **시안의 색 토큰 적용** — 위 참고. 화면 코드는 손대지 않습니다.
-
-- **알림 발송 워커** — 큐는 쌓이지만 보내는 쪽이 없습니다. EAS 프로젝트와 개발
-  빌드가 있어야 실제 동작을 확인할 수 있습니다.
-- **유니버설 링크** — 초대 링크가 아직 `timeline://` 스킴이라 메신저에서 눌리지
-  않습니다. 웹 도메인이 정해지면 붙일 수 있습니다.
+실제 iOS 배포에는 저장소가 정할 수 없는 Expo/Supabase/Sentry 계정, 고유 bundle ID,
+HTTPS 도메인과 Apple 서명 인증서가 필요합니다. 연결 순서는
+[`docs/deployment.md`](docs/deployment.md)에 있습니다.
 
 그 밖에 미룬 것들은 [`docs/design-notes.md`](docs/design-notes.md)에 이유와 함께
 적어 뒀습니다 (댓글 반응, 첨부 이미지, 프로필 수정, "이후 모두 수정" 등).

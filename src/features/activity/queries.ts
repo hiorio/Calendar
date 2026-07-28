@@ -86,7 +86,7 @@ export function useActivity() {
         id: row.id,
         calendar_id: row.calendar_id,
         calendarName: row.calendars?.name ?? '',
-        calendarColor: row.calendars?.color ?? '#6B7683',
+        calendarColor: row.calendars?.color ?? '#9AA1AC',
         actor_id: row.actor_id,
         // 탈퇴한 사람의 흔적은 남기고 이름만 잃는다 (actor_id는 on delete set null)
         actorName: row.profiles?.nickname ?? '알 수 없는 사용자',

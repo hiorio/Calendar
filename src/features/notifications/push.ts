@@ -121,7 +121,7 @@ export async function countRegisteredDevices(userId: string): Promise<number> {
  * 로그아웃할 때 이 기기의 토큰을 떼어 낸다.
  *
  * 안 지우면 기기를 넘겨받은 다음 사용자의 화면에 **이전 사용자 앞으로 온 알림**이
- * 뜬다. 발송 워커가 붙기 전에 반드시 정리돼 있어야 하는 부분이다.
+ * 뜬다. 발송 워커가 다른 계정의 토큰으로 보내지 않도록 세션 종료 시 정리한다.
  *
  * 계정 삭제는 `device_tokens`가 cascade로 함께 지워지므로 따로 부르지 않아도 된다.
  */

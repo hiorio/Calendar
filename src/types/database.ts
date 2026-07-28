@@ -175,6 +175,7 @@ export type Attachment = {
   comment_id: string | null;
   memo_id: string | null;
   storage_path: string;
+  file_name: string;
   mime_type: string;
   size_bytes: number;
   /** 계정을 지우면 NULL이 된다 (0012) */
@@ -206,11 +207,25 @@ export type NotificationOutbox = {
   type: string;
   dedup_key: string;
   payload: Json;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED';
   attempts: number;
   last_error: string | null;
   created_at: string;
   sent_at: string | null;
+  claimed_at: string | null;
+  next_attempt_at: string;
+};
+
+export type NotificationDelivery = {
+  outbox_id: number;
+  expo_token: string;
+  status: 'PENDING' | 'TICKETED' | 'DELIVERED' | 'FAILED';
+  attempts: number;
+  ticket_id: string | null;
+  last_error: string | null;
+  ticketed_at: string | null;
+  receipt_checked_at: string | null;
+  created_at: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -292,7 +307,30 @@ export type Database = {
       device_tokens: Table<DeviceToken, Optional<DeviceToken, 'updated_at' | 'disabled_at'>>;
       notification_outbox: Table<
         NotificationOutbox,
-        Optional<NotificationOutbox, 'id' | 'status' | 'attempts' | 'last_error' | 'created_at' | 'sent_at'>
+        Optional<
+          NotificationOutbox,
+          | 'id'
+          | 'status'
+          | 'attempts'
+          | 'last_error'
+          | 'created_at'
+          | 'sent_at'
+          | 'claimed_at'
+          | 'next_attempt_at'
+        >
+      >;
+      notification_deliveries: Table<
+        NotificationDelivery,
+        Optional<
+          NotificationDelivery,
+          | 'status'
+          | 'attempts'
+          | 'ticket_id'
+          | 'last_error'
+          | 'ticketed_at'
+          | 'receipt_checked_at'
+          | 'created_at'
+        >
       >;
     };
     Views: Record<never, never>;
@@ -307,6 +345,14 @@ export type Database = {
       accept_invite: { Args: { invite_code: string }; Returns: Json };
       account_deletion_preview: { Args: Record<string, never>; Returns: Json };
       delete_my_account: { Args: Record<string, never>; Returns: undefined };
+      claim_notification_outbox: {
+        Args: { p_limit?: number };
+        Returns: NotificationOutbox[];
+      };
+      reminder_scan_candidates: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json[];
+      };
     };
     Enums: {
       member_role: MemberRole;

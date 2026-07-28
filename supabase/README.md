@@ -74,6 +74,10 @@ npx supabase db push
 | `20260726001100_activity_log.sql` | 활동 로그 적재 트리거 |
 | `20260726001200_delete_account.sql` | 계정 삭제 (`delete_my_account`), 작성자 컬럼 nullable |
 | `20260726001300_column_grants.sql` | **컬럼 단위 UPDATE 권한.** 없으면 초대 우회가 뚫린다 |
+| `20260726001400_exception_completeness.sql` | 회차 종일 전환·알림·활동 누락 보완 |
+| `20260727000100_calendar_palette.sql` | 확정한 12색 라벨 팔레트로 기존 기본색 변환 |
+| `20260727000200_notification_delivery.sql` | 워커 claim·전송내역·리마인더 후보 RPC |
+| `20260727000300_notification_worker_grants.sql` | outbox·전송내역의 service role 전용 권한 |
 
 `0004`는 `storage.objects`에 정책을 만들기 때문에 SQL Editor(= `postgres` 역할)에서
 실행해야 합니다.
@@ -116,10 +120,12 @@ exp://127.0.0.1:8081/--/auth-callback
 - `public.profiles`에 같은 id로 행 1개 (트리거 `on_auth_user_created`)
 - 홈 화면에 "참여 중인 캘린더 0개" — RLS를 통과한 조회가 정상이라는 뜻
 
-## 아직 없는 것
+## 푸시 워커
 
-- **푸시 발송 워커** — `notification_outbox`는 트리거가 채우지만 비우는 쪽이 없습니다.
-- **리마인더 스캐너** — `event_reminders`를 때맞춰 큐에 넣는 주기 작업.
+`functions/notification-worker`가 outbox 전송, 재시도, ticket/receipt 확인,
+`DeviceNotRegistered` 토큰 비활성화와 리마인더 스캔을 처리합니다. 로컬 스택에 함수
+코드가 있다고 자동으로 주기 실행되지는 않습니다. Cloud 배포, secret, `pg_cron` 연결은
+`docs/deployment.md`를 따르세요.
 
 초대 수락(`accept_invite`)과 계정 삭제(`delete_my_account`)는 Edge Function 대신
 security definer RPC로 구현했습니다. 이유는 `docs/design-notes.md` 12번을 보세요.

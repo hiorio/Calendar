@@ -8,6 +8,7 @@ import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
 import { useMyCalendars } from '@/features/calendars/queries';
+import { EventAttachments } from '@/features/events/attachments';
 import { CommentThread } from '@/features/events/comment-thread';
 import { EventForm } from '@/features/events/event-form';
 import { ParticipantPicker } from '@/features/events/participant-picker';
@@ -156,6 +157,10 @@ export default function EventDetailScreen() {
 
           {/* 참여자와 댓글은 저장 버튼과 무관하게 바로 반영된다.
               폼과 섞이지 않도록 아래에 따로 둔다. */}
+          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+
+          <EventAttachments eventId={id} calendarId={master.calendar_id} />
+
           <View style={[styles.divider, { backgroundColor: colors.border }]} />
 
           <ParticipantPicker eventId={id} calendarId={master.calendar_id} />

@@ -3,11 +3,14 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, type PropsWithChildren } from 'react';
-import { AppState, Platform, useColorScheme } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { AuthProvider, useAuth } from '@/features/auth/auth-provider';
+import { useNotificationNavigation } from '@/features/notifications/navigation';
 import { configureNotificationHandler } from '@/features/notifications/push';
+import { useTheme } from '@/hooks/use-theme';
+import { Sentry } from '@/lib/observability';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -50,17 +53,38 @@ function SplashGate({ children }: PropsWithChildren) {
   return children;
 }
 
-export default function RootLayout() {
-  const scheme = useColorScheme();
+function NotificationNavigation() {
+  const { isLoading } = useAuth();
+  useNotificationNavigation(!isLoading);
+  return null;
+}
+
+function RootLayout() {
+  const { colors, scheme, theme } = useTheme();
+  const isDark = scheme === 'dark';
+  const baseNavigationTheme = isDark ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...baseNavigationTheme,
+    dark: isDark || theme === 'ink',
+    colors: {
+      ...baseNavigationTheme.colors,
+      primary: colors.accent,
+      background: colors.background,
+      card: colors.chrome,
+      text: colors.chromeText,
+      border: colors.chromeBorder,
+    },
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
+          <NotificationNavigation />
           <SplashGate>
-            <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
+            <ThemeProvider value={navigationTheme}>
               <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(app)" />
+                <Stack.Screen name="(app)" options={{ title: '캘린더' }} />
                 <Stack.Screen
                   name="account"
                   options={{ presentation: 'modal', headerShown: true, title: '계정' }}
@@ -75,7 +99,20 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="calendar/[id]"
-                  options={{ headerShown: true, title: '캘린더 설정' }}
+                  options={{
+                    headerShown: true,
+                    title: '캘린더 설정',
+                    headerBackTitle: '캘린더',
+                  }}
+                />
+                <Stack.Screen
+                  name="day"
+                  options={{
+                    presentation: 'modal',
+                    headerShown: true,
+                    title: '일정',
+                    headerBackTitle: '캘린더',
+                  }}
                 />
                 <Stack.Screen
                   name="join"
@@ -94,11 +131,27 @@ export default function RootLayout() {
                   options={{ presentation: 'modal', headerShown: true, title: '알림 설정' }}
                 />
                 <Stack.Screen
+                  name="preferences"
+                  options={{ presentation: 'modal', headerShown: true, title: '설정' }}
+                />
+                <Stack.Screen
+                  name="memos"
+                  options={{ presentation: 'modal', headerShown: true, title: '메모' }}
+                />
+                <Stack.Screen
+                  name="search"
+                  options={{ presentation: 'modal', headerShown: true, title: '검색' }}
+                />
+                <Stack.Screen
+                  name="external-calendars"
+                  options={{ presentation: 'modal', headerShown: true, title: '외부 캘린더' }}
+                />
+                <Stack.Screen
                   name="account-delete"
                   options={{ presentation: 'modal', headerShown: true, title: '계정 삭제' }}
                 />
               </Stack>
-              <StatusBar style="auto" />
+              <StatusBar style={isDark || theme === 'ink' ? 'light' : 'dark'} />
             </ThemeProvider>
           </SplashGate>
         </AuthProvider>
@@ -106,3 +159,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(RootLayout);

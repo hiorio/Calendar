@@ -7,6 +7,7 @@ import { DateTimeField } from '@/components/ui/date-time-field';
 import { Field } from '@/components/ui/field';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import type { MyCalendar } from '@/features/calendars/queries';
 import type { EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
@@ -58,7 +59,7 @@ export function EventForm({
   onDelete,
   deleteLabel = '일정 삭제',
 }: EventFormProps) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
 
   const [calendarId, setCalendarId] = useState(initial.calendarId);
   const [title, setTitle] = useState(initial.title);
@@ -128,7 +129,12 @@ export function EventForm({
                       borderColor: selected ? colors.accent : colors.border,
                     },
                   ]}>
-                  <View style={[styles.dot, { backgroundColor: calendar.color }]} />
+                  <View
+                    style={[
+                      styles.dot,
+                      { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                    ]}
+                  />
                   <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
                     {calendar.name}
                   </Txt>

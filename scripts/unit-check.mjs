@@ -17,6 +17,12 @@ const { buildRrule, parseRrule, expandEvent, computeRruleUntil, truncateRruleBef
   await import('../src/lib/recurrence.ts');
 const { eventDayKeys, switchAllDay, moveStart, moveEnd } = await import('../src/lib/event-time.ts');
 const { objectParticle, subjectParticle } = await import('../src/lib/korean.ts');
+const { CALENDAR_COLORS, DEFAULT_CALENDAR_COLOR, calendarColorForScheme, onColor } =
+  await import('../src/features/calendars/colors.ts');
+const { notificationRoute } = await import('../src/features/notifications/routes.ts');
+const { buildMonthMatrix, isoWeekNumber, weekdayLabels } = await import('../src/lib/date.ts');
+const { buildPushMessage, chunks, retryDelaySeconds, expoErrorCode } =
+  await import('../supabase/functions/_shared/push.ts');
 
 let passed = 0;
 let failed = 0;
@@ -35,6 +41,24 @@ function eq(name, actual, expected) {
   const a = JSON.stringify(actual);
   const e = JSON.stringify(expected);
   check(name, a === e, `기대 ${e}\n        실제 ${a}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('0. 캘린더 표시 계산');
+{
+  const august = new Date(2026, 7, 1);
+  eq(
+    '일요일 시작 격자는 앞선 일요일부터',
+    buildMonthMatrix(august, 'sunday')[0].map((d) => d.getDay()),
+    [0, 1, 2, 3, 4, 5, 6],
+  );
+  eq(
+    '월요일 시작 격자는 월요일부터',
+    buildMonthMatrix(august, 'monday')[0].map((d) => d.getDay()),
+    [1, 2, 3, 4, 5, 6, 0],
+  );
+  eq('월요일 시작 요일 라벨', weekdayLabels('monday'), ['월', '화', '수', '목', '금', '토', '일']);
+  check('2026년 첫 목요일은 ISO 1주', isoWeekNumber(new Date(2026, 0, 1)) === 1);
 }
 
 // ---------------------------------------------------------------------------
@@ -286,5 +310,95 @@ console.log('\n8. 한국어 조사');
   eq('판단할 수 없으면 받침 없는 쪽', objectParticle('회의 🎉'), '회의 🎉를');
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n9. 캘린더 라벨 팔레트');
+{
+  const expected = [
+    '#1B54A8',
+    '#93B33A',
+    '#A63363',
+    '#4BB3C9',
+    '#12705F',
+    '#D8A72A',
+    '#4F4EC4',
+    '#EE8A45',
+    '#7A3FAE',
+    '#9AA1AC',
+    '#C3402C',
+    '#62B84E',
+  ];
+
+  eq('12색 순서가 고정돼 있다', CALENDAR_COLORS, expected);
+  check('기본색은 첫 번째 슬롯이다', DEFAULT_CALENDAR_COLOR === expected[0]);
+  check('중복 색이 없다', new Set(CALENDAR_COLORS).size === CALENDAR_COLORS.length);
+
+  for (const scheme of ['light', 'dark']) {
+    const ratios = CALENDAR_COLORS.map((color) =>
+      contrastRatio(calendarColorForScheme(color, scheme), onColor(color, scheme)),
+    );
+    const minimum = Math.min(...ratios);
+    check(
+      `${scheme} 라벨 전부 WCAG AA 대비를 넘는다`,
+      minimum >= 4.5,
+      `최저 대비 ${minimum.toFixed(2)}`,
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n10. 푸시 알림 발송');
+{
+  const eventId = '11111111-1111-4111-8111-111111111111';
+  const calendarId = '22222222-2222-4222-8222-222222222222';
+  const job = {
+    id: 7,
+    user_id: '33333333-3333-4333-8333-333333333333',
+    type: 'COMMENT',
+    attempts: 1,
+    payload: {
+      event_id: eventId,
+      calendar_id: calendarId,
+      calendar_name: '가족',
+      title: '저녁 약속',
+      excerpt: '조금 늦을 것 같아',
+    },
+  };
+  const message = buildPushMessage(job, 'ExponentPushToken[test]');
+
+  eq('댓글 알림 문구와 내부 이동 경로를 만든다', {
+    title: message.title,
+    body: message.body,
+    url: message.data.url,
+  }, {
+    title: '저녁 약속에 새 댓글',
+    body: '조금 늦을 것 같아',
+    url: `/event/${eventId}`,
+  });
+  check('알림 payload의 event_id로 안전한 경로를 만든다',
+    notificationRoute({ event_id: eventId }) === `/event/${eventId}`);
+  check('외부 URL은 알림 이동 경로로 허용하지 않는다',
+    notificationRoute({ url: 'https://evil.example/phishing' }) === null);
+  eq('Expo 전송 제한에 맞춰 묶는다', chunks([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
+  eq('재시도 지연은 지수 증가 후 5분에서 멈춘다',
+    [1, 2, 3, 9].map(retryDelaySeconds), [15, 30, 60, 300]);
+  check('DeviceNotRegistered 오류를 읽는다',
+    expoErrorCode({ details: { error: 'DeviceNotRegistered' } }) === 'DeviceNotRegistered');
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
+
+function contrastRatio(a, b) {
+  const lighter = Math.max(relativeLuminance(a), relativeLuminance(b));
+  const darker = Math.min(relativeLuminance(a), relativeLuminance(b));
+  return (lighter + 0.05) / (darker + 0.05);
+}
+
+function relativeLuminance(hex) {
+  const value = hex.replace('#', '');
+  const channels = [0, 2, 4].map((offset) => {
+    const channel = parseInt(value.slice(offset, offset + 2), 16) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+}

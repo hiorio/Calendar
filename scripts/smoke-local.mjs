@@ -168,6 +168,27 @@ async function outbox(query) {
   return res.ok ? res.json() : [];
 }
 
+async function serviceRest(path, init = {}) {
+  const res = await fetch(`${URL_BASE}/rest/v1/${path}`, {
+    ...init,
+    headers: {
+      apikey: SERVICE_ROLE,
+      Authorization: `Bearer ${SERVICE_ROLE}`,
+      'Content-Type': 'application/json',
+      Prefer: 'return=representation',
+      ...init.headers,
+    },
+  });
+  const text = await res.text();
+  let body;
+  try {
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = text;
+  }
+  return { status: res.status, body };
+}
+
 console.log(`대상: ${URL_BASE}\n`);
 
 // ---------------------------------------------------------------------------
@@ -872,6 +893,35 @@ console.log('\n16. 리마인더 (6단계)');
     body: JSON.stringify({ event_id: eventId, user_id: alice.userId, minutes_before: 60 }),
   });
   check('같은 리마인더는 두 번 걸리지 않는다', dup.status === 409, `${dup.status} ${JSON.stringify(dup.body)}`);
+
+  const forbiddenScan = await rpc(alice.token, 'reminder_scan_candidates', {
+    p_from: '2026-09-10T00:00:00.000Z',
+    p_to: '2026-09-10T00:01:00.000Z',
+  });
+  check(
+    '클라이언트는 리마인더 스캔 후보를 읽을 수 없다',
+    forbiddenScan.status >= 400,
+    `${forbiddenScan.status} ${JSON.stringify(forbiddenScan.body)}`,
+  );
+
+  const scan = await serviceRest('rpc/reminder_scan_candidates', {
+    method: 'POST',
+    body: JSON.stringify({
+      p_from: '2026-09-10T00:00:00.000Z',
+      p_to: '2026-09-10T00:01:00.000Z',
+    }),
+  });
+  check(
+    'service_role 스캐너는 발송 시각의 리마인더 후보를 받는다',
+    scan.status === 200 &&
+      scan.body?.some(
+        (candidate) =>
+          candidate.event?.id === eventId &&
+          candidate.user_id === alice.userId &&
+          candidate.minutes_before === 60,
+      ),
+    `${scan.status} ${JSON.stringify(scan.body)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -900,6 +950,63 @@ console.log('\n17. 기기 토큰 (6단계)');
 
   const others = await rest(bob.token, 'device_tokens?select=expo_token');
   check('남의 토큰은 보이지 않는다', others.body?.length === 0, JSON.stringify(others.body));
+
+  const hiddenDeliveries = await rest(alice.token, 'notification_deliveries?select=outbox_id');
+  check(
+    '알림 전송 내역도 클라이언트에게 닫혀 있다',
+    hiddenDeliveries.status >= 400 || hiddenDeliveries.body?.length === 0,
+    `${hiddenDeliveries.status} ${JSON.stringify(hiddenDeliveries.body)}`,
+  );
+
+  const forbiddenClaim = await rpc(alice.token, 'claim_notification_outbox', { p_limit: 1 });
+  check(
+    '클라이언트는 알림 큐를 claim 할 수 없다',
+    forbiddenClaim.status >= 400,
+    `${forbiddenClaim.status} ${JSON.stringify(forbiddenClaim.body)}`,
+  );
+
+  const claimed = await serviceRest('rpc/claim_notification_outbox', {
+    method: 'POST',
+    body: JSON.stringify({ p_limit: 1 }),
+  });
+  check(
+    'service_role 워커는 대기 알림을 claim 한다',
+    claimed.status === 200 && claimed.body?.length === 1 && claimed.body[0].status === 'PROCESSING',
+    `${claimed.status} ${JSON.stringify(claimed.body)}`,
+  );
+
+  const delivery = await serviceRest('notification_deliveries', {
+    method: 'POST',
+    body: JSON.stringify({
+      outbox_id: claimed.body?.[0]?.id,
+      expo_token: 'ExponentPushToken[worker-grant-smoke]',
+    }),
+  });
+  check(
+    'service_role 워커는 기기별 전송 내역을 기록할 수 있다',
+    delivery.status === 201 && delivery.body?.[0]?.status === 'PENDING',
+    `${delivery.status} ${JSON.stringify(delivery.body)}`,
+  );
+
+  const settled = await serviceRest(`notification_outbox?id=eq.${claimed.body?.[0]?.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ last_error: 'worker grant smoke' }),
+  });
+  check(
+    'service_role 워커는 claim한 outbox를 갱신할 수 있다',
+    settled.status === 200 && settled.body?.[0]?.last_error === 'worker grant smoke',
+    `${settled.status} ${JSON.stringify(settled.body)}`,
+  );
+
+  const claimAgain = await serviceRest('rpc/claim_notification_outbox', {
+    method: 'POST',
+    body: JSON.stringify({ p_limit: 1 }),
+  });
+  check(
+    'claim 한 행은 동시에 다시 가져오지 않는다',
+    claimAgain.status === 200 && claimAgain.body?.[0]?.id !== claimed.body?.[0]?.id,
+    `${claimAgain.status} ${JSON.stringify(claimAgain.body)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

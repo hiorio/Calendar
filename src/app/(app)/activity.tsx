@@ -15,6 +15,7 @@ import {
   useActivity,
   type ActivityEntry,
 } from '@/features/activity/queries';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDayTitle, toDateKey } from '@/lib/date';
 import { formatTime } from '@/lib/event-time';
@@ -121,7 +122,7 @@ export default function ActivityScreen() {
 }
 
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { text, detail } = describeActivity(entry);
 
   // 삭제된 일정으로는 갈 수 없다
@@ -149,7 +150,12 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           </Txt>
         ) : null}
         <View style={styles.meta}>
-          <View style={[styles.dot, { backgroundColor: entry.calendarColor }]} />
+          <View
+            style={[
+              styles.dot,
+              { backgroundColor: calendarColorForScheme(entry.calendarColor, scheme) },
+            ]}
+          />
           <Txt variant="caption" tone="tertiary">
             {entry.calendarName} · {formatTime(new Date(entry.created_at))}
           </Txt>

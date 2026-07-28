@@ -13,7 +13,11 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
-import { CALENDAR_COLORS, onColor } from '@/features/calendars/colors';
+import {
+  CALENDAR_COLORS,
+  calendarColorForScheme,
+  onColor,
+} from '@/features/calendars/colors';
 import { buildInviteLink } from '@/features/calendars/invites';
 import {
   useCalendarInvites,
@@ -30,7 +34,7 @@ import { confirm, notify } from '@/lib/confirm';
 
 export default function CalendarDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { user, isGuest } = useAuth();
 
   const calendars = useMyCalendars();
@@ -188,11 +192,11 @@ export default function CalendarDetailScreen() {
                         onPress={() => setColor(option)}
                         style={[
                           styles.swatch,
-                          { backgroundColor: option },
+                          { backgroundColor: calendarColorForScheme(option, scheme) },
                           selected && { borderColor: colors.text, borderWidth: 2 },
                         ]}>
                         {selected ? (
-                          <Txt variant="caption" style={{ color: onColor(option) }}>
+                          <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
                             ✓
                           </Txt>
                         ) : null}

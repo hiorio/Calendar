@@ -1,37 +1,59 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useMemo, useState } from 'react';
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from 'react-native';
+import { useMemo, useRef, useState } from 'react';
+import {
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  useWindowDimensions,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Card, Divider } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useAuth } from '@/features/auth/auth-provider';
 import { MonthView, type DayMark } from '@/features/calendar/month-view';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useMyCalendars } from '@/features/calendars/queries';
-import { groupByDate, useMonthEvents } from '@/features/events/queries';
-import { useProfile } from '@/features/profile/use-profile';
+import {
+  useDeviceCalendarEvents,
+  useDeviceCalendars,
+} from '@/features/external-calendars/queries';
+import { groupByDate, monthGridRange, useMonthEvents } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
-import { addMonths, formatDayTitle, formatMonthTitle, startOfMonth, toDateKey } from '@/lib/date';
-import { formatEventTimeRange } from '@/lib/event-time';
+import { addMonths, formatMonthTitle, startOfMonth, toDateKey } from '@/lib/date';
 import { useCalendarFilter } from '@/stores/calendar-filter';
+import { useCalendarPreference } from '@/stores/calendar-preference';
+import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
 
 export default function CalendarScreen() {
-  const { colors } = useTheme();
-  const { isGuest } = useAuth();
-  const profile = useProfile();
+  const { colors, scheme } = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
   const calendars = useMyCalendars();
   const { hidden, toggle } = useCalendarFilter();
+  const selectedDeviceCalendarIds = useDeviceCalendarPreference((state) => state.selectedIds);
+  const toggleDeviceCalendar = useDeviceCalendarPreference((state) => state.toggleCalendar);
+  const {
+    weekStart,
+    showWeekNumbers,
+    showLunar,
+    colorSaturday,
+  } = useCalendarPreference();
 
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => new Date());
+  const lastPressedDate = useRef<string | null>(null);
 
   const hasCalendars = (calendars.data?.length ?? 0) > 0;
 
-  const events = useMonthEvents(month);
+  const events = useMonthEvents(month, weekStart);
+  const deviceCalendars = useDeviceCalendars();
+  const deviceRange = useMemo(() => monthGridRange(month, weekStart), [month, weekStart]);
+  const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end);
 
   // 숨긴 캘린더는 서버가 아니라 여기서 거른다. 칩을 눌렀을 때 바로 반영된다.
   const visibleEvents = useMemo(
@@ -39,7 +61,11 @@ export default function CalendarScreen() {
     [events.data, hidden],
   );
 
-  const byDate = useMemo(() => groupByDate(visibleEvents), [visibleEvents]);
+  const byDate = useMemo(
+    () => groupByDate([...visibleEvents, ...(deviceEvents.data ?? [])]),
+    [deviceEvents.data, visibleEvents],
+  );
+  const dayCellMinHeight = Math.max(70, Math.min(104, Math.floor((windowHeight - 245) / 6)));
 
   const marksByDate = useMemo(() => {
     const marks: Record<string, DayMark[]> = {};
@@ -53,7 +79,20 @@ export default function CalendarScreen() {
     return marks;
   }, [byDate]);
 
-  const dayEvents = byDate[toDateKey(selected)] ?? [];
+  function selectDate(date: Date) {
+    const dateKey = toDateKey(date);
+    const isSecondPress =
+      lastPressedDate.current === dateKey && toDateKey(selected) === dateKey;
+
+    if (isSecondPress) {
+      lastPressedDate.current = null;
+      router.push({ pathname: '/day', params: { date: dateKey } });
+      return;
+    }
+
+    setSelected(date);
+    lastPressedDate.current = dateKey;
+  }
 
   return (
     <Screen>
@@ -63,10 +102,14 @@ export default function CalendarScreen() {
         refreshControl={
           // 함께 쓰는 캘린더라 남이 고친 것을 당겨서 받아올 수 있어야 한다
           <RefreshControl
-            refreshing={calendars.isRefetching || events.isRefetching}
+            refreshing={
+              calendars.isRefetching || events.isRefetching || deviceEvents.isRefetching
+            }
             onRefresh={() => {
               calendars.refetch();
               events.refetch();
+              deviceCalendars.refetch();
+              deviceEvents.refetch();
             }}
             tintColor={colors.textTertiary}
           />
@@ -76,33 +119,43 @@ export default function CalendarScreen() {
               이 자리는 화면에서 가장 값진 곳이다. 대신 가장 자주 보고 만지는
               것 — 지금 보고 있는 달 — 을 올린다. */}
           <View style={styles.topBar}>
-            <View style={styles.topBarText}>
-              <Txt variant="caption" tone="tertiary">
-                {profile.data ? `${profile.data.nickname}님` : ' '}
-              </Txt>
-              <Txt variant="title">{formatMonthTitle(month)}</Txt>
+            <Txt variant="title">{formatMonthTitle(month)}</Txt>
+            <View style={styles.monthNav}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="이전 달"
+                onPress={() => {
+                  lastPressedDate.current = null;
+                  setMonth((current) => addMonths(current, -1));
+                }}
+                style={({ pressed }) => [
+                  styles.monthNavButton,
+                  { backgroundColor: pressed ? colors.surfacePressed : 'transparent' },
+                ]}>
+                <Ionicons name="chevron-back" size={20} color={colors.textSecondary} />
+              </Pressable>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="다음 달"
+                onPress={() => {
+                  lastPressedDate.current = null;
+                  setMonth((current) => addMonths(current, 1));
+                }}
+                style={({ pressed }) => [
+                  styles.monthNavButton,
+                  { backgroundColor: pressed ? colors.surfacePressed : 'transparent' },
+                ]}>
+                <Ionicons name="chevron-forward" size={20} color={colors.textSecondary} />
+              </Pressable>
             </View>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="설정 열기"
-              onPress={() => router.push('/settings')}
-              style={({ pressed }) => [
-                styles.avatar,
-                { backgroundColor: pressed ? colors.accentPressed : colors.accent },
-              ]}>
-              <Txt variant="label" tone="onAccent">
-                {profile.data?.nickname?.slice(0, 1) ?? '·'}
-              </Txt>
-            </Pressable>
           </View>
 
-          {hasCalendars ? (
+          {hasCalendars || (deviceCalendars.data?.length ?? 0) > 0 ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.chipRow}>
-              {calendars.data!.map((calendar) => {
+              {(calendars.data ?? []).map((calendar) => {
                 const visible = !hidden.includes(calendar.id);
                 return (
                   <Pressable
@@ -119,9 +172,45 @@ export default function CalendarScreen() {
                         opacity: visible ? 1 : 0.55,
                       },
                     ]}>
-                    <View style={[styles.dot, { backgroundColor: calendar.color }]} />
+                    <View
+                      style={[
+                        styles.dot,
+                        { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                      ]}
+                    />
                     <Txt variant="label" tone={visible ? 'default' : 'tertiary'}>
                       {calendar.name}
+                    </Txt>
+                  </Pressable>
+                );
+              })}
+
+              {deviceCalendars.data?.map((calendar) => {
+                const visible = selectedDeviceCalendarIds.includes(calendar.id);
+                return (
+                  <Pressable
+                    key={`device:${calendar.id}`}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected: visible }}
+                    accessibilityLabel={`${calendar.title} 외부 캘린더 ${visible ? '숨기기' : '표시하기'}`}
+                    onPress={() => toggleDeviceCalendar(calendar.id)}
+                    style={[
+                      styles.chip,
+                      {
+                        backgroundColor: visible ? colors.surface : 'transparent',
+                        borderColor: visible ? colors.border : colors.borderStrong,
+                        opacity: visible ? 1 : 0.55,
+                      },
+                    ]}>
+                    <Ionicons name="link-outline" size={13} color={colors.textTertiary} />
+                    <View
+                      style={[
+                        styles.dot,
+                        { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                      ]}
+                    />
+                    <Txt variant="label" tone={visible ? 'default' : 'tertiary'}>
+                      {calendar.title}
                     </Txt>
                   </Pressable>
                 );
@@ -144,91 +233,17 @@ export default function CalendarScreen() {
             <MonthView
               month={month}
               selected={selected}
-              onSelect={setSelected}
-              onShiftMonth={(delta) => setMonth((current) => addMonths(current, delta))}
-              onToday={() => {
-                const today = new Date();
-                setMonth(startOfMonth(today));
-                setSelected(today);
-              }}
+              onSelect={selectDate}
               marksByDate={marksByDate}
+              dayCellMinHeight={dayCellMinHeight}
+              weekStart={weekStart}
+              showWeekNumbers={showWeekNumbers}
+              showLunar={showLunar}
+              colorSaturday={colorSaturday}
             />
           </Card>
 
-          {hasCalendars ? (
-            <View style={styles.section}>
-              <View style={styles.sectionHead}>
-                <Txt variant="subtitle">{formatDayTitle(selected)}</Txt>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="이 날에 일정 추가"
-                  onPress={() =>
-                    router.push({
-                      pathname: '/event-new',
-                      params: { date: toDateKey(selected) },
-                    })
-                  }
-                  style={({ pressed }) => [
-                    styles.addDay,
-                    { backgroundColor: pressed ? colors.accentPressed : colors.accentSoft },
-                  ]}>
-                  <Ionicons name="add" size={16} color={colors.accent} />
-                  <Txt variant="label" tone="accent">
-                    추가
-                  </Txt>
-                </Pressable>
-              </View>
-
-              <Card flat padded={dayEvents.length === 0}>
-                {dayEvents.length === 0 ? (
-                  <EmptyState
-                    compact
-                    icon="sunny-outline"
-                    title="이 날은 비어 있어요"
-                    description="위 추가를 눌러 첫 일정을 넣어 보세요."
-                  />
-                ) : (
-                  dayEvents.map((event, index) => (
-                    <View key={event.key}>
-                      {index > 0 ? <Divider /> : null}
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`${event.title} 열기`}
-                        onPress={() =>
-                          router.push({
-                            pathname: '/event/[id]',
-                            // 어느 회차를 열었는지 함께 넘긴다. 반복 일정에서
-                            // "이 일정만" 수정·삭제의 대상이 된다.
-                            params: { id: event.id, occ: event.originalStart },
-                          })
-                        }
-                        style={({ pressed }) => [
-                          styles.eventRow,
-                          { backgroundColor: pressed ? colors.surfacePressed : 'transparent' },
-                        ]}>
-                        <View style={[styles.eventBar, { backgroundColor: event.displayColor }]} />
-                        <View style={styles.eventText}>
-                          <View style={styles.eventTitleRow}>
-                            <Txt variant="body" numberOfLines={1} style={styles.eventTitle}>
-                              {event.title}
-                            </Txt>
-                            {event.isRecurring ? (
-                              <Ionicons name="repeat" size={14} color={colors.textTertiary} />
-                            ) : null}
-                          </View>
-                          <Txt variant="caption" tone="secondary" numberOfLines={1}>
-                            {formatEventTimeRange(event)}
-                            {event.location ? ` · ${event.location}` : ''}
-                          </Txt>
-                        </View>
-                        <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-                      </Pressable>
-                    </View>
-                  ))
-                )}
-              </Card>
-            </View>
-          ) : (
+          {!hasCalendars ? (
             <View style={styles.section}>
               <Card>
                 <EmptyState
@@ -245,30 +260,6 @@ export default function CalendarScreen() {
                 />
               </Card>
             </View>
-          )}
-
-          {isGuest ? (
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => router.push('/account')}
-              style={({ pressed }) => [
-                styles.guestBanner,
-                {
-                  backgroundColor: pressed ? colors.surfacePressed : colors.surface,
-                  borderColor: colors.border,
-                },
-              ]}>
-              <View style={[styles.guestIcon, { backgroundColor: colors.accentSoft }]}>
-                <Ionicons name="cloud-upload-outline" size={18} color={colors.accent} />
-              </View>
-              <View style={styles.guestText}>
-                <Txt variant="body">계정 만들고 어디서나 이어보기</Txt>
-                <Txt variant="caption" tone="secondary">
-                  지금 쓰던 내용 그대로, 공유도 가능해집니다
-                </Txt>
-              </View>
-              <Ionicons name="chevron-forward" size={16} color={colors.textTertiary} />
-            </Pressable>
           ) : null}
 
           {calendars.isError ? (
@@ -280,6 +271,12 @@ export default function CalendarScreen() {
           {events.isError ? (
             <Txt variant="caption" tone="danger" style={styles.error}>
               일정을 불러오지 못했습니다: {(events.error as Error).message}
+            </Txt>
+          ) : null}
+
+          {deviceEvents.isError ? (
+            <Txt variant="caption" tone="danger" style={styles.error}>
+              외부 일정을 불러오지 못했습니다: {(deviceEvents.error as Error).message}
             </Txt>
           ) : null}
         </Content>
@@ -299,11 +296,11 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingBottom: Spacing.md,
   },
-  topBarText: { gap: 1 },
-  avatar: {
+  monthNav: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  monthNavButton: {
     width: 36,
     height: 36,
-    borderRadius: Radius.pill,
+    borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -321,44 +318,5 @@ const styles = StyleSheet.create({
   dot: { width: 8, height: 8, borderRadius: Radius.pill },
   calendarCard: { marginHorizontal: Spacing.md, paddingVertical: Spacing.lg },
   section: { gap: Spacing.sm, paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl },
-  sectionHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  addDay: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 2,
-    height: 30,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-  },
-  eventRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
-    minHeight: 56,
-  },
-  eventBar: { width: 4, alignSelf: 'stretch', borderRadius: Radius.pill },
-  eventText: { flex: 1, gap: 1 },
-  eventTitleRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  eventTitle: { flexShrink: 1 },
-  guestBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    marginTop: Spacing.xl,
-    marginHorizontal: Spacing.xl,
-    padding: Spacing.lg,
-    borderRadius: Radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-  },
-  guestIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  guestText: { flex: 1, gap: 1 },
   error: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg },
 });

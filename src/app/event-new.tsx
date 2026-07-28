@@ -1,4 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -6,18 +7,57 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-provider';
 import { useMyCalendars } from '@/features/calendars/queries';
+import {
+  uploadAttachmentDrafts,
+  type AttachmentDraft,
+} from '@/features/events/attachment-queries';
+import { AttachmentDraftPicker } from '@/features/events/attachments';
 import { EventForm } from '@/features/events/event-form';
-import { useCreateEvent } from '@/features/events/queries';
+import { useCreateEvent, type EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { notify } from '@/lib/confirm';
 import { parseDateKey, startOfDay } from '@/lib/event-time';
 
 export default function NewEventScreen() {
   const { colors } = useTheme();
   const { date, calendarId } = useLocalSearchParams<{ date?: string; calendarId?: string }>();
+  const { user } = useAuth();
 
   const calendars = useMyCalendars();
   const create = useCreateEvent();
+  const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  async function submit(input: EventInput) {
+    setSaving(true);
+    try {
+      const created = await create.mutateAsync(input);
+
+      if (drafts.length && user) {
+        try {
+          await uploadAttachmentDrafts({
+            drafts,
+            eventId: created.id,
+            calendarId: input.calendar_id,
+            uploadedBy: user.id,
+          });
+        } catch (e) {
+          notify(
+            '일정은 저장됐지만 첨부하지 못했습니다',
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+      }
+
+      router.back();
+    } catch {
+      // mutation 상태의 오류 문구를 폼 아래에서 보여 준다.
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // 캘린더가 없으면 넣을 곳이 없다. 만들기부터 안내한다.
   if (calendars.data && calendars.data.length === 0) {
@@ -65,7 +105,7 @@ export default function NewEventScreen() {
           <EventForm
             calendars={calendars.data}
             submitLabel="추가"
-            pending={create.isPending}
+            pending={create.isPending || saving}
             initial={{
               calendarId: calendarId ?? calendars.data[0].id,
               title: '',
@@ -74,12 +114,9 @@ export default function NewEventScreen() {
               time: { isAllDay: false, start, end },
               recurrence: { freq: null, until: null },
             }}
-            onSubmit={(input) =>
-              create.mutate(input, {
-                onSuccess: () => router.back(),
-              })
-            }
-          />
+            onSubmit={submit}>
+            <AttachmentDraftPicker drafts={drafts} onChange={setDrafts} disabled={saving} />
+          </EventForm>
 
           {create.isError ? (
             <Txt variant="caption" tone="danger">

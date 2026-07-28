@@ -32,7 +32,7 @@ const TABS: Tab[] = [
     opens: '/event-new',
   },
   { name: 'activity', title: '활동', icon: 'pulse-outline', activeIcon: 'pulse' },
-  { name: 'settings', title: '설정', icon: 'settings-outline', activeIcon: 'settings' },
+  { name: 'settings', title: '더보기', icon: 'grid-outline', activeIcon: 'grid' },
 ];
 
 export default function AppLayout() {
@@ -54,7 +54,7 @@ export default function AppLayout() {
         tabBarLabelStyle: styles.label,
         tabBarStyle: [
           styles.bar,
-          { backgroundColor: colors.surface, borderTopColor: colors.border },
+          { backgroundColor: colors.chrome, borderTopColor: colors.chromeBorder },
         ],
       }}>
       {TABS.map(({ name, title, icon, activeIcon, opens }) => (
