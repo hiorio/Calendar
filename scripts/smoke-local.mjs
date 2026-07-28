@@ -1098,7 +1098,107 @@ console.log('\n18. 활동 로그 (7단계)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n19. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
+console.log('\n19. 날짜별 캘린더 스티커');
+{
+  const stickerDate = '2026-07-05';
+  const inserted = await rest(alice.token, 'calendar_stickers', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      sticker_date: stickerDate,
+      sticker_key: 'morning-reader',
+      created_by: alice.userId,
+    }),
+  });
+  const stickerId = inserted.body?.[0]?.id;
+  check(
+    '구성원은 캘린더에 스티커를 붙일 수 있다',
+    inserted.status === 201 && Boolean(stickerId),
+    `${inserted.status} ${JSON.stringify(inserted.body)}`,
+  );
+
+  const shared = await rest(
+    bob.token,
+    `calendar_stickers?select=sticker_key,calendars(name)&sticker_date=eq.${stickerDate}`,
+  );
+  check(
+    '같은 캘린더 구성원에게 스티커가 보인다',
+    shared.body?.[0]?.sticker_key === 'morning-reader' && Boolean(shared.body?.[0]?.calendars?.name),
+    JSON.stringify(shared.body),
+  );
+
+  const changed = await rpc(bob.token, 'set_calendar_sticker', {
+    p_calendar_id: calendarId,
+    p_sticker_date: stickerDate,
+    p_sticker_key: 'star-celebration',
+  });
+  const changedRow = await rest(
+    bob.token,
+    `calendar_stickers?select=sticker_key&id=eq.${stickerId}`,
+  );
+  check(
+    '앱의 원자적 저장 경로로 다른 구성원도 스티커를 바꿀 수 있다',
+    (changed.status === 200 || changed.status === 204) &&
+      changedRow.body?.[0]?.sticker_key === 'star-celebration',
+    `${changed.status} ${JSON.stringify(changedRow.body)}`,
+  );
+
+  const moved = await rest(bob.token, `calendar_stickers?id=eq.${stickerId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ sticker_date: '2026-07-06' }),
+  });
+  check(
+    '스티커의 날짜 식별자는 바꿀 수 없다',
+    moved.status >= 400,
+    `${moved.status} ${JSON.stringify(moved.body)}`,
+  );
+
+  const invalid = await rest(alice.token, 'calendar_stickers', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      sticker_date: '2026-07-06',
+      sticker_key: 'unknown-sticker',
+      created_by: alice.userId,
+    }),
+  });
+  check(
+    '앱에 없는 스티커 키는 저장되지 않는다',
+    invalid.status >= 400,
+    `${invalid.status} ${JSON.stringify(invalid.body)}`,
+  );
+
+  const outsider = await signUp('스티커 구경꾼');
+  const leaked = await rest(outsider.token, `calendar_stickers?select=id&id=eq.${stickerId}`);
+  check(
+    '비구성원에게 스티커가 보이지 않는다',
+    leaked.body?.length === 0,
+    JSON.stringify(leaked.body),
+  );
+
+  const forged = await rest(outsider.token, 'calendar_stickers', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: calendarId,
+      sticker_date: '2026-07-07',
+      sticker_key: 'rainy-window',
+      created_by: outsider.userId,
+    }),
+  });
+  check(
+    '비구성원은 스티커를 붙일 수 없다',
+    forged.status >= 400,
+    `${forged.status} ${JSON.stringify(forged.body)}`,
+  );
+
+  const removed = await rest(alice.token, `calendar_stickers?id=eq.${stickerId}`, {
+    method: 'DELETE',
+  });
+  check('구성원은 스티커를 제거할 수 있다', removed.status === 200, `status=${removed.status}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n20. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
 {
   const blocked = await rest(
     alice.token,
@@ -1156,7 +1256,7 @@ console.log('\n19. 소유권 이전과 탈퇴 규칙 (설계안 5.3)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n20. 계정 삭제 (8단계)');
+console.log('\n21. 계정 삭제 (8단계)');
 {
   // 지우는 사람(다나)과 남는 사람(에런)으로 새 판을 짠다.
   // 앞 섹션의 캘린더는 이미 정리돼서 쓸 수 없다.
@@ -1265,7 +1365,7 @@ console.log('\n20. 계정 삭제 (8단계)');
 }
 
 // ---------------------------------------------------------------------------
-console.log('\n21. 컬럼 단위 권한 — UPDATE 우회 차단 (0013)');
+console.log('\n22. 컬럼 단위 권한 — UPDATE 우회 차단 (0013)');
 {
   // 공격자와 피해자를 새로 만든다. 공격자는 피해자 캘린더의 구성원이 아니다.
   const victim = await signUp('피해자');

@@ -109,9 +109,8 @@ function RootLayout() {
                   name="day"
                   options={{
                     presentation: 'modal',
-                    headerShown: true,
+                    headerShown: false,
                     title: '일정',
-                    headerBackTitle: '캘린더',
                   }}
                 />
                 <Stack.Screen

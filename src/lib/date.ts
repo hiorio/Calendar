@@ -82,6 +82,22 @@ export function formatLunarDay(date: Date): string | null {
   }
 }
 
+/** 날짜 상세 제목 아래에 쓰는 '음력 5.21'. */
+export function formatLunarDate(date: Date): string | null {
+  try {
+    const formatter = new Intl.DateTimeFormat('ko-KR-u-ca-dangi', {
+      month: 'numeric',
+      day: 'numeric',
+    });
+    const parts = formatter.formatToParts(date);
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    return month && day ? `음력 ${month}.${day}` : null;
+  } catch {
+    return null;
+  }
+}
+
 export function formatMonthTitle(month: Date): string {
   return `${month.getFullYear()}년 ${month.getMonth() + 1}월`;
 }

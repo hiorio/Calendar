@@ -79,6 +79,17 @@ export type CalendarInvite = {
   created_at: string;
 };
 
+export type CalendarSticker = {
+  id: string;
+  calendar_id: string;
+  sticker_date: string;
+  sticker_key: string;
+  /** 계정을 지우면 NULL이 된다. 스티커 자체는 캘린더에 남는다. */
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type EventRow = {
   id: string;
   calendar_id: string;
@@ -251,6 +262,10 @@ export type Database = {
           'id' | 'expires_at' | 'max_uses' | 'use_count' | 'revoked_at' | 'created_at'
         >
       >;
+      calendar_stickers: Table<
+        CalendarSticker,
+        Optional<CalendarSticker, 'id' | 'created_at' | 'updated_at'>
+      >;
       events: Table<
         EventRow,
         Optional<
@@ -352,6 +367,10 @@ export type Database = {
       reminder_scan_candidates: {
         Args: { p_from: string; p_to: string };
         Returns: Json[];
+      };
+      set_calendar_sticker: {
+        Args: { p_calendar_id: string; p_sticker_date: string; p_sticker_key: string };
+        Returns: undefined;
       };
     };
     Enums: {
