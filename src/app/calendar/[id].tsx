@@ -1,5 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import * as Clipboard from 'expo-clipboard';
+import { Image } from 'expo-image';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
@@ -18,6 +19,7 @@ import {
   calendarColorForScheme,
   onColor,
 } from '@/features/calendars/colors';
+import { pickCalendarCover, useSetCalendarCover } from '@/features/calendars/cover';
 import { buildInviteLink } from '@/features/calendars/invites';
 import {
   useCalendarInvites,
@@ -43,6 +45,7 @@ export default function CalendarDetailScreen() {
   const invites = useCalendarInvites(id);
 
   const update = useUpdateCalendar(id);
+  const setCover = useSetCalendarCover(id);
   const createInvite = useCreateInvite(id);
   const revokeInvite = useRevokeInvite(id);
   const removeMember = useRemoveMember(id);
@@ -82,6 +85,32 @@ export default function CalendarDetailScreen() {
       setColor(null);
     } catch (e) {
       notify('저장하지 못했습니다', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function chooseCover() {
+    try {
+      const draft = await pickCalendarCover();
+      if (!draft) return;
+      await setCover.mutateAsync({ draft, previousPath: calendar!.coverPath });
+    } catch (e) {
+      notify('사진을 저장하지 못했습니다', e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removeCover() {
+    const ok = await confirm({
+      title: '캘린더 사진을 지울까요?',
+      message: '구성원 모두의 메인 화면에서 사진이 사라집니다.',
+      confirmLabel: '사진 삭제',
+      destructive: true,
+    });
+    if (!ok) return;
+
+    try {
+      await setCover.mutateAsync({ draft: null, previousPath: calendar!.coverPath });
+    } catch (e) {
+      notify('사진을 삭제하지 못했습니다', e instanceof Error ? e.message : String(e));
     }
   }
 
@@ -167,6 +196,67 @@ export default function CalendarDetailScreen() {
         <Section title="캘린더">
           <Card>
             <View style={styles.editor}>
+              <View style={styles.coverSection}>
+                <Txt variant="label" tone="secondary">
+                  사진
+                </Txt>
+                <View style={styles.coverRow}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={calendar.coverUrl ? '캘린더 사진 변경' : '캘린더 사진 추가'}
+                    disabled={setCover.isPending}
+                    onPress={chooseCover}
+                    style={[
+                      styles.coverPreview,
+                      {
+                        backgroundColor: colors.surfaceMuted,
+                        borderColor: colors.border,
+                        opacity: setCover.isPending ? 0.55 : 1,
+                      },
+                    ]}>
+                    {calendar.coverUrl ? (
+                      <Image
+                        source={{ uri: calendar.coverUrl }}
+                        style={styles.coverImage}
+                        contentFit="cover"
+                        transition={150}
+                      />
+                    ) : (
+                      <Ionicons name="image-outline" size={28} color={colors.textTertiary} />
+                    )}
+                    <View style={[styles.coverEdit, { backgroundColor: colors.surface }]}>
+                      <Ionicons name="camera-outline" size={14} color={colors.textSecondary} />
+                    </View>
+                  </Pressable>
+
+                  <View style={styles.coverActions}>
+                    <Txt variant="caption" tone="tertiary">
+                      메인 화면의 캘린더 이름 옆에 작은 사진으로 표시됩니다.
+                    </Txt>
+                    <View style={styles.coverButtons}>
+                      <Button
+                        label={calendar.coverUrl ? '사진 변경' : '사진 추가'}
+                        size="md"
+                        block={false}
+                        variant="secondary"
+                        loading={setCover.isPending}
+                        onPress={chooseCover}
+                      />
+                      {calendar.coverPath ? (
+                        <Button
+                          label="삭제"
+                          size="md"
+                          block={false}
+                          variant="ghost"
+                          disabled={setCover.isPending}
+                          onPress={removeCover}
+                        />
+                      ) : null}
+                    </View>
+                  </View>
+                </View>
+              </View>
+
               <Field
                 label="이름"
                 value={currentName}
@@ -401,6 +491,29 @@ const styles = StyleSheet.create({
   section: { gap: Spacing.sm },
   sectionTitle: { paddingLeft: Spacing.xs },
   editor: { gap: Spacing.lg },
+  coverSection: { gap: Spacing.sm },
+  coverRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  coverPreview: {
+    width: 76,
+    height: 76,
+    borderRadius: Radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverImage: { width: '100%', height: '100%', borderRadius: Radius.lg },
+  coverEdit: {
+    position: 'absolute',
+    right: -4,
+    bottom: -4,
+    width: 28,
+    height: 28,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  coverActions: { flex: 1, gap: Spacing.sm },
+  coverButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   colorSection: { gap: Spacing.sm },
   swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
   swatch: {

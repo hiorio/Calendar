@@ -32,7 +32,7 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 바꾼 것 | 확인 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (156개) |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (162개) |
 | `src/lib/` 계산 로직 · 라벨 팔레트 | `npm run test:unit` (55개) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
 

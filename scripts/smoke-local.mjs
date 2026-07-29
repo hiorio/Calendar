@@ -152,6 +152,43 @@ async function rest(token, path, init = {}) {
   return { status: res.status, body };
 }
 
+async function storageUpload(token, path, payload) {
+  const res = await fetch(`${URL_BASE}/storage/v1/object/calendar-media/${path}`, {
+    method: 'POST',
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'image/png',
+      'x-upsert': 'false',
+    },
+    body: payload,
+  });
+  return { status: res.status, body: await res.text() };
+}
+
+async function storageDownload(token, path) {
+  const res = await fetch(
+    `${URL_BASE}/storage/v1/object/authenticated/calendar-media/${path}`,
+    {
+      headers: { apikey: ANON, Authorization: `Bearer ${token}` },
+    },
+  );
+  return { status: res.status, body: await res.arrayBuffer() };
+}
+
+async function storageRemove(token, path) {
+  const res = await fetch(`${URL_BASE}/storage/v1/object/calendar-media`, {
+    method: 'DELETE',
+    headers: {
+      apikey: ANON,
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ prefixes: [path] }),
+  });
+  return { status: res.status, body: await res.text() };
+}
+
 /** RPC 호출 (security definer 함수) */
 async function rpc(token, fn, args) {
   return rest(token, `rpc/${fn}`, { method: 'POST', body: JSON.stringify(args) });
@@ -1095,6 +1132,58 @@ console.log('\n18. 활동 로그 (7단계)');
   check('작성자와 캘린더를 함께 가져올 수 있다',
     embedded.status === 200 && Boolean(embedded.body?.[0]?.profiles?.nickname && embedded.body?.[0]?.calendars?.name),
     `${embedded.status} ${JSON.stringify(embedded.body)}`);
+
+  // 캘린더 설정은 일정과 별개다. 이름·색상·대표 사진을 바꾸면 수정한 구성원이
+  // 누구인지와 무엇을 바꿨는지가 활동에 남아야 한다.
+  await rest(bob.token, `calendars?id=eq.${calendarId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ name: '스모크 캘린더 수정', color: '#12705F' }),
+  });
+  let calendarLogs = await rest(
+    alice.token,
+    `activity_logs?select=type,actor_id,ref_id,summary&type=eq.CALENDAR_UPDATED&ref_id=eq.${calendarId}&order=id.desc`,
+  );
+  const calendarUpdated = calendarLogs.body?.[0];
+  check(
+    '캘린더 이름과 색상 변경이 활동에 남는다',
+    calendarUpdated?.actor_id === bob.userId &&
+      calendarUpdated?.summary?.title === '스모크 캘린더 수정' &&
+      JSON.stringify(calendarUpdated?.summary?.changed) === '["name","color"]',
+    JSON.stringify(calendarUpdated),
+  );
+
+  await rest(bob.token, `calendars?id=eq.${calendarId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cover_url: `${calendarId}/covers/activity-smoke.png` }),
+  });
+  calendarLogs = await rest(
+    alice.token,
+    `activity_logs?select=actor_id,summary&type=eq.CALENDAR_UPDATED&ref_id=eq.${calendarId}&order=id.desc&limit=1`,
+  );
+  check(
+    '캘린더 대표 사진 변경도 활동에 남는다',
+    calendarLogs.body?.[0]?.actor_id === bob.userId &&
+      JSON.stringify(calendarLogs.body?.[0]?.summary?.changed) === '["cover"]',
+    JSON.stringify(calendarLogs.body?.[0]),
+  );
+
+  const beforeNoop = await rest(
+    alice.token,
+    `activity_logs?select=id&type=eq.CALENDAR_UPDATED&ref_id=eq.${calendarId}`,
+  );
+  await rest(bob.token, `calendars?id=eq.${calendarId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cover_url: `${calendarId}/covers/activity-smoke.png` }),
+  });
+  const afterNoop = await rest(
+    alice.token,
+    `activity_logs?select=id&type=eq.CALENDAR_UPDATED&ref_id=eq.${calendarId}`,
+  );
+  check(
+    '같은 설정을 다시 저장해도 활동을 중복 기록하지 않는다',
+    afterNoop.body?.length === beforeNoop.body?.length,
+    JSON.stringify(afterNoop.body),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -1195,6 +1284,61 @@ console.log('\n19. 날짜별 캘린더 스티커');
     method: 'DELETE',
   });
   check('구성원은 스티커를 제거할 수 있다', removed.status === 200, `status=${removed.status}`);
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n19-1. 캘린더 대표 사진');
+{
+  const coverPath = `${calendarId}/covers/smoke-${Date.now()}.png`;
+  const uploaded = await storageUpload(alice.token, coverPath, new Uint8Array([137, 80, 78, 71]));
+  check(
+    '구성원은 캘린더 대표 사진을 올릴 수 있다',
+    uploaded.status === 200,
+    `${uploaded.status} ${uploaded.body}`,
+  );
+
+  const downloaded = await storageDownload(bob.token, coverPath);
+  check(
+    '다른 구성원도 비공개 대표 사진을 읽을 수 있다',
+    downloaded.status === 200,
+    `status=${downloaded.status}`,
+  );
+
+  const selected = await rest(bob.token, `calendars?id=eq.${calendarId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cover_url: coverPath }),
+  });
+  check(
+    '구성원은 캘린더 대표 사진 경로를 설정할 수 있다',
+    selected.status === 200 && selected.body?.[0]?.cover_url === coverPath,
+    `${selected.status} ${JSON.stringify(selected.body)}`,
+  );
+
+  const cleared = await rest(bob.token, `calendars?id=eq.${calendarId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ cover_url: null }),
+  });
+  check(
+    '구성원은 캘린더 대표 사진을 해제할 수 있다',
+    cleared.status === 200 && cleared.body?.[0]?.cover_url === null,
+    `${cleared.status} ${JSON.stringify(cleared.body)}`,
+  );
+
+  const coverOutsider = await signUp('대표 사진 구경꾼');
+  const forbiddenDelete = await storageRemove(coverOutsider.token, coverPath);
+  const survived = await storageDownload(alice.token, coverPath);
+  check(
+    '비구성원은 대표 사진을 지울 수 없다',
+    survived.status === 200,
+    `${forbiddenDelete.status} ${forbiddenDelete.body} → download ${survived.status}`,
+  );
+
+  const removed = await storageRemove(bob.token, coverPath);
+  check(
+    '업로더가 아닌 구성원도 교체된 대표 사진을 정리할 수 있다',
+    removed.status === 200,
+    `${removed.status} ${removed.body}`,
+  );
 }
 
 // ---------------------------------------------------------------------------

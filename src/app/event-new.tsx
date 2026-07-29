@@ -1,8 +1,9 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
@@ -14,7 +15,8 @@ import {
   type AttachmentDraft,
 } from '@/features/events/attachment-queries';
 import { AttachmentDraftPicker } from '@/features/events/attachments';
-import { EventForm } from '@/features/events/event-form';
+import { EventEditorHeader } from '@/features/events/event-editor-header';
+import { EventForm, type EventFormHandle } from '@/features/events/event-form';
 import { useCreateEvent, type EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { notify } from '@/lib/confirm';
@@ -27,6 +29,7 @@ export default function NewEventScreen() {
 
   const calendars = useMyCalendars();
   const create = useCreateEvent();
+  const formRef = useRef<EventFormHandle>(null);
   const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -97,14 +100,20 @@ export default function NewEventScreen() {
   end.setHours(10, 0, 0, 0);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    <>
+      <EventEditorHeader
+        pending={create.isPending || saving}
+        onSave={() => formRef.current?.submit()}
+      />
+      <KeyboardAvoidingView
+        style={[styles.flex, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Content style={styles.content}>
           <EventForm
+            ref={formRef}
             calendars={calendars.data}
             submitLabel="추가"
+            showSubmitButton={false}
             pending={create.isPending || saving}
             initial={{
               calendarId: calendarId ?? calendars.data[0].id,
@@ -115,7 +124,15 @@ export default function NewEventScreen() {
               recurrence: { freq: null, until: null },
             }}
             onSubmit={submit}>
-            <AttachmentDraftPicker drafts={drafts} onChange={setDrafts} disabled={saving} />
+            <View>
+              <Divider />
+              <AttachmentDraftPicker
+                compact
+                drafts={drafts}
+                onChange={setDrafts}
+                disabled={saving}
+              />
+            </View>
           </EventForm>
 
           {create.isError ? (
@@ -124,14 +141,18 @@ export default function NewEventScreen() {
             </Txt>
           ) : null}
         </Content>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingVertical: Spacing.xxl },
-  content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
+  content: {
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
 });

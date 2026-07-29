@@ -1,4 +1,9 @@
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { NanumGothic_400Regular } from '@expo-google-fonts/nanum-gothic/400Regular';
+import { NanumGothic_700Bold } from '@expo-google-fonts/nanum-gothic/700Bold';
+import { NanumMyeongjo_400Regular } from '@expo-google-fonts/nanum-myeongjo/400Regular';
+import { NanumMyeongjo_700Bold } from '@expo-google-fonts/nanum-myeongjo/700Bold';
+import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
@@ -6,6 +11,8 @@ import { useEffect, type PropsWithChildren } from 'react';
 import { AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
+import { Typography } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-provider';
 import { useNotificationNavigation } from '@/features/notifications/navigation';
 import { configureNotificationHandler } from '@/features/notifications/push';
@@ -43,14 +50,14 @@ const queryClient = new QueryClient({
 });
 
 /** 세션 복원이 끝나기 전까지는 스플래시를 유지해 화면 깜빡임을 막는다 */
-function SplashGate({ children }: PropsWithChildren) {
+function SplashGate({ children, fontsReady }: PropsWithChildren<{ fontsReady: boolean }>) {
   const { isLoading } = useAuth();
 
   useEffect(() => {
-    if (!isLoading) SplashScreen.hideAsync();
-  }, [isLoading]);
+    if (!isLoading && fontsReady) SplashScreen.hideAsync();
+  }, [fontsReady, isLoading]);
 
-  return children;
+  return !isLoading && fontsReady ? children : null;
 }
 
 function NotificationNavigation() {
@@ -60,7 +67,16 @@ function NotificationNavigation() {
 }
 
 function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    NanumGothic_400Regular,
+    NanumGothic_700Bold,
+    NanumMyeongjo_400Regular,
+    NanumMyeongjo_700Bold,
+  });
   const { colors, scheme, theme } = useTheme();
+  const preferredHeaderStyle = usePreferredTextStyle(Typography.subtitle);
+  // 폰트 파일 하나가 손상돼도 스플래시에 갇히지 않고 시스템 글꼴로 앱을 열 수 있어야 한다.
+  const fontsReady = fontsLoaded || Boolean(fontError);
   const isDark = scheme === 'dark';
   const baseNavigationTheme = isDark ? DarkTheme : DefaultTheme;
   const navigationTheme = {
@@ -81,9 +97,13 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <NotificationNavigation />
-          <SplashGate>
+          <SplashGate fontsReady={fontsReady}>
             <ThemeProvider value={navigationTheme}>
-              <Stack screenOptions={{ headerShown: false }}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  headerTitleStyle: preferredHeaderStyle,
+                }}>
                 <Stack.Screen name="(app)" options={{ title: '캘린더' }} />
                 <Stack.Screen
                   name="account"
@@ -123,7 +143,11 @@ function RootLayout() {
                 />
                 <Stack.Screen
                   name="event/[id]"
-                  options={{ presentation: 'modal', headerShown: true, title: '일정' }}
+                  options={{ presentation: 'modal', headerShown: false, title: '일정' }}
+                />
+                <Stack.Screen
+                  name="event-edit"
+                  options={{ presentation: 'modal', headerShown: true, title: '일정 수정' }}
                 />
                 <Stack.Screen
                   name="notifications"

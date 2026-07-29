@@ -192,7 +192,7 @@ export default function DayScreen() {
             ) : null}
           </View>
 
-          {events.isPending || deviceEvents.isPending ? (
+          {events.isPending || deviceEvents.isLoading ? (
             <ActivityIndicator color={colors.accent} style={styles.loading} />
           ) : events.isError || deviceEvents.isError ? (
             <Txt variant="caption" tone="danger" style={styles.feedback}>

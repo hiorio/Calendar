@@ -80,6 +80,7 @@ npx supabase db push
 | `20260727000300_notification_worker_grants.sql` | outbox·전송내역의 service role 전용 권한 |
 | `20260728000100_attachment_files.sql` | 일정 첨부파일 원본 이름과 nullable 작성자 보완 |
 | `20260728000200_calendar_stickers.sql` | 날짜·캘린더별 스티커와 RLS·컬럼 권한 |
+| `20260728000300_calendar_covers.sql` | 대표 사진 교체 시 구성원의 이전 커버 파일 정리 정책 |
 
 `0004`는 `storage.objects`에 정책을 만들기 때문에 SQL Editor(= `postgres` 역할)에서
 실행해야 합니다.

@@ -65,6 +65,38 @@ Dashboard의 Authentication에서 다음을 설정합니다.
   - 배포한 웹 주소의 `/auth-callback`
 - Google/Apple을 쓸 경우 각 공급자의 클라이언트 정보 등록
 
+### Google 로그인
+
+1. Google Auth Platform에서 OAuth 클라이언트를 **웹 애플리케이션**으로 만듭니다.
+2. Authorized redirect URI에는 앱 스킴이 아니라 Supabase가 표시하는
+   `https://<project-ref>.supabase.co/auth/v1/callback`을 등록합니다.
+3. Supabase Authentication → Providers → Google에 Client ID와 Client Secret을 넣고
+   활성화합니다.
+4. Google 동의 화면의 scope는 `openid`, 이메일, 기본 프로필만 둡니다. 캘린더 scope는
+   로그인에 섞지 않고 외부 캘린더 연동을 구현할 때 별도 동의로 받습니다.
+
+### Apple 로그인
+
+1. 각 iOS bundle ID의 App ID에서 Sign in with Apple capability를 켭니다.
+2. iOS 네이티브 로그인만 쓸 때는 Supabase Apple provider의 Client IDs에 해당 App ID를
+   넣습니다. preview와 production bundle ID를 모두 허용해야 두 앱에서 테스트할 수 있습니다.
+3. 웹 OAuth도 제공한다면 Services ID를 만들고, Apple Website URLs의 return URL에
+   `https://<project-ref>.supabase.co/auth/v1/callback`을 등록합니다. Supabase Client IDs에는
+   **Services ID를 첫 번째**, 네이티브 App ID들을 그 뒤에 쉼표로 넣습니다.
+4. Apple OAuth용 client secret은 최대 6개월이므로 웹 OAuth를 켰다면 만료 전 교체 일정을
+   별도로 관리합니다. 현재 iOS 앱의 네이티브 ID token 로그인 자체에는 이 회전 작업이
+   필요하지 않습니다.
+
+### 출시 전 계정 분리 확인
+
+- 게스트에서 Google/Apple `계정 연결` 후 사용자 id와 기존 캘린더가 유지되는지
+- A 계정에서 로그아웃 후 B 계정으로 로그인했을 때 A의 캘린더·활동·알림이 보이지 않는지
+- Google 계정 선택 화면에서 다른 테스트 계정 두 개를 실제로 선택할 수 있는지
+- Apple의 `나의 이메일 가리기`와 두 번째 로그인(이름이 다시 오지 않음)에서도 프로필이
+  정상인지
+- 인증 창 취소, 네트워크 단절, 이미 다른 계정에 연결된 identity 오류가 데이터 손실 없이
+  처리되는지
+
 ### 푸시 워커
 
 충분히 긴 임의 문자열을 Edge Function secret으로 등록합니다.

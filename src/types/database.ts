@@ -15,6 +15,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json } | 
 export type MemberRole = 'OWNER' | 'MEMBER';
 export type ExceptionType = 'CANCELLED' | 'MODIFIED';
 export type ActivityType =
+  | 'CALENDAR_UPDATED'
   | 'EVENT_CREATED'
   | 'EVENT_UPDATED'
   | 'EVENT_DELETED'

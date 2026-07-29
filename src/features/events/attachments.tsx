@@ -5,7 +5,7 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import * as WebBrowser from 'expo-web-browser';
 import { useState } from 'react';
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -47,11 +47,14 @@ export function AttachmentDraftPicker({
   drafts,
   onChange,
   disabled = false,
+  compact = false,
 }: {
   drafts: AttachmentDraft[];
   onChange: (drafts: AttachmentDraft[]) => void;
   disabled?: boolean;
+  compact?: boolean;
 }) {
+  const { colors } = useTheme();
   const [error, setError] = useState<string | null>(null);
 
   async function add(kind: 'photo' | 'file') {
@@ -63,6 +66,66 @@ export function AttachmentDraftPicker({
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  if (compact) {
+    return (
+      <View style={styles.compactDrafts}>
+        <View style={styles.compactDraftHeading}>
+          <View style={styles.compactDraftLabel}>
+            <Ionicons name="attach-outline" size={20} color={colors.accent} />
+            <Txt variant="body">첨부</Txt>
+            {drafts.length ? (
+              <Txt variant="caption" tone="tertiary">
+                {drafts.length}개
+              </Txt>
+            ) : null}
+          </View>
+          <View style={styles.compactDraftActions}>
+            <IconButton
+              icon="image-outline"
+              label="사진 선택"
+              disabled={disabled || drafts.length >= MAX_FILES}
+              onPress={() => add('photo')}
+            />
+            <IconButton
+              icon="document-outline"
+              label="파일 선택"
+              disabled={disabled || drafts.length >= MAX_FILES}
+              onPress={() => add('file')}
+            />
+          </View>
+        </View>
+
+        {drafts.length ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.compactDraftList}>
+            {drafts.map((draft) => (
+              <View
+                key={draft.id}
+                style={[styles.compactDraftChip, { backgroundColor: colors.surfaceMuted }]}>
+                <Txt variant="caption" numberOfLines={1} style={styles.compactDraftName}>
+                  {draft.name}
+                </Txt>
+                <IconButton
+                  icon="close"
+                  label={`${draft.name} 첨부 취소`}
+                  onPress={() => onChange(drafts.filter((item) => item.id !== draft.id))}
+                />
+              </View>
+            ))}
+          </ScrollView>
+        ) : null}
+
+        {error ? (
+          <Txt variant="caption" tone="danger">
+            {error}
+          </Txt>
+        ) : null}
+      </View>
+    );
   }
 
   return (
@@ -432,6 +495,30 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
   },
   pickerButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  compactDrafts: { gap: Spacing.xs },
+  compactDraftHeading: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+  },
+  compactDraftLabel: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+  },
+  compactDraftActions: { flexDirection: 'row', gap: Spacing.xs },
+  compactDraftList: { gap: Spacing.sm, paddingHorizontal: Spacing.lg },
+  compactDraftChip: {
+    height: 34,
+    maxWidth: 190,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderRadius: Radius.pill,
+    paddingLeft: Spacing.md,
+  },
+  compactDraftName: { maxWidth: 140 },
   attachmentRow: {
     minHeight: 64,
     flexDirection: 'row',

@@ -16,7 +16,28 @@ export type DaySticker = {
 export const stickerKeys = {
   all: ['calendar-stickers'] as const,
   day: (date: string) => ['calendar-stickers', 'day', date] as const,
+  range: (start: string, end: string) =>
+    ['calendar-stickers', 'range', start, end] as const,
 };
+
+function mapStickerRows(data: unknown): DaySticker[] {
+  type Row = {
+    id: string;
+    calendar_id: string;
+    sticker_date: string;
+    sticker_key: StickerKey;
+    calendars: { name: string; color: string } | null;
+  };
+
+  return (data as Row[]).map((row) => ({
+    id: row.id,
+    calendarId: row.calendar_id,
+    calendarName: row.calendars?.name ?? '',
+    calendarColor: row.calendars?.color ?? '',
+    date: row.sticker_date,
+    stickerKey: row.sticker_key,
+  }));
+}
 
 export function useDayStickers(date: string) {
   const { user } = useAuth();
@@ -32,23 +53,27 @@ export function useDayStickers(date: string) {
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+      return mapStickerRows(data);
+    },
+  });
+}
 
-      type Row = {
-        id: string;
-        calendar_id: string;
-        sticker_date: string;
-        sticker_key: StickerKey;
-        calendars: { name: string; color: string } | null;
-      };
+export function useMonthStickers(start: string, end: string) {
+  const { user } = useAuth();
 
-      return (data as unknown as Row[]).map((row) => ({
-        id: row.id,
-        calendarId: row.calendar_id,
-        calendarName: row.calendars?.name ?? '',
-        calendarColor: row.calendars?.color ?? '',
-        date: row.sticker_date,
-        stickerKey: row.sticker_key,
-      }));
+  return useQuery<DaySticker[]>({
+    queryKey: stickerKeys.range(start, end),
+    enabled: Boolean(user && start && end),
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('calendar_stickers')
+        .select('id, calendar_id, sticker_date, sticker_key, calendars(name, color)')
+        .gte('sticker_date', start)
+        .lt('sticker_date', end)
+        .order('created_at', { ascending: true });
+
+      if (error) throw error;
+      return mapStickerRows(data);
     },
   });
 }
@@ -71,7 +96,7 @@ export function useSetDaySticker(date: string) {
       });
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.day(date) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
   });
 }
 
@@ -88,6 +113,6 @@ export function useRemoveDaySticker(date: string) {
 
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.day(date) }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
   });
 }

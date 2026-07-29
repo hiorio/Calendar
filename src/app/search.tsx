@@ -5,6 +5,7 @@ import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native
 
 import { Card, Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing, Typography } from '@/constants/theme';
@@ -18,6 +19,7 @@ export default function SearchScreen() {
   const { colors, scheme } = useTheme();
   const [query, setQuery] = useState('');
   const results = useEventSearch(query);
+  const preferredInputStyle = usePreferredTextStyle(styles.input);
 
   return (
     <ScrollView
@@ -46,7 +48,7 @@ export default function SearchScreen() {
             placeholder="일정 이름 검색"
             placeholderTextColor={colors.textTertiary}
             returnKeyType="search"
-            style={[styles.input, { color: colors.text }]}
+            style={[styles.input, { color: colors.text }, preferredInputStyle]}
           />
           {query ? (
             <Pressable accessibilityRole="button" accessibilityLabel="검색어 지우기" onPress={() => setQuery('')}>

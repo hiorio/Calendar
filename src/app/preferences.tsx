@@ -11,13 +11,37 @@ import { Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme
 import { useAuth } from '@/features/auth/auth-provider';
 import { useTheme } from '@/hooks/use-theme';
 import { useCalendarPreference } from '@/stores/calendar-preference';
-import { useThemePreference } from '@/stores/theme-preference';
 import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
+import {
+  useThemePreference,
+  type FontFamilyPreference,
+  type FontSizePreference,
+  type SchemePreference,
+} from '@/stores/theme-preference';
 
 const THEME_OPTIONS: { id: AppTheme; title: string; description: string }[] = [
   { id: 'apricot', title: '살구', description: '따뜻하고 편안한 기본 테마' },
   { id: 'indigo', title: '쪽빛', description: '차분하고 또렷한 파란 테마' },
   { id: 'ink', title: '먹빛', description: '선명한 흑백과 청록 포인트' },
+];
+
+const SCHEME_OPTIONS: { id: SchemePreference; title: string }[] = [
+  { id: 'system', title: '기기 설정' },
+  { id: 'light', title: '라이트' },
+  { id: 'dark', title: '다크' },
+];
+
+const FONT_SIZE_OPTIONS: { id: FontSizePreference; title: string }[] = [
+  { id: 'small', title: '작게' },
+  { id: 'standard', title: '보통' },
+  { id: 'large', title: '크게' },
+  { id: 'extraLarge', title: '매우 크게' },
+];
+
+const FONT_FAMILY_OPTIONS: { id: FontFamilyPreference; title: string }[] = [
+  { id: 'system', title: '기본' },
+  { id: 'nanumGothic', title: '나눔고딕' },
+  { id: 'nanumMyeongjo', title: '나눔명조' },
 ];
 
 export default function PreferencesScreen() {
@@ -26,6 +50,12 @@ export default function PreferencesScreen() {
   const [signingOut, setSigningOut] = useState(false);
   const deviceCalendarsConnected = useDeviceCalendarPreference((state) => state.connected);
   const selectedDeviceCalendars = useDeviceCalendarPreference((state) => state.selectedIds.length);
+  const schemePreference = useThemePreference((state) => state.schemePreference);
+  const fontSizePreference = useThemePreference((state) => state.fontSizePreference);
+  const fontFamilyPreference = useThemePreference((state) => state.fontFamilyPreference);
+  const setSchemePreference = useThemePreference((state) => state.setSchemePreference);
+  const setFontSizePreference = useThemePreference((state) => state.setFontSizePreference);
+  const setFontFamilyPreference = useThemePreference((state) => state.setFontFamilyPreference);
   const {
     weekStart,
     showWeekNumbers,
@@ -128,7 +158,29 @@ export default function PreferencesScreen() {
 
         <Section title="표시">
           <Card padded={false}>
-            <ListRow title="폰트 크기" subtitle="iPhone의 텍스트 크기 설정을 따릅니다." value="기기 설정" />
+            <ChoiceSetting
+              title="화면 스타일"
+              subtitle="기본값은 iPhone의 라이트·다크 모드를 따릅니다."
+              options={SCHEME_OPTIONS}
+              value={schemePreference}
+              onChange={setSchemePreference}
+            />
+            <Divider />
+            <ChoiceSetting
+              title="폰트 크기"
+              subtitle="기기의 손쉬운 사용 글자 크기도 함께 반영됩니다."
+              options={FONT_SIZE_OPTIONS}
+              value={fontSizePreference}
+              onChange={setFontSizePreference}
+            />
+            <Divider />
+            <ChoiceSetting
+              title="폰트"
+              subtitle="한글 본문과 일정 제목에 적용됩니다."
+              options={FONT_FAMILY_OPTIONS}
+              value={fontFamilyPreference}
+              onChange={setFontFamilyPreference}
+            />
             <Divider />
             <SwitchRow
               title="토요일을 파란색으로"
@@ -167,7 +219,9 @@ export default function PreferencesScreen() {
                   icon="log-in-outline"
                   title="이미 계정이 있어요"
                   subtitle="기존 계정으로 로그인"
-                  onPress={() => router.push('/account')}
+                  onPress={() =>
+                    router.push({ pathname: '/account', params: { mode: 'sign-in' } })
+                  }
                 />
               </>
             ) : (
@@ -191,6 +245,57 @@ export default function PreferencesScreen() {
         </Section>
       </Content>
     </ScrollView>
+  );
+}
+
+function ChoiceSetting<T extends string>({
+  title,
+  subtitle,
+  options,
+  value,
+  onChange,
+}: {
+  title: string;
+  subtitle: string;
+  options: { id: T; title: string }[];
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={styles.choiceSetting}>
+      <View style={styles.choiceLabel}>
+        <Txt variant="bodyStrong">{title}</Txt>
+        <Txt variant="caption" tone="secondary">
+          {subtitle}
+        </Txt>
+      </View>
+      <View accessibilityRole="radiogroup" style={styles.choiceOptions}>
+        {options.map((option) => {
+          const selected = value === option.id;
+          return (
+            <Pressable
+              key={option.id}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: selected }}
+              onPress={() => onChange(option.id)}
+              style={({ pressed }) => [
+                styles.choice,
+                {
+                  backgroundColor: selected ? colors.accentSoft : colors.surfaceMuted,
+                  borderColor: selected ? colors.accent : colors.border,
+                },
+                pressed && { backgroundColor: colors.surfacePressed },
+              ]}>
+              <Txt variant="caption" tone={selected ? 'accent' : 'secondary'}>
+                {option.title}
+              </Txt>
+            </Pressable>
+          );
+        })}
+      </View>
+    </View>
   );
 }
 
@@ -296,6 +401,21 @@ const styles = StyleSheet.create({
   section: { gap: Spacing.sm },
   sectionTitle: { paddingLeft: Spacing.xs },
   note: { paddingHorizontal: Spacing.xs },
+  choiceSetting: {
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+  },
+  choiceLabel: { gap: 2 },
+  choiceOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  choice: {
+    minHeight: 36,
+    justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+  },
   themeOption: {
     minHeight: 70,
     flexDirection: 'row',

@@ -23,6 +23,9 @@ const { notificationRoute } = await import('../src/features/notifications/routes
 const { buildMonthMatrix, isoWeekNumber, weekdayLabels } = await import('../src/lib/date.ts');
 const { buildPushMessage, chunks, retryDelaySeconds, expoErrorCode } =
   await import('../supabase/functions/_shared/push.ts');
+const { parseOAuthCallback } = await import('../src/features/auth/oauth-callback.ts');
+const { parseSocialProviderAvailability } =
+  await import('../src/features/auth/provider-settings-parser.ts');
 
 let passed = 0;
 let failed = 0;
@@ -383,6 +386,43 @@ console.log('\n10. 푸시 알림 발송');
     [1, 2, 3, 9].map(retryDelaySeconds), [15, 30, 60, 300]);
   check('DeviceNotRegistered 오류를 읽는다',
     expoErrorCode({ details: { error: 'DeviceNotRegistered' } }) === 'DeviceNotRegistered');
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n11. 소셜 로그인 callback 검증');
+{
+  const expected = 'timeline-development://auth-callback';
+
+  eq(
+    '등록한 callback의 인증 코드만 받는다',
+    parseOAuthCallback(`${expected}?code=one-time-code`, expected),
+    { ok: true, code: 'one-time-code' },
+  );
+  eq(
+    '다른 callback 주소는 거부한다',
+    parseOAuthCallback('timeline-development://wrong?code=stolen', expected),
+    { ok: false, message: '로그인 응답 주소를 확인할 수 없습니다' },
+  );
+  eq(
+    '공급자가 돌려준 오류를 사용자에게 전달한다',
+    parseOAuthCallback(`${expected}?error=access_denied&error_description=Permission%20denied`, expected),
+    { ok: false, message: 'Permission denied' },
+  );
+  eq(
+    '인증 코드가 없는 성공 응답은 거부한다',
+    parseOAuthCallback(expected, expected),
+    { ok: false, message: '인증 코드를 받지 못했습니다' },
+  );
+  eq(
+    '서버에서 활성화한 공급자만 사용할 수 있다고 읽는다',
+    parseSocialProviderAvailability({ external: { google: true, apple: false } }),
+    { google: true, apple: false },
+  );
+  eq(
+    '형식이 잘못된 설정은 모두 비활성으로 본다',
+    parseSocialProviderAvailability({ external: null }),
+    { google: false, apple: false },
+  );
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

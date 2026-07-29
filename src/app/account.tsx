@@ -1,6 +1,6 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -11,13 +11,11 @@ import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { SignInCancelledError, isAppleSignInAvailable } from '@/features/auth/oauth';
 import {
-  SignInCancelledError,
-  isNativeAppleSignInSupported,
-  linkOAuthAccount,
-  signInWithAppleNative,
-  signInWithOAuth,
-} from '@/features/auth/oauth';
+  getSocialProviderAvailability,
+  type SocialProviderAvailability,
+} from '@/features/auth/provider-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/env';
 
@@ -34,27 +32,70 @@ const MODES = [
  */
 export default function AccountScreen() {
   const { colors, scheme } = useTheme();
-  const { isGuest, bootstrapError, createAccount, signInWithEmail } = useAuth();
-  const { reason } = useLocalSearchParams<{ reason?: string }>();
+  const {
+    isGuest,
+    bootstrapError,
+    createAccount,
+    signInWithEmail,
+    connectSocialAccount,
+    signInWithSocialAccount,
+  } = useAuth();
+  const { reason, mode: requestedMode } = useLocalSearchParams<{
+    reason?: string;
+    mode?: Mode;
+  }>();
 
-  const [mode, setMode] = useState<Mode>('create');
+  const [mode, setMode] = useState<Mode>(requestedMode === 'sign-in' ? 'sign-in' : 'create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
   const [pending, setPending] = useState<null | 'email' | 'google' | 'apple'>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [providerAvailability, setProviderAvailability] =
+    useState<SocialProviderAvailability | null>(null);
 
   const busy = pending !== null;
   const disabled = busy || !isSupabaseConfigured;
   const creating = mode === 'create';
+  const googleDisabled = disabled || providerAvailability?.google === false;
+  const appleDisabled = disabled || providerAvailability?.apple === false;
+
+  useEffect(() => {
+    let active = true;
+    void isAppleSignInAvailable().then((available) => {
+      if (active) setAppleAvailable(available);
+    });
+    if (isSupabaseConfigured) {
+      void getSocialProviderAvailability()
+        .then((availability) => {
+          if (active) setProviderAvailability(availability);
+        })
+        .catch(() => {
+          // 오프라인에서는 기존처럼 버튼을 열어 두고 실제 로그인 오류를 표시한다.
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, []);
 
   async function run(kind: NonNullable<typeof pending>, action: () => Promise<void>) {
+    if (busy) return;
     setMessage(null);
     setPending(kind);
     try {
       await action();
     } catch (e) {
       if (e instanceof SignInCancelledError) return;
+      if (kind !== 'email' && isIdentityConflict(e)) {
+        setMode('sign-in');
+        setMessage({
+          tone: 'info',
+          text: '이미 다른 TimeLine 계정에 연결된 소셜 계정입니다. 로그인으로 전환했으니 다시 눌러 주세요.',
+        });
+        return;
+      }
       setMessage({ tone: 'error', text: toMessage(e) });
     } finally {
       setPending(null);
@@ -97,9 +138,16 @@ export default function AccountScreen() {
   /** 게스트면 연결(데이터 유지), 아니면 일반 로그인 */
   function socialAction(provider: 'google' | 'apple') {
     return async () => {
-      if (creating && isGuest) await linkOAuthAccount(provider);
-      else if (provider === 'apple' && isNativeAppleSignInSupported) await signInWithAppleNative();
-      else await signInWithOAuth(provider);
+      if (creating) {
+        if (!nickname.trim()) {
+          setMessage({ tone: 'error', text: '닉네임을 입력해 주세요' });
+          return;
+        }
+        if (!isGuest) throw new Error('이미 계정으로 로그인되어 있습니다');
+        await connectSocialAccount(provider, nickname);
+      } else {
+        await signInWithSocialAccount(provider);
+      }
       done();
     };
   }
@@ -209,14 +257,14 @@ export default function AccountScreen() {
           </View>
 
           <Button
-            label="Google로 계속하기"
+            label={creating ? 'Google 계정 연결' : 'Google로 로그인'}
             variant="secondary"
             loading={pending === 'google'}
-            disabled={disabled}
+            disabled={googleDisabled}
             onPress={() => run('google', socialAction('google'))}
           />
 
-          {isNativeAppleSignInSupported && (
+          {appleAvailable && (
             <AppleAuthentication.AppleAuthenticationButton
               buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
               buttonStyle={
@@ -225,10 +273,19 @@ export default function AccountScreen() {
                   : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
               }
               cornerRadius={Radius.md}
-              style={styles.appleButton}
-              onPress={() => run('apple', socialAction('apple'))}
+              style={[styles.appleButton, appleDisabled && styles.disabled]}
+              onPress={() => {
+                if (!appleDisabled) void run('apple', socialAction('apple'));
+              }}
             />
           )}
+
+          <Txt variant="micro" tone="tertiary">
+            {providerAvailability &&
+            (!providerAvailability.google || (appleAvailable && !providerAvailability.apple))
+              ? '서버에서 활성화된 소셜 로그인만 사용할 수 있습니다.'
+              : '소셜 로그인에는 이메일과 기본 프로필만 사용하며 캘린더 접근 권한은 요청하지 않습니다.'}
+          </Txt>
 
           {isGuest ? (
             <Pressable accessibilityRole="button" onPress={done} style={styles.later}>
@@ -253,8 +310,20 @@ function toMessage(error: unknown) {
   if (/email not confirmed/i.test(raw)) return '이메일 확인이 아직 완료되지 않았습니다';
   if (/manual linking is disabled/i.test(raw))
     return 'Supabase에서 Manual Linking을 켜야 소셜 계정을 연결할 수 있습니다';
+  if (/provider is not enabled|unsupported provider/i.test(raw))
+    return '이 로그인 방식은 아직 서버에 연결되지 않았습니다';
+  if (/oauth state|flow state|code verifier/i.test(raw))
+    return '로그인 요청이 만료되었습니다. 처음부터 다시 시도해 주세요';
   if (/network request failed/i.test(raw)) return '네트워크에 연결할 수 없습니다';
   return raw;
+}
+
+function isIdentityConflict(error: unknown) {
+  const authError = error as { code?: string; message?: string };
+  return (
+    authError.code === 'identity_already_exists' ||
+    /identity.*already|already.*linked/i.test(authError.message ?? '')
+  );
 }
 
 const styles = StyleSheet.create({
@@ -268,5 +337,6 @@ const styles = StyleSheet.create({
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
   divider: { flex: 1, height: StyleSheet.hairlineWidth },
   appleButton: { height: 52 },
+  disabled: { opacity: 0.45 },
   later: { alignSelf: 'center', padding: Spacing.md },
 });

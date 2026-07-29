@@ -16,7 +16,10 @@ export function useTheme(): {
   theme: AppTheme;
 } {
   const raw = useColorScheme();
-  const scheme: Scheme = raw === 'dark' ? 'dark' : 'light';
+  const schemePreference = useThemePreference((state) => state.schemePreference);
+  const systemScheme: Scheme = raw === 'dark' ? 'dark' : 'light';
+  const scheme: Scheme =
+    schemePreference === 'system' ? systemScheme : schemePreference;
   const theme = useThemePreference((state) => state.theme);
 
   return { colors: ThemePalettes[theme][scheme], scheme, theme };

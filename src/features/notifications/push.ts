@@ -132,3 +132,55 @@ export async function unregisterPush(userId: string) {
   await supabase.from('device_tokens').delete().eq('user_id', userId).eq('expo_token', token);
   await AsyncStorage.removeItem(TOKEN_KEY);
 }
+
+/**
+ * 기존 계정으로 전환하기 전에 이전 사용자의 푸시 토큰을 잠시 떼어 낸다.
+ *
+ * 로그인에 성공하면 로컬 토큰도 지우고, 취소/실패해 같은 사용자로 남으면 DB 행을
+ * 복구한다. 이 경계가 없으면 한 기기에 이전 사용자와 새 사용자의 토큰 행이 함께 남아
+ * 이전 사용자 앞으로 온 알림이 새 사용자 화면에 표시될 수 있다.
+ */
+export async function withPushDetachedForAccountSwitch<T>(
+  currentUserId: string | null | undefined,
+  action: () => Promise<T>,
+): Promise<T> {
+  if (!currentUserId) return action();
+
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  if (!token) return action();
+
+  const { error: detachError } = await supabase
+    .from('device_tokens')
+    .delete()
+    .eq('user_id', currentUserId)
+    .eq('expo_token', token);
+  if (detachError) throw detachError;
+
+  try {
+    const result = await action();
+    await AsyncStorage.removeItem(TOKEN_KEY);
+    return result;
+  } catch (error) {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user.id === currentUserId) {
+      try {
+        await supabase.from('device_tokens').upsert(
+          {
+            user_id: currentUserId,
+            expo_token: token,
+            platform: Platform.OS === 'ios' ? 'ios' : 'android',
+            updated_at: new Date().toISOString(),
+            disabled_at: null,
+          },
+          { onConflict: 'user_id,expo_token' },
+        );
+      } catch {
+        // 원래 로그인 오류를 보존한다. 토큰은 다음 앱 알림 등록 때 다시 연결된다.
+      }
+    } else {
+      // 인증은 전환됐는데 후처리만 실패한 경우 이전 토큰을 새 사용자에게 넘기지 않는다.
+      await AsyncStorage.removeItem(TOKEN_KEY);
+    }
+    throw error;
+  }
+}

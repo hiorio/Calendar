@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, Tabs, router, type Href } from 'expo-router';
 import { Platform, StyleSheet } from 'react-native';
 
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Typography } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useTheme } from '@/hooks/use-theme';
@@ -38,6 +39,7 @@ const TABS: Tab[] = [
 export default function AppLayout() {
   const { session, isLoading } = useAuth();
   const { colors } = useTheme();
+  const preferredLabelStyle = usePreferredTextStyle(styles.label);
 
   // 스플래시가 아직 떠 있는 상태. 라우팅을 결정하지 않는다.
   if (isLoading) return null;
@@ -51,7 +53,7 @@ export default function AppLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
-        tabBarLabelStyle: styles.label,
+        tabBarLabelStyle: [styles.label, preferredLabelStyle],
         tabBarStyle: [
           styles.bar,
           { backgroundColor: colors.chrome, borderTopColor: colors.chromeBorder },

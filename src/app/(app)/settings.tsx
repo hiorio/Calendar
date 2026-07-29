@@ -27,12 +27,27 @@ const SHORTCUTS: { title: string; icon: IconName; href: Href }[] = [
 ];
 
 const THEME_LABELS = { apricot: '살구', indigo: '쪽빛', ink: '먹빛' } as const;
+const SCHEME_LABELS = { system: '기기 설정', light: '라이트', dark: '다크' } as const;
+const FONT_SIZE_LABELS = {
+  small: '작게',
+  standard: '보통',
+  large: '크게',
+  extraLarge: '매우 크게',
+} as const;
+const FONT_FAMILY_LABELS = {
+  system: '기본',
+  nanumGothic: '나눔고딕',
+  nanumMyeongjo: '나눔명조',
+} as const;
 
 export default function MoreScreen() {
   const { colors } = useTheme();
   const { isGuest } = useAuth();
   const profile = useProfile();
   const theme = useThemePreference((state) => state.theme);
+  const schemePreference = useThemePreference((state) => state.schemePreference);
+  const fontSizePreference = useThemePreference((state) => state.fontSizePreference);
+  const fontFamilyPreference = useThemePreference((state) => state.fontFamilyPreference);
   const deviceCalendarsConnected = useDeviceCalendarPreference((state) => state.connected);
   const selectedDeviceCalendars = useDeviceCalendarPreference((state) => state.selectedIds.length);
   const { weekStart, showWeekNumbers, showLunar } = useCalendarPreference();
@@ -139,6 +154,18 @@ export default function MoreScreen() {
               <ListRow
                 title="화면 테마"
                 value={THEME_LABELS[theme]}
+                onPress={() => router.push('/preferences')}
+              />
+              <Divider />
+              <ListRow
+                title="화면 스타일"
+                value={SCHEME_LABELS[schemePreference]}
+                onPress={() => router.push('/preferences')}
+              />
+              <Divider />
+              <ListRow
+                title="글자"
+                value={`${FONT_FAMILY_LABELS[fontFamilyPreference]} · ${FONT_SIZE_LABELS[fontSizePreference]}`}
                 onPress={() => router.push('/preferences')}
               />
               <Divider />
