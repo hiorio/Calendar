@@ -33,7 +33,7 @@ npm run db:smoke   # RLS·트리거가 의도대로 도는지 확인
 
 로컬 설정은 `config.toml`에 있습니다. 이 프로젝트에서 손댄 값:
 
-- `site_url` / `additional_redirect_urls` — 웹(8081)과 앱 스킴(`timeline://auth-callback`)
+- `site_url` / `additional_redirect_urls` — 웹(8081)과 앱 스킴(`timeflower://auth-callback`)
 - `auth.email.enable_confirmations = false` (기본값) — 가입 즉시 로그인됩니다
 
 | 명령 | 설명 |
@@ -99,7 +99,7 @@ Authentication → Providers
 Authentication → URL Configuration → **Redirect URLs**:
 
 ```
-timeline://auth-callback
+timeflower://auth-callback
 exp://127.0.0.1:8081/--/auth-callback
 ```
 

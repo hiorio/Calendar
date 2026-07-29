@@ -18,7 +18,7 @@ export type InvitePreview = {
 /**
  * 초대 링크.
  *
- * 개발 중에는 `timeline://join?code=...` / `http://localhost:8081/join?code=...`가 된다.
+ * 개발 중에는 `timeflower://join?code=...` / `http://localhost:8081/join?code=...`가 된다.
  * 실제 출시할 때는 메신저에서 눌리도록 웹 도메인 기반의 유니버설 링크로 바꿔야 한다.
  */
 export function buildInviteLink(code: string) {
