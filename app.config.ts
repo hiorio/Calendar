@@ -41,7 +41,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   return {
     ...config,
-    name: `TimeLine${displaySuffix}`,
+    name: `TimeFlower${displaySuffix}`,
     slug: 'timeline',
     scheme: isProduction ? 'timeline' : `timeline-${variant}`,
     ios: {

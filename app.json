@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TimeLine",
+    "name": "TimeFlower",
     "slug": "timeline",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -39,15 +39,15 @@
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#E2673F",
+          "backgroundColor": "#EBE5DC",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 112
+          "imageWidth": 180
         }
       ],
       [
         "expo-calendar",
         {
-          "calendarPermission": "기기 캘린더의 일정을 TimeLine으로 가져오기 위해 캘린더 접근이 필요합니다.",
+          "calendarPermission": "기기 캘린더의 일정을 TimeFlower로 가져오기 위해 캘린더 접근이 필요합니다.",
           "remindersPermission": false,
           "writeOnlyAccess": false
         }

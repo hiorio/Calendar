@@ -2,6 +2,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
+import { SOCIAL_AUTH_ENABLED } from '@/constants/features';
 import {
   isNativeAppleSignInSupported,
   linkAppleNative,
@@ -156,6 +157,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
 
       async connectSocialAccount(provider, nickname) {
+        if (!SOCIAL_AUTH_ENABLED) {
+          throw new Error('소셜 로그인은 현재 제공하지 않습니다');
+        }
+
         const currentUserId = session?.user.id;
         if (!currentUserId || !session.user.is_anonymous) {
           throw new Error('게스트 세션에서만 소셜 계정을 연결할 수 있습니다');
@@ -170,6 +175,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
 
       async signInWithSocialAccount(provider) {
+        if (!SOCIAL_AUTH_ENABLED) {
+          throw new Error('소셜 로그인은 현재 제공하지 않습니다');
+        }
+
         await withPushDetachedForAccountSwitch(session?.user.id, async () => {
           if (provider === 'apple' && isNativeAppleSignInSupported) {
             await signInWithAppleNative();

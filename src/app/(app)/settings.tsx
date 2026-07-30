@@ -66,7 +66,7 @@ export default function MoreScreen() {
               <View style={styles.brandText}>
                 <Txt variant="subtitle">일정과 기록을 한 흐름으로</Txt>
                 <Txt variant="caption" tone="secondary">
-                  TimeLine의 설정과 부가 기능을 여기에서 관리합니다.
+                  TimeFlower의 설정과 부가 기능을 여기에서 관리합니다.
                 </Txt>
               </View>
             </Card>
@@ -117,7 +117,8 @@ export default function MoreScreen() {
               {isGuest ? (
                 <View style={styles.accountAction}>
                   <Txt variant="caption" tone="secondary">
-                    계정을 만들면 다른 기기에서 이어 쓰고 캘린더를 공유할 수 있습니다.
+                    가입 없이도 앱을 사용할 수 있어요. 재설치하거나 기기를 바꿔도 데이터를 이어서
+                    쓰려면 계정을 만들어 주세요.
                   </Txt>
                   <Button label="계정 만들기" size="md" onPress={() => router.push('/account')} />
                 </View>

@@ -36,7 +36,7 @@ preview와 production이 같은 DB를 쓰면 테스트 데이터·마이그레�
 가져오기를 위해 읽기 권한을 선언했습니다. 현재 앱이 사용하지 않는 권한을 미리 넓게
 요청하지 않습니다.
 
-`expo-sharing`의 config plugin은 다른 앱에서 TimeLine으로 파일을 보내는 Share Extension을
+`expo-sharing`의 config plugin은 다른 앱에서 TimeFlower로 파일을 보내는 Share Extension을
 추가합니다. 현재 요구는 앱에서 iOS 공유 시트를 여는 것이므로 모듈만 포함하고 extension은
 만들지 않습니다.
 

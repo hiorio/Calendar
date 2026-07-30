@@ -35,7 +35,7 @@ export default function ExternalCalendarsScreen() {
           '캘린더 접근이 필요합니다',
           permission.canAskAgain
             ? '다시 연결을 눌러 접근을 허용해 주세요.'
-            : 'iPhone 설정에서 TimeLine의 캘린더 접근을 전체 접근으로 바꿔 주세요.',
+            : 'iPhone 설정에서 TimeFlower의 캘린더 접근을 전체 접근으로 바꿔 주세요.',
           permission.canAskAgain
             ? [{ text: '확인' }]
             : [
@@ -58,7 +58,7 @@ export default function ExternalCalendarsScreen() {
   function handleDisconnect() {
     Alert.alert(
       '기기 캘린더 연결을 해제할까요?',
-      'TimeLine에서만 숨겨지며 iPhone의 원본 일정은 변경되지 않습니다.',
+      'TimeFlower에서만 숨겨지며 iPhone의 원본 일정은 변경되지 않습니다.',
       [
         { text: '취소', style: 'cancel' },
         { text: '연결 해제', style: 'destructive', onPress: disconnect },
@@ -75,7 +75,7 @@ export default function ExternalCalendarsScreen() {
         <View style={styles.intro}>
           <Txt variant="display">외부 캘린더</Txt>
           <Txt variant="body" tone="secondary">
-            iPhone에 등록된 iCloud·Google·구독 캘린더를 TimeLine에서 함께 봅니다.
+            iPhone에 등록된 iCloud·Google·구독 캘린더를 TimeFlower에서 함께 봅니다.
           </Txt>
         </View>
 

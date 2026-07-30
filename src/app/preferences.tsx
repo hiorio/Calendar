@@ -211,14 +211,14 @@ export default function PreferencesScreen() {
                 <ListRow
                   icon="person-add-outline"
                   title="계정 만들기"
-                  subtitle="현재 데이터를 유지한 채 계정으로 전환"
+                  subtitle="재설치·기기 변경에도 현재 데이터 보존"
                   onPress={() => router.push('/account')}
                 />
                 <Divider />
                 <ListRow
                   icon="log-in-outline"
                   title="이미 계정이 있어요"
-                  subtitle="기존 계정으로 로그인"
+                  subtitle="재설치·기기 변경 후 데이터 불러오기"
                   onPress={() =>
                     router.push({ pathname: '/account', params: { mode: 'sign-in' } })
                   }

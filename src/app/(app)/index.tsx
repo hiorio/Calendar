@@ -12,9 +12,7 @@ import {
   View,
 } from 'react-native';
 
-import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { EmptyState } from '@/components/ui/empty-state';
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -90,8 +88,6 @@ export default function CalendarScreen() {
     },
     [calendarWidth, moveMonth],
   );
-
-  const hasCalendars = (calendars.data?.length ?? 0) > 0;
 
   const deviceCalendars = useDeviceCalendars();
   const previousPage = useCalendarMonthData(previousMonth, weekStart, hidden);
@@ -312,25 +308,6 @@ export default function CalendarScreen() {
             </ScrollView>
           </Card>
 
-          {!hasCalendars ? (
-            <View style={styles.section}>
-              <Card>
-                <EmptyState
-                  icon="people-outline"
-                  title="함께 볼 캘린더를 만들어요"
-                  description={'가족·연인·친구와 하나의 캘린더를 공유합니다.\n만든 뒤 초대 링크를 보내면 됩니다.'}
-                  action={
-                    <Button
-                      label="캘린더 만들기"
-                      block={false}
-                      onPress={() => router.push('/calendar-new')}
-                    />
-                  }
-                />
-              </Card>
-            </View>
-          ) : null}
-
           {calendars.isError ? (
             <Txt variant="caption" tone="danger" style={styles.error}>
               캘린더를 불러오지 못했습니다: {(calendars.error as Error).message}
@@ -420,7 +397,6 @@ const styles = StyleSheet.create({
   },
   monthPager: { flex: 1, width: '100%' },
   monthPage: { height: '100%' },
-  section: { gap: Spacing.sm, paddingHorizontal: Spacing.xl, paddingTop: Spacing.xl },
   error: { paddingHorizontal: Spacing.xl, paddingTop: Spacing.lg },
 });
 

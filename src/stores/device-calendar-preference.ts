@@ -10,7 +10,7 @@ type DeviceCalendarPreferenceState = {
   disconnect: () => void;
 };
 
-/** 기기 캘린더 권한 자체가 아니라 TimeLine 안에서의 연결·표시 선택을 저장한다. */
+/** 기기 캘린더 권한 자체가 아니라 TimeFlower 안에서의 연결·표시 선택을 저장한다. */
 export const useDeviceCalendarPreference = create<DeviceCalendarPreferenceState>()(
   persist(
     (set) => ({

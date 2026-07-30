@@ -33,6 +33,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6795329202",
+        "appName": "TimeFlower",
+        "language": "ko-KR"
+      }
+    }
   }
 }

@@ -72,9 +72,8 @@
 
 - **삭제 확인 다이얼로그의 취소·삭제 좌우 순서** — 관례대로 삭제를 오른쪽에 뒀지만,
   엄지가 닿기 쉬운 자리에 파괴적 동작이 오는 것이 문제라면 바꿉니다.
-- ~~서비스명과 마크~~ — **`TimeLine`으로 확정.** 마크와 앱 아이콘도 만들어 적용했습니다
-  (아래 7장). 시안 파일의 A-1 스플래시는 아직 옛 작업명(`함께캘린더`)으로 그려져 있으니,
-  다시 손볼 때 갱신하세요.
+- **서비스명과 마크** — 서비스명은 **`TimeFlower`로 변경했습니다.** 새 마크와 앱 아이콘은
+  전달받을 시안을 기준으로 다시 확정합니다(아래 7장).
 - **캘린더 커버 이미지를 둘지** — C-2는 있다고 보고 그렸습니다.
 
 ---
@@ -197,29 +196,22 @@ chromeBorder  경계선            (살구 light: #ECE3DA / 먹빛 light: #191B1
 
 ---
 
-## 7. 이름과 마크 — TimeLine
+## 7. 이름과 마크 — TimeFlower
 
-서비스명은 **TimeLine**입니다.
+서비스명은 **TimeFlower**입니다.
 
 ### 마크
 
-**가로 막대 세 개가 시작점을 어긋내며 쌓인 모습**입니다. 두 가지를 동시에 말합니다.
-
-- 이름이 말하는 **시간의 흐름** — 시작 위치가 한 칸씩 밀려 대각선을 만듭니다.
-  셋 다 왼쪽에 붙이고 길이만 다르게 하면 햄버거 메뉴로 읽힙니다. 그래서 어긋냅니다.
-- **여러 사람의 일정이 겹치는 것** — 투명도가 1.0 · 0.74 · 0.48로 내려갑니다.
-
-이 앱의 월간 뷰에서 하루 칸에 일정이 색 막대로 쌓이는 모습을 그대로 가져왔습니다.
-제품이 실제로 보여 주는 것이 곧 마크입니다.
-
-바탕은 확정 브랜드색인 살구 그라디언트(`#E8734C` → `#C9552F`)입니다.
+TimeFlower 마크는 따뜻한 아이보리 바탕의 주황 꽃과 올리브색 줄기·잎으로 확정했습니다.
+손으로 그린 듯한 약간의 비대칭을 브랜드 개성으로 유지하며, AI 보정으로 형태를
+재해석하지 않습니다. 원본은 `assets/brand/timeflower-icon-source.png` 한 곳에서
+관리합니다.
 
 ### 아이콘 생성
 
-`npm run icons` (= `node scripts/make-icons.mjs`)가 전부 만듭니다. 외부 라이브러리를
-쓰지 않습니다 — 도형이 둥근 사각형뿐이라 부호거리로 안티에일리어싱을 직접 계산하고,
-PNG 인코딩은 Node 내장 zlib로 끝납니다. **PNG를 손으로 고치지 말고 스크립트를
-고친 뒤 다시 돌리세요.**
+`npm run icons` (= `node scripts/make-icons.mjs`)는 확정 원본을 다시 그리지 않고
+Expo 이미지 도구로 iOS 아이콘·스플래시·파비콘 크기에 맞게 리샘플링합니다. 파생 PNG를
+직접 수정하지 않고 원본과 생성 스크립트를 함께 갱신합니다.
 
 | 파일 | 크기 | 용도 |
 |---|---|---|
@@ -227,7 +219,7 @@ PNG 인코딩은 Node 내장 zlib로 끝납니다. **PNG를 손으로 고치지 
 | `android-icon-background.png` | 1024 | Adaptive 배경(단색) |
 | `android-icon-foreground.png` | 1024 | Adaptive 전경. 바깥 33%가 잘리므로 마크를 좁게 |
 | `android-icon-monochrome.png` | 1024 | Android 13+ 테마 아이콘 |
-| `splash-icon.png` | 512 | 스플래시. 배경색은 `app.json`이 칠함 |
+| `splash-icon.png` | 512 | 스플래시. 원본 배경색 `#EBE5DC`와 맞춤 |
 | `favicon.png` | 96 | 웹 |
 
 ### 이름이 들어가는 곳 / 안 들어가는 곳
@@ -245,6 +237,11 @@ PNG 인코딩은 Node 내장 zlib로 끝납니다. **PNG를 손으로 고치지 
 `timeline://`로 나눴습니다. `Linking.createURL`과 `makeRedirectUri`는
 `app.config.ts`에서 파생됩니다. 클라우드 Supabase에는 사용하는 환경의
 `<scheme>://auth-callback`을 각각 등록합니다.
+
+서비스명을 TimeFlower로 바꿔도 기존 TestFlight 앱과 OAuth callback의 연속성을 위해
+이 스킴, EAS slug/project ID, AsyncStorage 키, `com.hiorio.timeline` 번들 식별자는
+유지합니다. 이 값은 사용자에게 보이는 브랜드명이 아니라 이미 배포된 앱의 기술적
+식별자입니다. 특히 번들 식별자를 바꾸면 App Store Connect에서 다른 앱이 됩니다.
 
 iOS 번들 식별자는 저장소에 `com.example.*` 자리표시자를 두지 않습니다.
 EAS 환경의 `APP_IOS_BUNDLE_IDENTIFIER`에서 조직이 소유한 실제 식별자를 받고,
@@ -265,4 +262,4 @@ EAS 환경의 `APP_IOS_BUNDLE_IDENTIFIER`에서 조직이 소유한 실제 식�
 
 **아직 안 그린 것** — B-2·B-3(주간·목록 뷰), C-1·C-3·C-5, E-1~E-3, E-5, D-6,
 아이콘 22종 SVG, 컴포넌트 상태 4종(default·pressed·disabled·error) 정의,
-앱 아이콘·스플래시 최종(마크가 정해지면).
+Android용 adaptive 아이콘 최종 자산(현재 Android 빌드는 하지 않음).
