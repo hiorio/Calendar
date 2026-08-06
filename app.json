@@ -9,7 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "usesAppleSignIn": true,
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
       "adaptiveIcon": {
