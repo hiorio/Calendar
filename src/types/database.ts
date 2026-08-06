@@ -15,6 +15,7 @@ export type Json = string | number | boolean | null | { [key: string]: Json } | 
 export type MemberRole = 'OWNER' | 'MEMBER';
 export type ExceptionType = 'CANCELLED' | 'MODIFIED';
 export type ActivityType =
+  | 'CALENDAR_UPDATED'
   | 'EVENT_CREATED'
   | 'EVENT_UPDATED'
   | 'EVENT_DELETED'
@@ -77,6 +78,17 @@ export type CalendarInvite = {
   use_count: number;
   revoked_at: string | null;
   created_at: string;
+};
+
+export type CalendarSticker = {
+  id: string;
+  calendar_id: string;
+  sticker_date: string;
+  sticker_key: string;
+  /** 계정을 지우면 NULL이 된다. 스티커 자체는 캘린더에 남는다. */
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type EventRow = {
@@ -175,6 +187,7 @@ export type Attachment = {
   comment_id: string | null;
   memo_id: string | null;
   storage_path: string;
+  file_name: string;
   mime_type: string;
   size_bytes: number;
   /** 계정을 지우면 NULL이 된다 (0012) */
@@ -206,11 +219,25 @@ export type NotificationOutbox = {
   type: string;
   dedup_key: string;
   payload: Json;
-  status: 'PENDING' | 'SENT' | 'FAILED';
+  status: 'PENDING' | 'PROCESSING' | 'SENT' | 'FAILED';
   attempts: number;
   last_error: string | null;
   created_at: string;
   sent_at: string | null;
+  claimed_at: string | null;
+  next_attempt_at: string;
+};
+
+export type NotificationDelivery = {
+  outbox_id: number;
+  expo_token: string;
+  status: 'PENDING' | 'TICKETED' | 'DELIVERED' | 'FAILED';
+  attempts: number;
+  ticket_id: string | null;
+  last_error: string | null;
+  ticketed_at: string | null;
+  receipt_checked_at: string | null;
+  created_at: string;
 };
 
 // ---------------------------------------------------------------------------
@@ -235,6 +262,10 @@ export type Database = {
           CalendarInvite,
           'id' | 'expires_at' | 'max_uses' | 'use_count' | 'revoked_at' | 'created_at'
         >
+      >;
+      calendar_stickers: Table<
+        CalendarSticker,
+        Optional<CalendarSticker, 'id' | 'created_at' | 'updated_at'>
       >;
       events: Table<
         EventRow,
@@ -292,7 +323,30 @@ export type Database = {
       device_tokens: Table<DeviceToken, Optional<DeviceToken, 'updated_at' | 'disabled_at'>>;
       notification_outbox: Table<
         NotificationOutbox,
-        Optional<NotificationOutbox, 'id' | 'status' | 'attempts' | 'last_error' | 'created_at' | 'sent_at'>
+        Optional<
+          NotificationOutbox,
+          | 'id'
+          | 'status'
+          | 'attempts'
+          | 'last_error'
+          | 'created_at'
+          | 'sent_at'
+          | 'claimed_at'
+          | 'next_attempt_at'
+        >
+      >;
+      notification_deliveries: Table<
+        NotificationDelivery,
+        Optional<
+          NotificationDelivery,
+          | 'status'
+          | 'attempts'
+          | 'ticket_id'
+          | 'last_error'
+          | 'ticketed_at'
+          | 'receipt_checked_at'
+          | 'created_at'
+        >
       >;
     };
     Views: Record<never, never>;
@@ -307,6 +361,18 @@ export type Database = {
       accept_invite: { Args: { invite_code: string }; Returns: Json };
       account_deletion_preview: { Args: Record<string, never>; Returns: Json };
       delete_my_account: { Args: Record<string, never>; Returns: undefined };
+      claim_notification_outbox: {
+        Args: { p_limit?: number };
+        Returns: NotificationOutbox[];
+      };
+      reminder_scan_candidates: {
+        Args: { p_from: string; p_to: string };
+        Returns: Json[];
+      };
+      set_calendar_sticker: {
+        Args: { p_calendar_id: string; p_sticker_date: string; p_sticker_key: string };
+        Returns: undefined;
+      };
     };
     Enums: {
       member_role: MemberRole;

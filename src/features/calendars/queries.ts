@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
 
 import { useAuth } from '@/features/auth/auth-provider';
+import { CALENDAR_MEDIA_BUCKET } from '@/features/calendars/cover';
 import { supabase } from '@/lib/supabase';
 import type { CalendarInvite, MemberRole } from '@/types/database';
 
@@ -9,6 +10,8 @@ export type MyCalendar = {
   id: string;
   name: string;
   color: string;
+  coverPath: string | null;
+  coverUrl: string | null;
   owner_id: string;
   /** 내 역할 */
   role: MemberRole;
@@ -43,7 +46,7 @@ export function useMyCalendars() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from('calendars')
-        .select('id, name, color, owner_id, calendar_members(user_id, role, muted)')
+        .select('id, name, color, cover_url, owner_id, calendar_members(user_id, role, muted)')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -52,22 +55,31 @@ export function useMyCalendars() {
         id: string;
         name: string;
         color: string;
+        cover_url: string | null;
         owner_id: string;
         calendar_members: { user_id: string; role: MemberRole; muted: boolean }[];
       };
 
-      return (data as unknown as Row[]).map((row) => {
+      return Promise.all((data as unknown as Row[]).map(async (row) => {
         const me = row.calendar_members.find((m) => m.user_id === user!.id);
+        const signed = row.cover_url
+          ? await supabase.storage
+              .from(CALENDAR_MEDIA_BUCKET)
+              .createSignedUrl(row.cover_url, 60 * 60)
+          : null;
+
         return {
           id: row.id,
           name: row.name,
           color: row.color,
+          coverPath: row.cover_url,
+          coverUrl: signed?.data?.signedUrl ?? null,
           owner_id: row.owner_id,
           role: me?.role ?? 'MEMBER',
           memberCount: row.calendar_members.length,
           muted: me?.muted ?? false,
         };
-      });
+      }));
     },
   });
 }
@@ -99,7 +111,12 @@ export function useUpdateCalendar(calendarId: string) {
       const { error } = await supabase.from('calendars').update(patch).eq('id', calendarId);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ['activity'] }),
+      ]);
+    },
   });
 }
 

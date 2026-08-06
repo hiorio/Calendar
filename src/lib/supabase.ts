@@ -1,5 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, processLock } from '@supabase/supabase-js';
 import { AppState, Platform } from 'react-native';
 import 'react-native-url-polyfill/auto';
 
@@ -20,6 +20,8 @@ export const supabase = createClient<Database>(env.supabaseUrl, env.supabaseAnon
     // 모바일에서는 딥링크를 직접 처리한다 (features/auth/oauth.ts)
     detectSessionInUrl: Platform.OS === 'web' && !isServer,
     flowType: 'pkce',
+    // 로그인·토큰 갱신이 겹쳐 같은 저장소를 동시에 덮어쓰지 않게 한다.
+    lock: processLock,
   },
 });
 

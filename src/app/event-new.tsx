@@ -1,23 +1,66 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-provider';
 import { useMyCalendars } from '@/features/calendars/queries';
-import { EventForm } from '@/features/events/event-form';
-import { useCreateEvent } from '@/features/events/queries';
+import {
+  uploadAttachmentDrafts,
+  type AttachmentDraft,
+} from '@/features/events/attachment-queries';
+import { AttachmentDraftPicker } from '@/features/events/attachments';
+import { EventEditorHeader } from '@/features/events/event-editor-header';
+import { EventForm, type EventFormHandle } from '@/features/events/event-form';
+import { useCreateEvent, type EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { notify } from '@/lib/confirm';
 import { parseDateKey, startOfDay } from '@/lib/event-time';
 
 export default function NewEventScreen() {
   const { colors } = useTheme();
   const { date, calendarId } = useLocalSearchParams<{ date?: string; calendarId?: string }>();
+  const { user } = useAuth();
 
   const calendars = useMyCalendars();
   const create = useCreateEvent();
+  const formRef = useRef<EventFormHandle>(null);
+  const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+
+  async function submit(input: EventInput) {
+    setSaving(true);
+    try {
+      const created = await create.mutateAsync(input);
+
+      if (drafts.length && user) {
+        try {
+          await uploadAttachmentDrafts({
+            drafts,
+            eventId: created.id,
+            calendarId: input.calendar_id,
+            uploadedBy: user.id,
+          });
+        } catch (e) {
+          notify(
+            '일정은 저장됐지만 첨부하지 못했습니다',
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+      }
+
+      router.back();
+    } catch {
+      // mutation 상태의 오류 문구를 폼 아래에서 보여 준다.
+    } finally {
+      setSaving(false);
+    }
+  }
 
   // 캘린더가 없으면 넣을 곳이 없다. 만들기부터 안내한다.
   if (calendars.data && calendars.data.length === 0) {
@@ -57,15 +100,21 @@ export default function NewEventScreen() {
   end.setHours(10, 0, 0, 0);
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    <>
+      <EventEditorHeader
+        pending={create.isPending || saving}
+        onSave={() => formRef.current?.submit()}
+      />
+      <KeyboardAvoidingView
+        style={[styles.flex, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Content style={styles.content}>
           <EventForm
+            ref={formRef}
             calendars={calendars.data}
             submitLabel="추가"
-            pending={create.isPending}
+            showSubmitButton={false}
+            pending={create.isPending || saving}
             initial={{
               calendarId: calendarId ?? calendars.data[0].id,
               title: '',
@@ -74,12 +123,17 @@ export default function NewEventScreen() {
               time: { isAllDay: false, start, end },
               recurrence: { freq: null, until: null },
             }}
-            onSubmit={(input) =>
-              create.mutate(input, {
-                onSuccess: () => router.back(),
-              })
-            }
-          />
+            onSubmit={submit}>
+            <View>
+              <Divider />
+              <AttachmentDraftPicker
+                compact
+                drafts={drafts}
+                onChange={setDrafts}
+                disabled={saving}
+              />
+            </View>
+          </EventForm>
 
           {create.isError ? (
             <Txt variant="caption" tone="danger">
@@ -87,14 +141,18 @@ export default function NewEventScreen() {
             </Txt>
           ) : null}
         </Content>
-      </ScrollView>
-    </KeyboardAvoidingView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingVertical: Spacing.xxl },
-  content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
+  content: {
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingTop: Spacing.md,
+    paddingBottom: Spacing.sm,
+  },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
 });

@@ -9,9 +9,9 @@
  * 달력 격자용 날짜 계산(`lib/date.ts`)과 섞지 않는다. 저쪽은 화면 좌표, 이쪽은 의미다.
  */
 
-import type { EventRow } from '@/types/database';
+import type { EventRow } from '../types/database.ts';
 
-import { toDateKey } from './date';
+import { toDateKey } from './date.ts';
 
 /** 기기 타임존. 반복 전개(4단계)의 기준이 되므로 일정마다 저장해 둔다. */
 export function deviceTimezone(): string {

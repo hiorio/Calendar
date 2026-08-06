@@ -1,16 +1,21 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
-import { onColor } from '@/features/calendars/colors';
+import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
+import { stickerByKey, type StickerKey } from '@/features/stickers/catalog';
 import { useTheme } from '@/hooks/use-theme';
 import {
   WEEKDAY_LABELS,
   buildMonthMatrix,
+  formatLunarDay,
+  isoWeekNumber,
   isSameDay,
   isSameMonth,
   toDateKey,
+  weekdayLabels,
+  type WeekStart,
 } from '@/lib/date';
 
 /** 격자 한 칸에 찍히는 일정 요약. 3단계에서 실제 일정으로 채운다. */
@@ -18,6 +23,12 @@ export type DayMark = {
   id: string;
   title: string;
   color: string;
+  isAllDay: boolean;
+};
+
+export type DayStickerMark = {
+  id: string;
+  stickerKey: StickerKey;
 };
 
 export type MonthViewProps = {
@@ -25,12 +36,18 @@ export type MonthViewProps = {
   month: Date;
   selected: Date;
   onSelect: (date: Date) => void;
-  /** delta 만큼 달 이동 (-1 이전, +1 다음) */
-  onShiftMonth: (delta: number) => void;
-  /** 오늘로 되돌리기 */
-  onToday: () => void;
   /** 'YYYY-MM-DD' → 그 날의 일정들 */
   marksByDate?: Record<string, DayMark[]>;
+  /** 'YYYY-MM-DD' → 그 날에 표시할 캘린더 스티커들 */
+  stickersByDate?: Record<string, DayStickerMark[]>;
+  /** 메인 화면의 남는 세로 공간에 맞춘 날짜 셀 최소 높이 */
+  dayCellMinHeight?: number;
+  /** 부모가 준 남은 높이를 6주가 똑같이 나눠 사용한다. */
+  fillAvailableSpace?: boolean;
+  weekStart?: WeekStart;
+  showWeekNumbers?: boolean;
+  showLunar?: boolean;
+  colorSaturday?: boolean;
 };
 
 const MAX_CHIPS = 3;
@@ -39,67 +56,86 @@ export function MonthView({
   month,
   selected,
   onSelect,
-  onShiftMonth,
-  onToday,
   marksByDate = {},
+  stickersByDate = {},
+  dayCellMinHeight = 58,
+  fillAvailableSpace = false,
+  weekStart = 'sunday',
+  showWeekNumbers = false,
+  showLunar = false,
+  colorSaturday = true,
 }: MonthViewProps) {
-  const { colors } = useTheme();
-  const weeks = buildMonthMatrix(month);
+  const { colors, scheme } = useTheme();
+  const weeks = buildMonthMatrix(month, weekStart);
+  const labels = weekdayLabels(weekStart);
   const today = new Date();
 
   return (
-    <View style={styles.wrap}>
-      {/* 월 제목은 화면 상단이 갖는다(그 화면의 제목이므로). 여기는 이동만. */}
-      <View style={styles.monthBar}>
-        <View style={styles.monthNav}>
-          <NavButton icon="chevron-back" label="이전 달" onPress={() => onShiftMonth(-1)} />
-          <Pressable
-            accessibilityRole="button"
-            onPress={onToday}
-            style={({ pressed }) => [
-              styles.todayButton,
-              {
-                backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted,
-              },
-            ]}>
-            <Txt variant="label" tone="secondary">
-              오늘
-            </Txt>
-          </Pressable>
-          <NavButton icon="chevron-forward" label="다음 달" onPress={() => onShiftMonth(1)} />
-        </View>
-      </View>
-
+    <View style={[styles.wrap, fillAvailableSpace && styles.fill]}>
       <View style={styles.weekdayRow}>
-        {WEEKDAY_LABELS.map((label, index) => (
+        {showWeekNumbers ? (
+          <View style={styles.weekNumberCell}>
+            <Txt variant="micro" tone="tertiary">
+              주
+            </Txt>
+          </View>
+        ) : null}
+        {labels.map((label) => {
+          const weekday = WEEKDAY_LABELS.indexOf(label as (typeof WEEKDAY_LABELS)[number]);
+          return (
           <View key={label} style={styles.weekdayCell}>
             <Txt
               variant="caption"
               style={{
                 color:
-                  index === 0 ? colors.sunday : index === 6 ? colors.saturday : colors.textTertiary,
+                  weekday === 0
+                    ? colors.sunday
+                    : weekday === 6 && colorSaturday
+                      ? colors.saturday
+                      : colors.textTertiary,
               }}>
               {label}
             </Txt>
           </View>
-        ))}
+          );
+        })}
       </View>
 
-      <View style={[styles.grid, { borderTopColor: colors.border }]}>
+      <View
+        style={[
+          styles.grid,
+          { borderTopColor: colors.border },
+          fillAvailableSpace && styles.gridFill,
+        ]}>
         {weeks.map((week) => (
-          <View key={toDateKey(week[0])} style={[styles.week, { borderBottomColor: colors.border }]}>
+          <View
+            key={toDateKey(week[0])}
+            style={[
+              styles.week,
+              { borderBottomColor: colors.border },
+              fillAvailableSpace && styles.weekFill,
+            ]}>
+            {showWeekNumbers ? (
+              <View style={styles.weekNumberCell}>
+                <Txt variant="micro" tone="tertiary">
+                  {isoWeekNumber(week[0])}
+                </Txt>
+              </View>
+            ) : null}
             {week.map((date) => {
               const outside = !isSameMonth(date, month);
               const isToday = isSameDay(date, today);
               const isSelected = isSameDay(date, selected);
               const marks = marksByDate[toDateKey(date)] ?? [];
+              const stickerMarks = stickersByDate[toDateKey(date)] ?? [];
+              const sticker = stickerByKey(stickerMarks[0]?.stickerKey);
               const weekday = date.getDay();
 
               const numberColor = outside
                 ? colors.textTertiary
-                : weekday === 0
+                  : weekday === 0
                   ? colors.sunday
-                  : weekday === 6
+                  : weekday === 6 && colorSaturday
                     ? colors.saturday
                     : colors.text;
 
@@ -108,10 +144,16 @@ export function MonthView({
                   key={toDateKey(date)}
                   accessibilityRole="button"
                   accessibilityLabel={`${date.getMonth() + 1}월 ${date.getDate()}일`}
+                  accessibilityHint={
+                    isSelected
+                      ? '한 번 더 누르면 이 날의 일정을 엽니다'
+                      : '이 날짜에 포커스를 맞춥니다'
+                  }
                   accessibilityState={{ selected: isSelected }}
                   onPress={() => onSelect(date)}
                   style={({ pressed }) => [
                     styles.dayCell,
+                    { minHeight: fillAvailableSpace ? 0 : dayCellMinHeight },
                     isSelected && { backgroundColor: colors.accentSoft },
                     pressed && !isSelected && { backgroundColor: colors.surfaceMuted },
                   ]}>
@@ -131,25 +173,73 @@ export function MonthView({
                     </Txt>
                   </View>
 
+                  {showLunar ? (
+                    <Txt variant="micro" tone="tertiary" style={styles.lunar}>
+                      {formatLunarDay(date)}
+                    </Txt>
+                  ) : null}
+
                   <View style={styles.chips}>
-                    {marks.slice(0, MAX_CHIPS).map((mark) => (
-                      <View key={mark.id} style={[styles.chip, { backgroundColor: mark.color }]}>
-                        {/* 글자색은 라벨 색에서 계산한다. 흰색으로 고정하면
-                            밝은 라벨(금·연두 등) 위에서 읽히지 않는다. */}
-                        <Txt
-                          variant="caption"
-                          numberOfLines={1}
-                          style={[styles.chipText, { color: onColor(mark.color) }]}>
-                          {mark.title}
-                        </Txt>
-                      </View>
-                    ))}
+                    {marks.slice(0, MAX_CHIPS).map((mark) => {
+                      const markColor = calendarColorForScheme(mark.color, scheme);
+
+                      return (
+                        <View
+                          key={mark.id}
+                          style={[
+                            styles.eventMark,
+                            mark.isAllDay
+                              ? [styles.allDayMark, { backgroundColor: markColor }]
+                              : styles.timedMark,
+                          ]}>
+                          {!mark.isAllDay ? (
+                            <View
+                              accessibilityElementsHidden
+                              importantForAccessibility="no"
+                              style={[styles.timedMarkLine, { backgroundColor: markColor }]}
+                            />
+                          ) : null}
+                          {/* 종일 일정만 색 배경 위의 대비색을 쓴다. 시간 지정 일정은
+                              배경 없이 본문색과 캘린더 색 세로선으로 구분한다. */}
+                          <Txt
+                            variant="caption"
+                            numberOfLines={1}
+                            style={[
+                              styles.eventMarkText,
+                              {
+                                color: mark.isAllDay
+                                  ? onColor(mark.color, scheme)
+                                  : colors.text,
+                              },
+                            ]}>
+                            {mark.title}
+                          </Txt>
+                        </View>
+                      );
+                    })}
                     {marks.length > MAX_CHIPS ? (
                       <Txt variant="caption" tone="tertiary" style={styles.more}>
                         +{marks.length - MAX_CHIPS}
                       </Txt>
                     ) : null}
                   </View>
+
+                  {sticker ? (
+                    <View pointerEvents="none" style={styles.stickerWrap}>
+                      <Image
+                        source={sticker.cutoutSource}
+                        style={styles.stickerImage}
+                        contentFit="contain"
+                      />
+                      {stickerMarks.length > 1 ? (
+                        <View style={[styles.stickerCount, { backgroundColor: colors.surface }]}>
+                          <Txt variant="micro" style={styles.stickerCountText}>
+                            +{stickerMarks.length - 1}
+                          </Txt>
+                        </View>
+                      ) : null}
+                    </View>
+                  ) : null}
                 </Pressable>
               );
             })}
@@ -160,61 +250,23 @@ export function MonthView({
   );
 }
 
-function NavButton({
-  icon,
-  label,
-  onPress,
-}: {
-  icon: React.ComponentProps<typeof Ionicons>['name'];
-  label: string;
-  onPress: () => void;
-}) {
-  const { colors } = useTheme();
-
-  return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={label}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.navButton,
-        { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted },
-      ]}>
-      <Ionicons name={icon} size={16} color={colors.textSecondary} />
-    </Pressable>
-  );
-}
-
 const styles = StyleSheet.create({
   wrap: { gap: Spacing.md },
-  monthBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'flex-end',
-    paddingHorizontal: Spacing.xl,
-  },
-  monthNav: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
-  navButton: {
-    width: 32,
-    height: 32,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  todayButton: {
-    height: 32,
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.sm,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  weekdayRow: { flexDirection: 'row', paddingHorizontal: Spacing.sm },
+  fill: { flex: 1, minHeight: 0 },
+  weekdayRow: { flexDirection: 'row' },
   weekdayCell: { flex: 1, alignItems: 'center', paddingBottom: Spacing.xs },
-  grid: { borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: Spacing.sm },
+  weekNumberCell: {
+    width: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingBottom: Spacing.xs,
+  },
+  grid: { borderTopWidth: StyleSheet.hairlineWidth },
+  gridFill: { flex: 1, minHeight: 0 },
   week: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  weekFill: { flex: 1, minHeight: 0 },
   dayCell: {
     flex: 1,
-    minHeight: 58,
     paddingTop: 5,
     paddingBottom: 4,
     paddingHorizontal: 2,
@@ -231,9 +283,44 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   dayNumberText: { fontWeight: '600' },
+  lunar: { alignSelf: 'center', fontSize: 9, lineHeight: 11 },
   outside: { opacity: 0.5 },
   chips: { gap: 2 },
-  chip: { borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
-  chipText: { fontSize: 10, lineHeight: 14 },
+  eventMark: {
+    minHeight: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+    overflow: 'hidden',
+  },
+  allDayMark: { borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
+  timedMark: { gap: 3, paddingRight: 2 },
+  timedMarkLine: {
+    alignSelf: 'stretch',
+    width: 2,
+    minHeight: 14,
+    borderRadius: Radius.pill,
+  },
+  eventMarkText: { flex: 1, fontSize: 10, lineHeight: 14 },
   more: { paddingLeft: 4, fontSize: 10, lineHeight: 12 },
+  stickerWrap: {
+    position: 'absolute',
+    left: 2,
+    bottom: 2,
+    width: 42,
+    height: 42,
+    zIndex: 3,
+  },
+  stickerImage: { width: 42, height: 42 },
+  stickerCount: {
+    position: 'absolute',
+    right: -3,
+    bottom: -3,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 3,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  stickerCountText: { fontSize: 9, lineHeight: 11 },
 });

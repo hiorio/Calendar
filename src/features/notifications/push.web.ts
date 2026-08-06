@@ -37,4 +37,11 @@ export async function unregisterPush(_userId: string) {
   // 등록한 적이 없으므로 해제할 것도 없다
 }
 
+export async function withPushDetachedForAccountSwitch<T>(
+  _currentUserId: string | null | undefined,
+  action: () => Promise<T>,
+) {
+  return action();
+}
+
 export type { PushStatus };

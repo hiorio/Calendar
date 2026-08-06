@@ -2,7 +2,19 @@ import type { Session, User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
 
-import { unregisterPush } from '@/features/notifications/push';
+import { SOCIAL_AUTH_ENABLED } from '@/constants/features';
+import {
+  isNativeAppleSignInSupported,
+  linkAppleNative,
+  linkOAuthAccount,
+  signInWithAppleNative,
+  signInWithOAuth,
+  type OAuthProvider,
+} from '@/features/auth/oauth';
+import {
+  unregisterPush,
+  withPushDetachedForAccountSwitch,
+} from '@/features/notifications/push';
 import { supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
@@ -19,6 +31,10 @@ type AuthContextValue = {
   createAccount: (email: string, password: string, nickname: string) => Promise<CreateAccountResult>;
   /** 이미 있는 계정으로 로그인. 게스트로 쌓은 데이터는 따라오지 않는다 */
   signInWithEmail: (email: string, password: string) => Promise<void>;
+  /** 게스트를 소셜 계정으로 전환. user.id와 기존 데이터를 유지한다 */
+  connectSocialAccount: (provider: OAuthProvider, nickname: string) => Promise<void>;
+  /** 기존 소셜 계정으로 전환. 게스트 데이터는 따라오지 않는다 */
+  signInWithSocialAccount: (provider: OAuthProvider) => Promise<void>;
   /** 로그아웃하고 다시 게스트로 돌아간다 */
   signOut: () => Promise<void>;
   /** 계정과 데이터를 지우고, 처음 켠 것처럼 새 게스트로 시작한다 */
@@ -131,11 +147,45 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
 
       async signInWithEmail(email, password) {
-        const { error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
+        await withPushDetachedForAccountSwitch(session?.user.id, async () => {
+          const { error } = await supabase.auth.signInWithPassword({
+            email: email.trim(),
+            password,
+          });
+          if (error) throw error;
         });
-        if (error) throw error;
+      },
+
+      async connectSocialAccount(provider, nickname) {
+        if (!SOCIAL_AUTH_ENABLED) {
+          throw new Error('소셜 로그인은 현재 제공하지 않습니다');
+        }
+
+        const currentUserId = session?.user.id;
+        if (!currentUserId || !session.user.is_anonymous) {
+          throw new Error('게스트 세션에서만 소셜 계정을 연결할 수 있습니다');
+        }
+
+        if (provider === 'apple' && isNativeAppleSignInSupported) {
+          await linkAppleNative(currentUserId, nickname);
+        } else {
+          await linkOAuthAccount(provider, currentUserId, nickname);
+        }
+        await queryClient.invalidateQueries();
+      },
+
+      async signInWithSocialAccount(provider) {
+        if (!SOCIAL_AUTH_ENABLED) {
+          throw new Error('소셜 로그인은 현재 제공하지 않습니다');
+        }
+
+        await withPushDetachedForAccountSwitch(session?.user.id, async () => {
+          if (provider === 'apple' && isNativeAppleSignInSupported) {
+            await signInWithAppleNative();
+          } else {
+            await signInWithOAuth(provider);
+          }
+        });
       },
 
       async signOut() {

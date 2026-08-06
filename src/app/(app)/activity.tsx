@@ -15,6 +15,7 @@ import {
   useActivity,
   type ActivityEntry,
 } from '@/features/activity/queries';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDayTitle, toDateKey } from '@/lib/date';
 import { formatTime } from '@/lib/event-time';
@@ -121,15 +122,17 @@ export default function ActivityScreen() {
 }
 
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { text, detail } = describeActivity(entry);
 
   // 삭제된 일정으로는 갈 수 없다
-  const openable =
+  const eventOpenable =
     entry.ref_id !== null &&
     (entry.type === 'EVENT_CREATED' ||
       entry.type === 'EVENT_UPDATED' ||
       entry.type === 'COMMENT_CREATED');
+  const calendarOpenable = entry.ref_id !== null && entry.type === 'CALENDAR_UPDATED';
+  const openable = eventOpenable || calendarOpenable;
 
   const row = (
     <>
@@ -149,7 +152,12 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           </Txt>
         ) : null}
         <View style={styles.meta}>
-          <View style={[styles.dot, { backgroundColor: entry.calendarColor }]} />
+          <View
+            style={[
+              styles.dot,
+              { backgroundColor: calendarColorForScheme(entry.calendarColor, scheme) },
+            ]}
+          />
           <Txt variant="caption" tone="tertiary">
             {entry.calendarName} · {formatTime(new Date(entry.created_at))}
           </Txt>
@@ -166,7 +174,13 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
     <Pressable
       accessibilityRole="button"
       accessibilityLabel={`${text} 열기`}
-      onPress={() => router.push({ pathname: '/event/[id]', params: { id: entry.ref_id! } })}
+      onPress={() => {
+        if (calendarOpenable) {
+          router.push({ pathname: '/calendar/[id]', params: { id: entry.ref_id! } });
+          return;
+        }
+        router.push({ pathname: '/event/[id]', params: { id: entry.ref_id! } });
+      }}
       style={({ pressed }) => [
         styles.row,
         { backgroundColor: pressed ? colors.surfacePressed : 'transparent' },

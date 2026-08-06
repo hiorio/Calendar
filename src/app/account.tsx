@@ -1,4 +1,3 @@
-import * as AppleAuthentication from 'expo-apple-authentication';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
@@ -9,15 +8,8 @@ import { Notice } from '@/components/ui/notice';
 import { Content } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
-import {
-  SignInCancelledError,
-  isNativeAppleSignInSupported,
-  linkOAuthAccount,
-  signInWithAppleNative,
-  signInWithOAuth,
-} from '@/features/auth/oauth';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/env';
 
@@ -33,28 +25,31 @@ const MODES = [
  * 게스트로 쓰던 사람이 여기서 계정을 만들면 쓰던 데이터를 그대로 들고 간다.
  */
 export default function AccountScreen() {
-  const { colors, scheme } = useTheme();
+  const { colors } = useTheme();
   const { isGuest, bootstrapError, createAccount, signInWithEmail } = useAuth();
-  const { reason } = useLocalSearchParams<{ reason?: string }>();
+  const { reason, mode: requestedMode } = useLocalSearchParams<{
+    reason?: string;
+    mode?: Mode;
+  }>();
 
-  const [mode, setMode] = useState<Mode>('create');
+  const [mode, setMode] = useState<Mode>(requestedMode === 'sign-in' ? 'sign-in' : 'create');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
-  const [pending, setPending] = useState<null | 'email' | 'google' | 'apple'>(null);
+  const [pending, setPending] = useState<null | 'email'>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
 
   const busy = pending !== null;
   const disabled = busy || !isSupabaseConfigured;
   const creating = mode === 'create';
 
-  async function run(kind: NonNullable<typeof pending>, action: () => Promise<void>) {
+  async function run(action: () => Promise<void>) {
+    if (busy) return;
     setMessage(null);
-    setPending(kind);
+    setPending('email');
     try {
       await action();
     } catch (e) {
-      if (e instanceof SignInCancelledError) return;
       setMessage({ tone: 'error', text: toMessage(e) });
     } finally {
       setPending(null);
@@ -76,7 +71,7 @@ export default function AccountScreen() {
       return;
     }
 
-    void run('email', async () => {
+    void run(async () => {
       if (!creating) {
         await signInWithEmail(email, password);
         done();
@@ -94,16 +89,6 @@ export default function AccountScreen() {
     });
   }
 
-  /** 게스트면 연결(데이터 유지), 아니면 일반 로그인 */
-  function socialAction(provider: 'google' | 'apple') {
-    return async () => {
-      if (creating && isGuest) await linkOAuthAccount(provider);
-      else if (provider === 'apple' && isNativeAppleSignInSupported) await signInWithAppleNative();
-      else await signInWithOAuth(provider);
-      done();
-    };
-  }
-
   return (
     <KeyboardAvoidingView
       style={[styles.flex, { backgroundColor: colors.background }]}
@@ -115,8 +100,8 @@ export default function AccountScreen() {
             <Txt variant="body" tone="secondary">
               {reason ??
                 (creating
-                  ? '지금까지 쓰던 내용은 그대로 유지됩니다.'
-                  : '다른 기기에서 쓰던 계정으로 이어서 사용합니다.')}
+                  ? '가입 없이도 앱을 사용할 수 있어요. 재설치하거나 기기를 바꿔도 데이터를 이어서 쓰려면 계정을 만들어 주세요.'
+                  : '재설치했거나 기기를 바꿨다면 기존 계정으로 이어서 사용할 수 있어요.')}
             </Txt>
           </View>
 
@@ -135,9 +120,8 @@ export default function AccountScreen() {
           )}
 
           {!creating && isGuest && (
-            <Notice tone="danger" title="게스트 기록은 넘어가지 않습니다">
-              지금 기기에서 만든 내용은 다른 계정으로 로그인하면 사라집니다. 지금 것을 계속 쓰려면
-              계정 만들기 쪽을 선택하세요.
+            <Notice title="로그인은 기존 계정을 불러옵니다">
+              현재 기기의 내용을 보존하려면 ‘계정 만들기’를 선택해 주세요.
             </Notice>
           )}
 
@@ -200,36 +184,6 @@ export default function AccountScreen() {
             onPress={submitEmail}
           />
 
-          <View style={styles.dividerRow}>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-            <Txt variant="caption" tone="tertiary">
-              또는
-            </Txt>
-            <View style={[styles.divider, { backgroundColor: colors.border }]} />
-          </View>
-
-          <Button
-            label="Google로 계속하기"
-            variant="secondary"
-            loading={pending === 'google'}
-            disabled={disabled}
-            onPress={() => run('google', socialAction('google'))}
-          />
-
-          {isNativeAppleSignInSupported && (
-            <AppleAuthentication.AppleAuthenticationButton
-              buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
-              buttonStyle={
-                scheme === 'dark'
-                  ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
-                  : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
-              }
-              cornerRadius={Radius.md}
-              style={styles.appleButton}
-              onPress={() => run('apple', socialAction('apple'))}
-            />
-          )}
-
           {isGuest ? (
             <Pressable accessibilityRole="button" onPress={done} style={styles.later}>
               <Txt variant="label" tone="tertiary">
@@ -251,8 +205,6 @@ function toMessage(error: unknown) {
     return '이미 가입된 이메일입니다. 로그인 쪽으로 이어서 사용하세요.';
   if (/password should be at least/i.test(raw)) return '비밀번호는 6자 이상이어야 합니다';
   if (/email not confirmed/i.test(raw)) return '이메일 확인이 아직 완료되지 않았습니다';
-  if (/manual linking is disabled/i.test(raw))
-    return 'Supabase에서 Manual Linking을 켜야 소셜 계정을 연결할 수 있습니다';
   if (/network request failed/i.test(raw)) return '네트워크에 연결할 수 없습니다';
   return raw;
 }
@@ -265,8 +217,5 @@ const styles = StyleSheet.create({
   content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
   intro: { gap: Spacing.xs, marginBottom: Spacing.xs },
   form: { gap: Spacing.lg },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  divider: { flex: 1, height: StyleSheet.hairlineWidth },
-  appleButton: { height: 52 },
   later: { alignSelf: 'center', padding: Spacing.md },
 });

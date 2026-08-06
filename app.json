@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "TimeLine",
+    "name": "TimeFlower",
     "slug": "timeline",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,14 +8,12 @@
     "scheme": "timeline",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "bundleIdentifier": "com.example.timeline",
       "usesAppleSignIn": true,
-      "supportsTablet": true
+      "supportsTablet": false
     },
     "android": {
-      "package": "com.example.timeline",
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#E2673F",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -28,20 +26,60 @@
     },
     "plugins": [
       "expo-router",
+      "expo-dev-client",
       "expo-apple-authentication",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/android-icon-monochrome.png",
+          "color": "#E2673F",
+          "defaultChannel": "default"
+        }
+      ],
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#E2673F",
+          "backgroundColor": "#EBE5DC",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 112
+          "imageWidth": 180
         }
       ],
+      [
+        "expo-calendar",
+        {
+          "calendarPermission": "기기 캘린더의 일정을 TimeFlower로 가져오기 위해 캘린더 접근이 필요합니다.",
+          "remindersPermission": false,
+          "writeOnlyAccess": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "일정과 댓글에 사진을 첨부하기 위해 사진 보관함 접근이 필요합니다.",
+          "cameraPermission": false,
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "faceIDPermission": false
+        }
+      ],
+      "@sentry/react-native",
       "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "appVariant": "development",
+      "router": {},
+      "eas": {
+        "projectId": "ff3069a8-3ef9-4259-b6ed-0da14859b803"
+      }
+    },
+    "owner": "hiorio"
   }
 }

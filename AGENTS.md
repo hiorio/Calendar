@@ -32,8 +32,8 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 바꾼 것 | 확인 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (140개) |
-| `src/lib/`의 계산 로직 | `npm run test:unit` (40개) |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (162개) |
+| `src/lib/` 계산 로직 · 라벨 팔레트 | `npm run test:unit` (55개) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
 
 ## DB
@@ -70,12 +70,13 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
   (`is_guest()` 참고). 새 기능이 계정을 요구한다면 정책에도 함께 넣을 것.
 - 디자인 토큰은 `src/constants/theme.ts` 하나뿐이다. 화면에 hex를 직접 쓰지 않는다.
 
-## 디자인 (시안 완료 · 코드 미반영)
+## 디자인 (시안·색 토큰 코드 반영 완료)
 
 UI 시안 작업이 따로 끝나 있다. **`docs/design-decisions.md`를 먼저 읽을 것.**
 
-- 기본 테마가 **살구**(`#E2673F` 계열)로 확정됐다. 그런데 `theme.ts`는 아직 파란색
-  (`#3F7FD4`)이고 라벨 팔레트도 8색이다. **색을 만지기 전에 그 문서의 5장을 볼 것.**
+- 기본 테마는 **살구**(`#E2673F` 계열)이며, 사용자는 설정에서 **쪽빛·먹빛**을 기기별
+  테마로 고를 수 있다. `theme.ts`와 12색 라벨 팔레트에 반영됐다.
+  **색을 만지기 전에 그 문서의 5장을 볼 것.**
 - 시안은 `docs/design/ui-proposal.html` — 브라우저로 열면 된다. 외부 의존 없는 단일 파일.
 - **간격·라운드·타이포는 바꾸지 않는다.** 시안이 현재 값 위에 그려졌다. 색만 바뀐다.
 - 캘린더 라벨 팔레트는 **순서가 규칙이다.** 명도가 번갈아 가도록 배열해서 순서대로
@@ -90,8 +91,10 @@ UI 시안 작업이 따로 끝나 있다. **`docs/design-decisions.md`를 먼저
   들어가지 않는 것이다.
 - `notification_outbox`는 클라이언트에 완전히 닫혀 있다. 스모크 테스트에서 이 테이블만
   service_role로 읽는다 — 발송 워커와 같은 경로다.
-- **발송 워커는 아직 없다.** 큐는 쌓이기만 한다. 화면에도 그렇게 적혀 있으니 "알림이
-  간다"고 바꾸지 말 것.
+- 발송 워커는 `supabase/functions/notification-worker`다. claim·3회 재시도·Expo
+  ticket/receipt·stale token 정리를 한다. 로컬/배포 환경에서
+  `EXPO_PUBLIC_PUSH_ENABLED=true`라고 표시하려면 함수와 1분 cron이 실제로 연결돼 있어야
+  한다.
 
 ## 활동 로그
 
@@ -118,5 +121,5 @@ UI 시안 작업이 따로 끝나 있다. **`docs/design-decisions.md`를 먼저
   판단은 `AuthProvider` 한 곳에서만 한다 — 키마다 id 를 넣는 방식은 하나만 빠뜨려도
   같은 사고가 난다.
 
-현재 진행 단계: 설계안 11장 1~8단계 완료. UI 시안은 필수·중요 범위까지 완료(코드 미반영).
-남은 것은 시안의 색 토큰 적용, 알림 발송 워커, 유니버설 링크.
+현재 진행 단계: 설계안 11장 1~8단계, UI 색 토큰, 알림 워커, 유니버설 링크 코드 완료.
+실제 개발 배포에는 `docs/deployment.md`의 Expo/Supabase 계정·도메인 연결이 필요하다.
