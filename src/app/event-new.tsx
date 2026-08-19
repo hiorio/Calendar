@@ -7,7 +7,7 @@ import { Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useMyCalendars } from '@/features/calendars/queries';
 import {
@@ -24,7 +24,31 @@ import { parseDateKey, startOfDay } from '@/lib/event-time';
 
 export default function NewEventScreen() {
   const { colors } = useTheme();
-  const { date, calendarId } = useLocalSearchParams<{ date?: string; calendarId?: string }>();
+  const {
+    date,
+    calendarId,
+    copyTitle,
+    copyLocation,
+    copyDescription,
+    copyAllDay,
+    copyStartAt,
+    copyEndAt,
+    copyStartDate,
+    copyEndDate,
+    multiCopy,
+  } = useLocalSearchParams<{
+    date?: string;
+    calendarId?: string;
+    copyTitle?: string;
+    copyLocation?: string;
+    copyDescription?: string;
+    copyAllDay?: string;
+    copyStartAt?: string;
+    copyEndAt?: string;
+    copyStartDate?: string;
+    copyEndDate?: string;
+    multiCopy?: string;
+  }>();
   const { user } = useAuth();
 
   const calendars = useMyCalendars();
@@ -54,7 +78,11 @@ export default function NewEventScreen() {
         }
       }
 
-      router.back();
+      if (multiCopy === 'true') {
+        notify('일정을 복사했습니다', '날짜를 바꾼 뒤 다시 저장하면 계속 복사할 수 있습니다.');
+      } else {
+        router.back();
+      }
     } catch {
       // mutation 상태의 오류 문구를 폼 아래에서 보여 준다.
     } finally {
@@ -99,6 +127,21 @@ export default function NewEventScreen() {
   const end = new Date(start);
   end.setHours(10, 0, 0, 0);
 
+  const copiedTime =
+    copyAllDay === 'true' && copyStartDate
+      ? {
+          isAllDay: true,
+          start: parseDateKey(copyStartDate),
+          end: parseDateKey(copyEndDate || copyStartDate),
+        }
+      : copyAllDay === 'false' && copyStartAt && copyEndAt
+        ? {
+            isAllDay: false,
+            start: new Date(copyStartAt),
+            end: new Date(copyEndAt),
+          }
+        : { isAllDay: false, start, end };
+
   return (
     <>
       <EventEditorHeader
@@ -109,6 +152,16 @@ export default function NewEventScreen() {
         style={[styles.flex, { backgroundColor: colors.background }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
         <Content style={styles.content}>
+          {multiCopy === 'true' ? (
+            <View style={[styles.copyGuide, { backgroundColor: colors.accentSoft }]}>
+              <Txt variant="label" tone="accent">
+                여러 날짜에 복사
+              </Txt>
+              <Txt variant="caption" tone="secondary">
+                저장한 뒤 날짜를 바꾸고 다시 저장하세요. 완료하면 왼쪽 위 닫기를 누르세요.
+              </Txt>
+            </View>
+          ) : null}
           <EventForm
             ref={formRef}
             calendars={calendars.data}
@@ -117,10 +170,10 @@ export default function NewEventScreen() {
             pending={create.isPending || saving}
             initial={{
               calendarId: calendarId ?? calendars.data[0].id,
-              title: '',
-              location: '',
-              description: '',
-              time: { isAllDay: false, start, end },
+              title: copyTitle ?? '',
+              location: copyLocation ?? '',
+              description: copyDescription ?? '',
+              time: copiedTime,
               recurrence: { freq: null, until: null },
             }}
             onSubmit={submit}>
@@ -155,4 +208,10 @@ const styles = StyleSheet.create({
     paddingBottom: Spacing.sm,
   },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  copyGuide: {
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.sm,
+  },
 });

@@ -58,12 +58,12 @@ export function useDayStickers(date: string) {
   });
 }
 
-export function useMonthStickers(start: string, end: string) {
+export function useMonthStickers(start: string, end: string, enabled = true) {
   const { user } = useAuth();
 
   return useQuery<DaySticker[]>({
     queryKey: stickerKeys.range(start, end),
-    enabled: Boolean(user && start && end),
+    enabled: Boolean(user && start && end && enabled),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('calendar_stickers')

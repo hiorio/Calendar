@@ -58,6 +58,65 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ...config.updates,
       ...(easProjectId ? { url: `https://u.expo.dev/${easProjectId}` } : {}),
     },
+    plugins: [
+      ...(config.plugins ?? []),
+      [
+        'expo-widgets',
+        {
+          enableAndroid: false,
+          widgets: [
+            {
+              name: 'TimeFlowerCalendar',
+              displayName: 'TimeFlower 캘린더',
+              description: '다가오는 일정과 월간 캘린더를 확인하고 바로 일정을 추가합니다.',
+              supportedFamilies: [
+                'systemSmall',
+                'systemMedium',
+                'systemLarge',
+                'accessoryCircular',
+                'accessoryRectangular',
+                'accessoryInline',
+              ],
+              contentMarginsDisabled: false,
+              ios: {
+                supportedFamilies: [
+                  'systemSmall',
+                  'systemMedium',
+                  'systemLarge',
+                  'accessoryCircular',
+                  'accessoryRectangular',
+                  'accessoryInline',
+                ],
+              },
+              android: null,
+            },
+            {
+              name: 'TimeFlowerQuickMemo',
+              displayName: 'TimeFlower 빠른 메모',
+              description: '남은 메모를 확인하고 홈 화면이나 잠금 화면에서 바로 기록합니다.',
+              supportedFamilies: [
+                'systemSmall',
+                'systemMedium',
+                'accessoryCircular',
+                'accessoryRectangular',
+                'accessoryInline',
+              ],
+              contentMarginsDisabled: false,
+              ios: {
+                supportedFamilies: [
+                  'systemSmall',
+                  'systemMedium',
+                  'accessoryCircular',
+                  'accessoryRectangular',
+                  'accessoryInline',
+                ],
+              },
+              android: null,
+            },
+          ],
+        },
+      ],
+    ],
     extra,
   };
 };

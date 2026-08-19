@@ -11,6 +11,7 @@ import {
   signInWithOAuth,
   type OAuthProvider,
 } from '@/features/auth/oauth';
+import { clearHomeSnapshotCache } from '@/features/calendar/home-snapshot';
 import {
   unregisterPush,
   withPushDetachedForAccountSwitch,
@@ -154,6 +155,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
           });
           if (error) throw error;
         });
+        await clearHomeSnapshotBestEffort();
       },
 
       async connectSocialAccount(provider, nickname) {
@@ -186,6 +188,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             await signInWithOAuth(provider);
           }
         });
+        await clearHomeSnapshotBestEffort();
       },
 
       async signOut() {
@@ -202,6 +205,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
         const { error } = await supabase.auth.signOut();
         if (error) throw error;
+        await clearHomeSnapshotBestEffort();
         // 로그인 화면에 가두지 않는다. 곧바로 새 게스트 세션으로 되돌린다.
         const { error: guestError } = await supabase.auth.signInAnonymously();
         if (guestError) setBootstrapError(guestError);
@@ -211,6 +215,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // 캘린더 이전·삭제까지 한 트랜잭션으로 처리한다 (0012)
         const { error } = await supabase.rpc('delete_my_account');
         if (error) throw error;
+        await clearHomeSnapshotBestEffort();
 
         // 서버에서 사용자가 사라졌다. 남은 토큰을 들고 있으면 계속 401을 맞는다.
         await supabase.auth.signOut();
@@ -232,4 +237,14 @@ export function useAuth() {
   const value = use(AuthContext);
   if (!value) throw new Error('useAuth는 AuthProvider 안에서만 쓸 수 있습니다');
   return value;
+}
+
+async function clearHomeSnapshotBestEffort(): Promise<void> {
+  try {
+    await clearHomeSnapshotCache();
+  } catch {
+    // 로컬 표시 캐시 삭제 실패가 로그인·로그아웃·계정 삭제를 막아서는 안 된다.
+    // 새 화면에서도 저장된 userId를 현재 세션과 다시 대조하므로 다른 사용자의
+    // 스냅샷이 화면에 표시되지는 않는다.
+  }
 }

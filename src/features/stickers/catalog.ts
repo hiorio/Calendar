@@ -7,6 +7,12 @@ export const STICKER_KEYS = [
   'rainy-window',
   'heart-rest',
   'autumn-picnic',
+  'cake-party',
+  'flower-gift',
+  'beach-day',
+  'moon-sleep',
+  'happy-baking',
+  'workout-cheer',
 ] as const;
 
 export type StickerKey = (typeof STICKER_KEYS)[number];
@@ -18,6 +24,8 @@ export type StickerDefinition = {
   source: ImageSource;
   /** 월간 격자의 작은 칸에 쓰는 투명 배경 캐릭터 */
   cutoutSource: ImageSource;
+  /** 장면 이미지가 아닌 투명 컷아웃을 부드러운 테마 배경 위에 표시한다. */
+  display?: 'scene' | 'cutout';
 };
 
 export const STICKERS: readonly StickerDefinition[] = [
@@ -56,6 +64,48 @@ export const STICKERS: readonly StickerDefinition[] = [
     label: '가을 소풍',
     source: require('../../../assets/stickers/autumn-picnic.jpg'),
     cutoutSource: require('../../../assets/stickers/cutouts/autumn-picnic.png'),
+  },
+  {
+    key: 'cake-party',
+    label: '생일 파티',
+    source: require('../../../assets/stickers/cutouts/cake-party.png'),
+    cutoutSource: require('../../../assets/stickers/cutouts/cake-party.png'),
+    display: 'cutout',
+  },
+  {
+    key: 'flower-gift',
+    label: '꽃다발 선물',
+    source: require('../../../assets/stickers/cutouts/flower-gift.png'),
+    cutoutSource: require('../../../assets/stickers/cutouts/flower-gift.png'),
+    display: 'cutout',
+  },
+  {
+    key: 'beach-day',
+    label: '바닷가 휴가',
+    source: require('../../../assets/stickers/cutouts/beach-day.png'),
+    cutoutSource: require('../../../assets/stickers/cutouts/beach-day.png'),
+    display: 'cutout',
+  },
+  {
+    key: 'moon-sleep',
+    label: '달빛 단잠',
+    source: require('../../../assets/stickers/cutouts/moon-sleep.png'),
+    cutoutSource: require('../../../assets/stickers/cutouts/moon-sleep.png'),
+    display: 'cutout',
+  },
+  {
+    key: 'happy-baking',
+    label: '쿠키 굽기',
+    source: require('../../../assets/stickers/cutouts/happy-baking.png'),
+    cutoutSource: require('../../../assets/stickers/cutouts/happy-baking.png'),
+    display: 'cutout',
+  },
+  {
+    key: 'workout-cheer',
+    label: '오늘도 운동',
+    source: require('../../../assets/stickers/cutouts/workout-cheer.png'),
+    cutoutSource: require('../../../assets/stickers/cutouts/workout-cheer.png'),
+    display: 'cutout',
   },
 ];
 

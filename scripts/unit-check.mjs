@@ -15,12 +15,16 @@ register('./ts-resolve.mjs', pathToFileURL('./scripts/'));
 const { toWallClock, fromWallClock } = await import('../src/lib/timezone.ts');
 const { buildRrule, parseRrule, expandEvent, computeRruleUntil, truncateRruleBefore, applyExceptions } =
   await import('../src/lib/recurrence.ts');
-const { eventDayKeys, switchAllDay, moveStart, moveEnd } = await import('../src/lib/event-time.ts');
+const { eventDayKeys, switchAllDay, moveStart, moveEnd, quickEventTime } =
+  await import('../src/lib/event-time.ts');
 const { objectParticle, subjectParticle } = await import('../src/lib/korean.ts');
 const { CALENDAR_COLORS, DEFAULT_CALENDAR_COLOR, calendarColorForScheme, onColor } =
   await import('../src/features/calendars/colors.ts');
 const { notificationRoute } = await import('../src/features/notifications/routes.ts');
 const { buildMonthMatrix, isoWeekNumber, weekdayLabels } = await import('../src/lib/date.ts');
+const { layoutWeekMarks } = await import('../src/features/calendar/month-layout.ts');
+const { homeMonthSnapshotKey, parseHomeSnapshotCache, upsertHomeMonthSnapshot } =
+  await import('../src/features/calendar/home-snapshot-cache.ts');
 const { buildPushMessage, chunks, retryDelaySeconds, expoErrorCode } =
   await import('../supabase/functions/_shared/push.ts');
 const { parseOAuthCallback } = await import('../src/features/auth/oauth-callback.ts');
@@ -62,6 +66,87 @@ console.log('0. 캘린더 표시 계산');
   );
   eq('월요일 시작 요일 라벨', weekdayLabels('monday'), ['월', '화', '수', '목', '금', '토', '일']);
   check('2026년 첫 목요일은 ISO 1주', isoWeekNumber(new Date(2026, 0, 1)) === 1);
+}
+
+{
+  const mark = { id: 'trip', title: '여름 휴가', color: '#1B54A8', isAllDay: false };
+  const marksByDate = {
+    '2026-08-26': [mark],
+    '2026-08-27': [mark],
+    '2026-08-28': [mark],
+    '2026-08-29': [mark],
+    '2026-08-30': [mark],
+  };
+  const week = ['2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29'];
+  const [segment] = layoutWeekMarks(week, marksByDate);
+
+  eq('기간 일정은 한 주에서 하나의 구간으로 합친다',
+    [segment.startColumn, segment.endColumn, segment.isSpanning], [3, 6, true]);
+  check('다음 주로 이어지는 기간 일정은 오른쪽 연결 상태다', segment.continuesAfter);
+
+  const nextWeek = ['2026-08-30', '2026-08-31', '2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05'];
+  const [continued] = layoutWeekMarks(nextWeek, marksByDate);
+  check('이전 주에서 이어진 구간은 왼쪽 연결 상태다', continued.continuesBefore);
+}
+
+{
+  const first = { id: 'first', isAllDay: true };
+  const second = { id: 'second', isAllDay: true };
+  const placements = layoutWeekMarks(
+    ['2026-08-23', '2026-08-24', '2026-08-25', '2026-08-26', '2026-08-27', '2026-08-28', '2026-08-29'],
+    {
+      '2026-08-24': [first],
+      '2026-08-25': [first, second],
+      '2026-08-26': [first, second],
+    },
+  );
+  check('겹치는 기간 일정은 서로 다른 행을 쓴다', placements[0].lane !== placements[1].lane);
+}
+
+{
+  const augustKey = homeMonthSnapshotKey(new Date(2026, 7, 1), 'sunday');
+  eq('홈 스냅샷 키는 월과 주 시작 설정을 구분한다', augustKey, '2026-08:sunday');
+
+  const augustSnapshot = {
+    key: augustKey,
+    savedAt: '2026-08-19T00:00:00.000Z',
+    marksByDate: {
+      '2026-08-19': [{ id: 'event-1', title: '저녁 약속', color: '#1B54A8', isAllDay: false }],
+    },
+    stickersByDate: {},
+  };
+  const firstCache = upsertHomeMonthSnapshot(null, 'user-a', augustSnapshot);
+  eq('홈 스냅샷은 현재 사용자와 함께 저장한다',
+    [firstCache.userId, firstCache.months[0].key], ['user-a', augustKey]);
+  check('직렬화한 홈 스냅샷을 다시 읽는다',
+    parseHomeSnapshotCache(JSON.stringify(firstCache))?.months[0].marksByDate['2026-08-19'][0].title === '저녁 약속');
+
+  const otherUserCache = upsertHomeMonthSnapshot(firstCache, 'user-b', {
+    ...augustSnapshot,
+    key: '2026-09:sunday',
+  });
+  eq('사용자가 바뀌면 이전 사용자의 월 스냅샷을 이어받지 않는다',
+    [otherUserCache.userId, otherUserCache.months.map((month) => month.key)],
+    ['user-b', ['2026-09:sunday']]);
+  check('손상된 홈 스냅샷은 사용하지 않는다', parseHomeSnapshotCache('{broken') === null);
+}
+
+{
+  const now = new Date(2026, 7, 15, 14, 12);
+  const today = quickEventTime(new Date(2026, 7, 15), now);
+  check(
+    '빠른 일정은 오늘의 다음 30분 경계에서 시작',
+    today.start.getHours() === 14 && today.start.getMinutes() === 30,
+    today.start.toString(),
+  );
+  check('빠른 일정 기본 길이는 한 시간', today.end - today.start === 60 * 60 * 1000);
+
+  const anotherDay = quickEventTime(new Date(2026, 7, 20), now);
+  check(
+    '다른 날의 빠른 일정은 오전 9시 시작',
+    anotherDay.start.getHours() === 9 && anotherDay.start.getMinutes() === 0,
+    anotherDay.start.toString(),
+  );
 }
 
 // ---------------------------------------------------------------------------

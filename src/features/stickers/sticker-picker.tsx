@@ -245,12 +245,16 @@ export function StickerPicker({
                         style={[
                           styles.stickerImageFrame,
                           {
+                            backgroundColor:
+                              sticker.display === 'cutout'
+                                ? colors.accentSoft
+                                : colors.surfaceMuted,
                             borderColor: selected ? colors.accent : colors.border,
                             opacity: pending ? 0.6 : 1,
                           },
                         ]}>
                         <Image
-                          contentFit="cover"
+                          contentFit={sticker.display === 'cutout' ? 'contain' : 'cover'}
                           source={sticker.source}
                           style={styles.stickerImage}
                           transition={120}

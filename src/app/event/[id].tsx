@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
 import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
-import { ActionSheetIOS, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
@@ -30,26 +30,6 @@ export default function EventDetailScreen() {
       pathname: '/event-edit',
       params: { id, ...(occ ? { occ } : {}) },
     } as unknown as Href);
-  }
-
-  function openMenu() {
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ['일정 수정', '취소'],
-          cancelButtonIndex: 1,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 0) openEdit();
-        },
-      );
-      return;
-    }
-
-    Alert.alert('일정', undefined, [
-      { text: '일정 수정', onPress: openEdit },
-      { text: '취소', style: 'cancel' },
-    ]);
   }
 
   if (!event.data || !calendars.data || exceptionPending) {
@@ -96,7 +76,7 @@ export default function EventDetailScreen() {
           imageUrl={creator.data?.avatar_url ?? calendar?.coverUrl ?? null}
           label={creator.data?.nickname ?? calendar?.name ?? '일정'}
         />
-        <HeaderButton icon="ellipsis-horizontal" label="일정 메뉴" onPress={openMenu} />
+        <HeaderButton icon="ellipsis-horizontal" label="일정 수정" onPress={openEdit} />
       </View>
 
       <ScrollView

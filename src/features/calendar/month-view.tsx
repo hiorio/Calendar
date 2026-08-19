@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
+import { layoutWeekMarks } from '@/features/calendar/month-layout';
 import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
 import { stickerByKey, type StickerKey } from '@/features/stickers/catalog';
 import { useTheme } from '@/hooks/use-theme';
@@ -18,7 +19,7 @@ import {
   type WeekStart,
 } from '@/lib/date';
 
-/** 격자 한 칸에 찍히는 일정 요약. 3단계에서 실제 일정으로 채운다. */
+/** 월간 격자에 그리는 일정 요약. 같은 id가 이어지면 기간 막대로 합친다. */
 export type DayMark = {
   id: string;
   title: string;
@@ -50,7 +51,11 @@ export type MonthViewProps = {
   colorSaturday?: boolean;
 };
 
-const MAX_CHIPS = 3;
+const MAX_EVENT_LANES = 3;
+const EVENT_ROW_HEIGHT = 16;
+const EVENT_ROW_GAP = 2;
+const EVENT_TOP = 30;
+const EVENT_TOP_WITH_LUNAR = 44;
 
 export function MonthView({
   month,
@@ -69,6 +74,7 @@ export function MonthView({
   const weeks = buildMonthMatrix(month, weekStart);
   const labels = weekdayLabels(weekStart);
   const today = new Date();
+  const eventTop = showLunar ? EVENT_TOP_WITH_LUNAR : EVENT_TOP;
 
   return (
     <View style={[styles.wrap, fillAvailableSpace && styles.fill]}>
@@ -107,144 +113,186 @@ export function MonthView({
           { borderTopColor: colors.border },
           fillAvailableSpace && styles.gridFill,
         ]}>
-        {weeks.map((week) => (
-          <View
-            key={toDateKey(week[0])}
-            style={[
-              styles.week,
-              { borderBottomColor: colors.border },
-              fillAvailableSpace && styles.weekFill,
-            ]}>
-            {showWeekNumbers ? (
-              <View style={styles.weekNumberCell}>
-                <Txt variant="micro" tone="tertiary">
-                  {isoWeekNumber(week[0])}
-                </Txt>
-              </View>
-            ) : null}
-            {week.map((date) => {
-              const outside = !isSameMonth(date, month);
-              const isToday = isSameDay(date, today);
-              const isSelected = isSameDay(date, selected);
-              const marks = marksByDate[toDateKey(date)] ?? [];
-              const stickerMarks = stickersByDate[toDateKey(date)] ?? [];
-              const sticker = stickerByKey(stickerMarks[0]?.stickerKey);
-              const weekday = date.getDay();
+        {weeks.map((week) => {
+          const weekKeys = week.map(toDateKey);
+          const placements = layoutWeekMarks(weekKeys, marksByDate);
+          const hiddenByColumn = weekKeys.map((_, column) =>
+            placements.filter(
+              (placement) =>
+                placement.lane >= MAX_EVENT_LANES &&
+                placement.startColumn <= column &&
+                placement.endColumn >= column,
+            ).length,
+          );
 
-              const numberColor = outside
-                ? colors.textTertiary
-                  : weekday === 0
-                  ? colors.sunday
-                  : weekday === 6 && colorSaturday
-                    ? colors.saturday
-                    : colors.text;
+          return (
+            <View
+              key={toDateKey(week[0])}
+              style={[
+                styles.week,
+                { borderBottomColor: colors.border },
+                fillAvailableSpace && styles.weekFill,
+              ]}>
+              {showWeekNumbers ? (
+                <View style={styles.weekNumberCell}>
+                  <Txt variant="micro" tone="tertiary">
+                    {isoWeekNumber(week[0])}
+                  </Txt>
+                </View>
+              ) : null}
+              <View style={styles.weekDays}>
+              {week.map((date, column) => {
+                const outside = !isSameMonth(date, month);
+                const isToday = isSameDay(date, today);
+                const isSelected = isSameDay(date, selected);
+                const stickerMarks = stickersByDate[toDateKey(date)] ?? [];
+                const sticker = stickerByKey(stickerMarks[0]?.stickerKey);
+                const weekday = date.getDay();
 
-              return (
-                <Pressable
-                  key={toDateKey(date)}
-                  accessibilityRole="button"
-                  accessibilityLabel={`${date.getMonth() + 1}월 ${date.getDate()}일`}
-                  accessibilityHint={
-                    isSelected
-                      ? '한 번 더 누르면 이 날의 일정을 엽니다'
-                      : '이 날짜에 포커스를 맞춥니다'
-                  }
-                  accessibilityState={{ selected: isSelected }}
-                  onPress={() => onSelect(date)}
-                  style={({ pressed }) => [
-                    styles.dayCell,
-                    { minHeight: fillAvailableSpace ? 0 : dayCellMinHeight },
-                    isSelected && { backgroundColor: colors.accentSoft },
-                    pressed && !isSelected && { backgroundColor: colors.surfaceMuted },
-                  ]}>
-                  <View
-                    style={[
-                      styles.dayNumber,
-                      isToday && { backgroundColor: colors.accent },
+                const numberColor = outside
+                  ? colors.textTertiary
+                    : weekday === 0
+                    ? colors.sunday
+                    : weekday === 6 && colorSaturday
+                      ? colors.saturday
+                      : colors.text;
+
+                return (
+                  <Pressable
+                    key={toDateKey(date)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`${date.getMonth() + 1}월 ${date.getDate()}일`}
+                    accessibilityHint={
+                      isSelected
+                        ? '한 번 더 누르면 이 날의 일정을 엽니다'
+                        : '이 날짜에 포커스를 맞춥니다'
+                    }
+                    accessibilityState={{ selected: isSelected }}
+                    onPress={() => onSelect(date)}
+                    style={({ pressed }) => [
+                      styles.dayCell,
+                      { minHeight: fillAvailableSpace ? 0 : dayCellMinHeight },
+                      isSelected && { backgroundColor: colors.accentSoft },
+                      pressed && !isSelected && { backgroundColor: colors.surfaceMuted },
                     ]}>
-                    <Txt
-                      variant="caption"
+                    <View
                       style={[
-                        styles.dayNumberText,
-                        { color: isToday ? colors.onAccent : numberColor },
-                        outside && styles.outside,
+                        styles.dayNumber,
+                        isToday && { backgroundColor: colors.accent },
                       ]}>
-                      {date.getDate()}
-                    </Txt>
-                  </View>
+                      <Txt
+                        variant="caption"
+                        style={[
+                          styles.dayNumberText,
+                          { color: isToday ? colors.onAccent : numberColor },
+                          outside && styles.outside,
+                        ]}>
+                        {date.getDate()}
+                      </Txt>
+                    </View>
 
-                  {showLunar ? (
-                    <Txt variant="micro" tone="tertiary" style={styles.lunar}>
-                      {formatLunarDay(date)}
-                    </Txt>
-                  ) : null}
-
-                  <View style={styles.chips}>
-                    {marks.slice(0, MAX_CHIPS).map((mark) => {
-                      const markColor = calendarColorForScheme(mark.color, scheme);
-
-                      return (
-                        <View
-                          key={mark.id}
-                          style={[
-                            styles.eventMark,
-                            mark.isAllDay
-                              ? [styles.allDayMark, { backgroundColor: markColor }]
-                              : styles.timedMark,
-                          ]}>
-                          {!mark.isAllDay ? (
-                            <View
-                              accessibilityElementsHidden
-                              importantForAccessibility="no"
-                              style={[styles.timedMarkLine, { backgroundColor: markColor }]}
-                            />
-                          ) : null}
-                          {/* 종일 일정만 색 배경 위의 대비색을 쓴다. 시간 지정 일정은
-                              배경 없이 본문색과 캘린더 색 세로선으로 구분한다. */}
-                          <Txt
-                            variant="caption"
-                            numberOfLines={1}
-                            style={[
-                              styles.eventMarkText,
-                              {
-                                color: mark.isAllDay
-                                  ? onColor(mark.color, scheme)
-                                  : colors.text,
-                              },
-                            ]}>
-                            {mark.title}
-                          </Txt>
-                        </View>
-                      );
-                    })}
-                    {marks.length > MAX_CHIPS ? (
-                      <Txt variant="caption" tone="tertiary" style={styles.more}>
-                        +{marks.length - MAX_CHIPS}
+                    {showLunar ? (
+                      <Txt variant="micro" tone="tertiary" style={styles.lunar}>
+                        {formatLunarDay(date)}
                       </Txt>
                     ) : null}
-                  </View>
 
-                  {sticker ? (
-                    <View pointerEvents="none" style={styles.stickerWrap}>
-                      <Image
-                        source={sticker.cutoutSource}
-                        style={styles.stickerImage}
-                        contentFit="contain"
-                      />
-                      {stickerMarks.length > 1 ? (
-                        <View style={[styles.stickerCount, { backgroundColor: colors.surface }]}>
-                          <Txt variant="micro" style={styles.stickerCountText}>
-                            +{stickerMarks.length - 1}
-                          </Txt>
-                        </View>
-                      ) : null}
-                    </View>
-                  ) : null}
-                </Pressable>
-              );
-            })}
-          </View>
-        ))}
+                    {hiddenByColumn[column] > 0 ? (
+                      <Txt
+                        variant="caption"
+                        tone="tertiary"
+                        style={[
+                          styles.more,
+                          {
+                            top:
+                              eventTop +
+                              MAX_EVENT_LANES * (EVENT_ROW_HEIGHT + EVENT_ROW_GAP),
+                          },
+                        ]}>
+                        +{hiddenByColumn[column]}
+                      </Txt>
+                    ) : null}
+
+                    {sticker ? (
+                      <View pointerEvents="none" style={styles.stickerWrap}>
+                        <Image
+                          source={sticker.cutoutSource}
+                          style={styles.stickerImage}
+                          contentFit="contain"
+                        />
+                        {stickerMarks.length > 1 ? (
+                          <View style={[styles.stickerCount, { backgroundColor: colors.surface }]}>
+                            <Txt variant="micro" style={styles.stickerCountText}>
+                              +{stickerMarks.length - 1}
+                            </Txt>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+
+              <View pointerEvents="none" style={StyleSheet.absoluteFill}>
+                {placements
+                  .filter((placement) => placement.lane < MAX_EVENT_LANES)
+                  .map((placement) => {
+                    const { mark } = placement;
+                    const markColor = calendarColorForScheme(mark.color, scheme);
+                    const filled = mark.isAllDay || placement.isSpanning;
+
+                    return (
+                      <View
+                        key={mark.id}
+                        style={[
+                          styles.eventMark,
+                          {
+                            left: `${(placement.startColumn / 7) * 100}%`,
+                            right: `${((6 - placement.endColumn) / 7) * 100}%`,
+                            top:
+                              eventTop + placement.lane * (EVENT_ROW_HEIGHT + EVENT_ROW_GAP),
+                            marginLeft: placement.continuesBefore ? 0 : 2,
+                            marginRight: placement.continuesAfter ? 0 : 2,
+                          },
+                          filled
+                            ? [
+                                styles.allDayMark,
+                                {
+                                  backgroundColor: markColor,
+                                  borderTopLeftRadius: placement.continuesBefore ? 0 : 4,
+                                  borderBottomLeftRadius: placement.continuesBefore ? 0 : 4,
+                                  borderTopRightRadius: placement.continuesAfter ? 0 : 4,
+                                  borderBottomRightRadius: placement.continuesAfter ? 0 : 4,
+                                },
+                              ]
+                            : styles.timedMark,
+                        ]}>
+                        {!filled ? (
+                          <View
+                            accessibilityElementsHidden
+                            importantForAccessibility="no"
+                            style={[styles.timedMarkLine, { backgroundColor: markColor }]}
+                          />
+                        ) : null}
+                        <Txt
+                          variant="caption"
+                          numberOfLines={1}
+                          style={[
+                            styles.eventMarkText,
+                            { color: filled ? onColor(mark.color, scheme) : colors.text },
+                          ]}>
+                          {placement.continuesBefore ? '‹ ' : ''}
+                          {mark.title}
+                          {placement.continuesAfter ? ' ›' : ''}
+                        </Txt>
+                      </View>
+                    );
+                  })}
+              </View>
+              </View>
+            </View>
+          );
+        })}
       </View>
     </View>
   );
@@ -265,6 +313,7 @@ const styles = StyleSheet.create({
   gridFill: { flex: 1, minHeight: 0 },
   week: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
   weekFill: { flex: 1, minHeight: 0 },
+  weekDays: { flex: 1, flexDirection: 'row', position: 'relative' },
   dayCell: {
     flex: 1,
     paddingTop: 5,
@@ -285,12 +334,14 @@ const styles = StyleSheet.create({
   dayNumberText: { fontWeight: '600' },
   lunar: { alignSelf: 'center', fontSize: 9, lineHeight: 11 },
   outside: { opacity: 0.5 },
-  chips: { gap: 2 },
   eventMark: {
+    position: 'absolute',
+    height: EVENT_ROW_HEIGHT,
     minHeight: 16,
     flexDirection: 'row',
     alignItems: 'center',
     overflow: 'hidden',
+    zIndex: 2,
   },
   allDayMark: { borderRadius: 4, paddingHorizontal: 4, paddingVertical: 1 },
   timedMark: { gap: 3, paddingRight: 2 },
@@ -301,7 +352,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   eventMarkText: { flex: 1, fontSize: 10, lineHeight: 14 },
-  more: { paddingLeft: 4, fontSize: 10, lineHeight: 12 },
+  more: { position: 'absolute', left: 4, fontSize: 10, lineHeight: 12 },
   stickerWrap: {
     position: 'absolute',
     left: 2,

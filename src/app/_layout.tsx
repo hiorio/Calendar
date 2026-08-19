@@ -16,6 +16,7 @@ import { Typography } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-provider';
 import { useNotificationNavigation } from '@/features/notifications/navigation';
 import { configureNotificationHandler } from '@/features/notifications/push';
+import { WidgetSync } from '@/features/widgets/widget-sync';
 import { useTheme } from '@/hooks/use-theme';
 import { Sentry } from '@/lib/observability';
 
@@ -97,6 +98,7 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <NotificationNavigation />
+          {Platform.OS === 'ios' ? <WidgetSync /> : null}
           <SplashGate fontsReady={fontsReady}>
             <ThemeProvider value={navigationTheme}>
               <Stack
@@ -142,6 +144,14 @@ function RootLayout() {
                   options={{ presentation: 'modal', headerShown: true, title: '일정 추가' }}
                 />
                 <Stack.Screen
+                  name="quick-event"
+                  options={{ presentation: 'modal', headerShown: true, title: '빠른 일정' }}
+                />
+                <Stack.Screen
+                  name="quick-memo"
+                  options={{ presentation: 'modal', headerShown: true, title: '퀵 메모' }}
+                />
+                <Stack.Screen
                   name="event/[id]"
                   options={{ presentation: 'modal', headerShown: false, title: '일정' }}
                 />
@@ -156,6 +166,10 @@ function RootLayout() {
                 <Stack.Screen
                   name="preferences"
                   options={{ presentation: 'modal', headerShown: true, title: '설정' }}
+                />
+                <Stack.Screen
+                  name="widget-settings"
+                  options={{ presentation: 'modal', headerShown: true, title: '위젯' }}
                 />
                 <Stack.Screen
                   name="memos"

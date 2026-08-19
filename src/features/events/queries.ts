@@ -64,7 +64,11 @@ function decorate(row: EventJoinRow) {
  * 캘린더별로 나눠 받지 않는다. 표시/숨김은 화면에서 거르는 편이 칩을 눌렀을 때
  * 즉시 반영되고 요청도 줄어든다. 접근 범위는 어차피 RLS가 정한다.
  */
-export function useMonthEvents(month: Date, weekStart: WeekStart = 'sunday') {
+export function useMonthEvents(
+  month: Date,
+  weekStart: WeekStart = 'sunday',
+  enabled = true,
+) {
   const { user } = useAuth();
   const { start, end } = monthGridRange(month, weekStart);
   const startIso = start.toISOString();
@@ -72,7 +76,7 @@ export function useMonthEvents(month: Date, weekStart: WeekStart = 'sunday') {
 
   return useQuery<EventOccurrence[]>({
     queryKey: eventKeys.range(startIso, endIso),
-    enabled: Boolean(user),
+    enabled: Boolean(user && enabled),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('events')

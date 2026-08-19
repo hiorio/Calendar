@@ -16,6 +16,15 @@ import { Card } from '@/components/ui/card';
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-provider';
+import {
+  homeMonthSnapshotKey,
+  type HomeMonthSnapshot,
+} from '@/features/calendar/home-snapshot-cache';
+import {
+  loadHomeMonthSnapshot,
+  saveHomeMonthSnapshot,
+} from '@/features/calendar/home-snapshot';
 import {
   MonthView,
   type DayMark,
@@ -44,6 +53,7 @@ import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference
 
 export default function CalendarScreen() {
   const { colors, scheme } = useTheme();
+  const { user } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const calendars = useMyCalendars();
   const { hidden, toggle } = useCalendarFilter();
@@ -59,10 +69,19 @@ export default function CalendarScreen() {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selected, setSelected] = useState(() => new Date());
   const [monthPickerOpen, setMonthPickerOpen] = useState(false);
+  const [loadAdjacentMonths, setLoadAdjacentMonths] = useState(false);
+  const [cachedMonth, setCachedMonth] = useState<{
+    userId: string;
+    snapshot: HomeMonthSnapshot;
+  } | null>(null);
   const monthPagerRef = useRef<ScrollView>(null);
   const calendarWidth = Math.min(windowWidth, MaxContentWidth);
   const previousMonth = useMemo(() => addMonths(month, -1), [month]);
   const nextMonth = useMemo(() => addMonths(month, 1), [month]);
+  const snapshotKey = useMemo(
+    () => homeMonthSnapshotKey(month, weekStart),
+    [month, weekStart],
+  );
 
   const moveMonth = useCallback((amount: number) => {
     setMonth((current) => addMonths(current, amount));
@@ -90,9 +109,73 @@ export default function CalendarScreen() {
   );
 
   const deviceCalendars = useDeviceCalendars();
-  const previousPage = useCalendarMonthData(previousMonth, weekStart, hidden);
+  const previousPage = useCalendarMonthData(
+    previousMonth,
+    weekStart,
+    hidden,
+    loadAdjacentMonths,
+  );
   const currentPage = useCalendarMonthData(month, weekStart, hidden);
-  const nextPage = useCalendarMonthData(nextMonth, weekStart, hidden);
+  const nextPage = useCalendarMonthData(nextMonth, weekStart, hidden, loadAdjacentMonths);
+
+  useEffect(() => {
+    let active = true;
+    const userId = user?.id;
+
+    if (!userId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    void loadHomeMonthSnapshot(userId, snapshotKey)
+      .then((snapshot) => {
+        if (active) setCachedMonth(snapshot ? { userId, snapshot } : null);
+      })
+      .catch(() => {
+        if (active) setCachedMonth(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [snapshotKey, user?.id]);
+
+  useEffect(() => {
+    if (loadAdjacentMonths || !currentPage.events.isFetched) return;
+
+    // 현재 달이 화면에 반영된 다음 프레임을 먼저 내보낸 뒤 옆 달을 준비한다.
+    const timeout = setTimeout(() => setLoadAdjacentMonths(true), 120);
+    return () => clearTimeout(timeout);
+  }, [currentPage.events.isFetched, loadAdjacentMonths]);
+
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId || !currentPage.events.isSuccess || !currentPage.stickers.isSuccess) return;
+
+    const snapshot: HomeMonthSnapshot = {
+      key: snapshotKey,
+      savedAt: new Date().toISOString(),
+      marksByDate: currentPage.marksByDate,
+      stickersByDate: currentPage.stickersByDate,
+    };
+
+    void saveHomeMonthSnapshot(userId, snapshot).catch(() => undefined);
+  }, [
+    currentPage.events.isSuccess,
+    currentPage.marksByDate,
+    currentPage.stickers.isSuccess,
+    currentPage.stickersByDate,
+    snapshotKey,
+    user?.id,
+  ]);
+
+  const cachedCurrentMonth =
+    cachedMonth !== null &&
+    cachedMonth.userId === user?.id &&
+    cachedMonth.snapshot.key === snapshotKey
+      ? cachedMonth.snapshot
+      : null;
 
   function selectDate(date: Date) {
     const dateKey = toDateKey(date);
@@ -280,9 +363,28 @@ export default function CalendarScreen() {
               onMomentumScrollEnd={settleMonthPage}
               style={styles.monthPager}>
               {[
-                { key: 'previous', value: previousMonth, data: previousPage },
-                { key: 'current', value: month, data: currentPage },
-                { key: 'next', value: nextMonth, data: nextPage },
+                {
+                  key: 'previous',
+                  value: previousMonth,
+                  marksByDate: previousPage.marksByDate,
+                  stickersByDate: previousPage.stickersByDate,
+                },
+                {
+                  key: 'current',
+                  value: month,
+                  marksByDate: currentPage.events.isSuccess
+                    ? currentPage.marksByDate
+                    : (cachedCurrentMonth?.marksByDate ?? currentPage.marksByDate),
+                  stickersByDate: currentPage.stickers.isSuccess
+                    ? currentPage.stickersByDate
+                    : (cachedCurrentMonth?.stickersByDate ?? currentPage.stickersByDate),
+                },
+                {
+                  key: 'next',
+                  value: nextMonth,
+                  marksByDate: nextPage.marksByDate,
+                  stickersByDate: nextPage.stickersByDate,
+                },
               ].map((page) => (
                 <View
                   key={page.key}
@@ -295,8 +397,8 @@ export default function CalendarScreen() {
                     month={page.value}
                     selected={selected}
                     onSelect={selectDate}
-                    marksByDate={page.data.marksByDate}
-                    stickersByDate={page.data.stickersByDate}
+                    marksByDate={page.marksByDate}
+                    stickersByDate={page.stickersByDate}
                     fillAvailableSpace
                     weekStart={weekStart}
                     showWeekNumbers={showWeekNumbers}
@@ -404,13 +506,15 @@ function useCalendarMonthData(
   month: Date,
   weekStart: WeekStart,
   hidden: string[],
+  enabled = true,
 ) {
-  const events = useMonthEvents(month, weekStart);
+  const events = useMonthEvents(month, weekStart, enabled);
   const deviceRange = useMemo(() => monthGridRange(month, weekStart), [month, weekStart]);
-  const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end);
+  const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end, enabled);
   const stickers = useMonthStickers(
     toDateKey(deviceRange.start),
     toDateKey(deviceRange.end),
+    enabled,
   );
 
   // 숨긴 캘린더는 서버가 아니라 여기서 거른다. 칩을 누르면 세 페이지 모두 바로 바뀐다.

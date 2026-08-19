@@ -182,6 +182,29 @@ export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
 }
 
+/**
+ * 위젯·바로가기에서 여는 빠른 일정의 기본 시간.
+ *
+ * 오늘이면 현재보다 뒤인 다음 30분 경계부터 한 시간, 다른 날이면 그 날
+ * 09:00~10:00이다. 화면마다 반올림 규칙을 다시 만들지 않도록 여기 둔다.
+ */
+export function quickEventTime(date: Date, now = new Date()): EventTimeForm {
+  const selected = startOfDay(date);
+  const today = startOfDay(now);
+
+  if (selected.getTime() !== today.getTime()) {
+    const start = new Date(selected);
+    start.setHours(9, 0, 0, 0);
+    return { isAllDay: false, start, end: addMinutes(start, 60) };
+  }
+
+  const start = new Date(now);
+  start.setSeconds(0, 0);
+  const minutes = start.getMinutes();
+  start.setMinutes(minutes < 30 ? 30 : 60, 0, 0);
+  return { isAllDay: false, start, end: addMinutes(start, 60) };
+}
+
 /** '오후 2:30' */
 export function formatTime(date: Date): string {
   const hours = date.getHours();

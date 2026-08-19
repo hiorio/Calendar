@@ -30,7 +30,7 @@ export function useDeviceCalendars() {
   });
 }
 
-export function useDeviceCalendarEvents(start: Date, end: Date) {
+export function useDeviceCalendarEvents(start: Date, end: Date, enabled = true) {
   const connected = useDeviceCalendarPreference((state) => state.connected);
   const selectedIds = useDeviceCalendarPreference((state) => state.selectedIds);
   const calendars = useDeviceCalendars();
@@ -42,6 +42,7 @@ export function useDeviceCalendarEvents(start: Date, end: Date) {
     queryKey: deviceCalendarKeys.events(sortedIds, startIso, endIso),
     enabled:
       deviceCalendarSupported &&
+      enabled &&
       connected &&
       sortedIds.length > 0 &&
       Boolean(calendars.data),

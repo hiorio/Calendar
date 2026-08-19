@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
+import { router, type Href } from 'expo-router';
 import { useState } from 'react';
 import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
@@ -152,6 +152,17 @@ export default function PreferencesScreen() {
                 deviceCalendarsConnected ? `${selectedDeviceCalendars}개 표시` : '연결 안 됨'
               }
               onPress={() => router.push('/external-calendars')}
+            />
+          </Card>
+        </Section>
+
+        <Section title="위젯">
+          <Card padded={false}>
+            <ListRow
+              icon="apps-outline"
+              title="바탕화면·잠금화면 위젯"
+              subtitle="표시할 캘린더와 빠른 일정·메모 설정"
+              onPress={() => router.push('/widget-settings' as Href)}
             />
           </Card>
         </Section>

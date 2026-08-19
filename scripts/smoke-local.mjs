@@ -1195,7 +1195,7 @@ console.log('\n19. 날짜별 캘린더 스티커');
     body: JSON.stringify({
       calendar_id: calendarId,
       sticker_date: stickerDate,
-      sticker_key: 'morning-reader',
+      sticker_key: 'cake-party',
       created_by: alice.userId,
     }),
   });
@@ -1212,7 +1212,7 @@ console.log('\n19. 날짜별 캘린더 스티커');
   );
   check(
     '같은 캘린더 구성원에게 스티커가 보인다',
-    shared.body?.[0]?.sticker_key === 'morning-reader' && Boolean(shared.body?.[0]?.calendars?.name),
+    shared.body?.[0]?.sticker_key === 'cake-party' && Boolean(shared.body?.[0]?.calendars?.name),
     JSON.stringify(shared.body),
   );
 
