@@ -9,6 +9,7 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { deviceWidgetsSupported } from '@/features/widgets/widget-capability';
 import { useTheme } from '@/hooks/use-theme';
 import { useCalendarPreference } from '@/stores/calendar-preference';
 import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
@@ -156,16 +157,18 @@ export default function PreferencesScreen() {
           </Card>
         </Section>
 
-        <Section title="위젯">
-          <Card padded={false}>
-            <ListRow
-              icon="apps-outline"
-              title="바탕화면·잠금화면 위젯"
-              subtitle="표시할 캘린더와 빠른 일정·메모 설정"
-              onPress={() => router.push('/widget-settings' as Href)}
-            />
-          </Card>
-        </Section>
+        {deviceWidgetsSupported ? (
+          <Section title="위젯">
+            <Card padded={false}>
+              <ListRow
+                icon="apps-outline"
+                title="바탕화면·잠금화면 위젯"
+                subtitle="표시할 캘린더와 빠른 일정·메모 설정"
+                onPress={() => router.push('/widget-settings' as Href)}
+              />
+            </Card>
+          </Section>
+        ) : null}
 
         <Section title="표시">
           <Card padded={false}>

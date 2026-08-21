@@ -16,7 +16,7 @@ import { Typography } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-provider';
 import { useNotificationNavigation } from '@/features/notifications/navigation';
 import { configureNotificationHandler } from '@/features/notifications/push';
-import { WidgetSync } from '@/features/widgets/widget-sync';
+import { WidgetSyncGate } from '@/features/widgets/widget-capability';
 import { useTheme } from '@/hooks/use-theme';
 import { Sentry } from '@/lib/observability';
 
@@ -98,7 +98,7 @@ function RootLayout() {
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
           <NotificationNavigation />
-          {Platform.OS === 'ios' ? <WidgetSync /> : null}
+          <WidgetSyncGate />
           <SplashGate fontsReady={fontsReady}>
             <ThemeProvider value={navigationTheme}>
               <Stack
