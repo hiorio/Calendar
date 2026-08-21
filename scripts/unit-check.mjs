@@ -15,7 +15,7 @@ register('./ts-resolve.mjs', pathToFileURL('./scripts/'));
 const { toWallClock, fromWallClock } = await import('../src/lib/timezone.ts');
 const { buildRrule, parseRrule, expandEvent, computeRruleUntil, truncateRruleBefore, applyExceptions } =
   await import('../src/lib/recurrence.ts');
-const { eventDayKeys, switchAllDay, moveStart, moveEnd, quickEventTime } =
+const { deviceAllDayDateRange, eventDayKeys, switchAllDay, moveStart, moveEnd, quickEventTime } =
   await import('../src/lib/event-time.ts');
 const { objectParticle, subjectParticle } = await import('../src/lib/korean.ts');
 const { CALENDAR_COLORS, DEFAULT_CALENDAR_COLOR, calendarColorForScheme, onColor } =
@@ -301,6 +301,32 @@ console.log('\n4. 회차 전개 (종일)');
   });
   eq('닷새짜리 종일은 닷새', keys, ['2026-09-05', '2026-09-06', '2026-09-07', '2026-09-08', '2026-09-09']);
   check('날짜 키에 중복이 없다', keys.length === new Set(keys).size, JSON.stringify(keys));
+}
+
+{
+  eq(
+    'iOS UTC 직렬화 종일 일정은 기기 날짜로 복원한다',
+    deviceAllDayDateRange(
+      '2026-08-20T15:00:00.000Z',
+      '2026-08-21T15:00:00.000Z',
+      'Asia/Seoul',
+    ),
+    { startDate: '2026-08-21', endDate: '2026-08-21' },
+  );
+  eq(
+    '여러 날인 iOS 종일 일정도 포함 종료일을 보존한다',
+    deviceAllDayDateRange(
+      '2026-08-20T15:00:00.000Z',
+      '2026-08-23T15:00:00.000Z',
+      'Asia/Seoul',
+    ),
+    { startDate: '2026-08-21', endDate: '2026-08-23' },
+  );
+  eq(
+    '날짜만 넘어오면 타임존 변환 없이 유지한다',
+    deviceAllDayDateRange('2026-08-21', '2026-08-22', 'America/Los_Angeles'),
+    { startDate: '2026-08-21', endDate: '2026-08-21' },
+  );
 }
 
 // ---------------------------------------------------------------------------

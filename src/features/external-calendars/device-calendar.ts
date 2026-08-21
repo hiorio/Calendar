@@ -1,8 +1,7 @@
 import * as Calendar from 'expo-calendar';
 
 import { DEFAULT_CALENDAR_COLOR } from '@/features/calendars/colors';
-import { parseDateKey } from '@/lib/event-time';
-import { toDateKey } from '@/lib/date';
+import { deviceAllDayDateRange, deviceTimezone } from '@/lib/event-time';
 
 import type {
   DeviceCalendarEvent,
@@ -54,19 +53,20 @@ export async function listDeviceCalendarEvents(
     start,
     end,
   );
+  const localTimezone = deviceTimezone();
 
   return events.map((event) => {
     const calendar = calendarById.get(event.calendarId);
     const startDate = new Date(event.startDate);
     const endDate = new Date(event.endDate);
-    const timezone = event.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Seoul';
+    const timezone = event.timeZone || localTimezone;
 
     if (event.allDay) {
-      const firstKey = allDayKey(event.startDate);
-      const exclusiveEndKey = allDayKey(event.endDate);
-      const exclusiveEnd = parseDateKey(exclusiveEndKey);
-      exclusiveEnd.setDate(exclusiveEnd.getDate() - 1);
-      const lastKey = exclusiveEndKey > firstKey ? toDateKey(exclusiveEnd) : firstKey;
+      const { startDate: firstKey, endDate: lastKey } = deviceAllDayDateRange(
+        event.startDate,
+        event.endDate,
+        localTimezone,
+      );
 
       return {
         kind: 'device' as const,
@@ -116,12 +116,4 @@ function normalizeColor(color: string | undefined): string {
   if (!color) return DEFAULT_CALENDAR_COLOR;
   const normalized = color.startsWith('#') ? color : `#${color}`;
   return /^#[0-9a-f]{6}$/i.test(normalized) ? normalized.toUpperCase() : DEFAULT_CALENDAR_COLOR;
-}
-
-function allDayKey(value: string | Date): string {
-  if (typeof value === 'string') {
-    const match = /^(\d{4}-\d{2}-\d{2})/.exec(value);
-    if (match) return match[1];
-  }
-  return toDateKey(new Date(value));
 }
