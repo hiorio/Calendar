@@ -410,6 +410,45 @@ function SwipeableEventRow({
   const { colors } = useTheme();
   const remove = useDeleteEvent(event.id);
   const swipeableRef = useRef<SwipeableMethods>(null);
+  const blockPressRef = useRef(false);
+  const unblockPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(
+    () => () => {
+      if (unblockPressTimerRef.current) clearTimeout(unblockPressTimerRef.current);
+    },
+    [],
+  );
+
+  function startSwipe() {
+    blockPressRef.current = true;
+    if (unblockPressTimerRef.current) {
+      clearTimeout(unblockPressTimerRef.current);
+      unblockPressTimerRef.current = null;
+    }
+    if (swipeableRef.current) onSwipeStart?.(swipeableRef.current);
+  }
+
+  function settleSwipe() {
+    if (swipeableRef.current) onSwipeSettled?.(swipeableRef.current);
+    if (unblockPressTimerRef.current) clearTimeout(unblockPressTimerRef.current);
+    unblockPressTimerRef.current = setTimeout(() => {
+      blockPressRef.current = false;
+      unblockPressTimerRef.current = null;
+    }, 160);
+  }
+
+  function pressEvent() {
+    if (blockPressRef.current) {
+      blockPressRef.current = false;
+      if (unblockPressTimerRef.current) {
+        clearTimeout(unblockPressTimerRef.current);
+        unblockPressTimerRef.current = null;
+      }
+      return;
+    }
+    onPress();
+  }
 
   async function requestDelete() {
     swipeableRef.current?.close();
@@ -453,18 +492,12 @@ function SwipeableEventRow({
       onSwipeableWillOpen={() => {
         if (swipeableRef.current) onWillOpen(swipeableRef.current);
       }}
-      onSwipeableOpenStartDrag={() => {
-        if (swipeableRef.current) onSwipeStart?.(swipeableRef.current);
-      }}
-      onSwipeableCloseStartDrag={() => {
-        if (swipeableRef.current) onSwipeStart?.(swipeableRef.current);
-      }}
-      onSwipeableOpen={() => {
-        if (swipeableRef.current) onSwipeSettled?.(swipeableRef.current);
-      }}
+      onSwipeableOpenStartDrag={startSwipe}
+      onSwipeableCloseStartDrag={startSwipe}
+      onSwipeableOpen={settleSwipe}
       onSwipeableClose={() => {
         if (swipeableRef.current) {
-          onSwipeSettled?.(swipeableRef.current);
+          settleSwipe();
           onClose(swipeableRef.current);
         }
       }}
@@ -497,7 +530,7 @@ function SwipeableEventRow({
         event={event}
         index={index}
         showTimeZone={showTimeZone}
-        onPress={onPress}
+        onPress={pressEvent}
         onDelete={() => void requestDelete()}
       />
     </Swipeable>
