@@ -1,7 +1,7 @@
 /**
- * 출시 범위를 줄일 때 기능의 진입점과 내부 호출을 같은 값으로 잠근다.
+ * 기능의 진입점과 내부 호출을 같은 값으로 잠근다.
  *
- * 소셜 로그인 구현은 향후 재검토를 위해 남기되, 공급자 설정이 실수로 켜져도
- * 클라이언트에서 사용할 수 없도록 기본값을 false로 고정한다.
+ * Google·Apple 로그인은 공급자 설정이 실제로 활성화된 경우에만 계정 화면에서
+ * 사용할 수 있다. AuthProvider도 이 값을 확인해 숨겨진 경로의 직접 호출을 막는다.
  */
-export const SOCIAL_AUTH_ENABLED = false;
+export const SOCIAL_AUTH_ENABLED = true;

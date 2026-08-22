@@ -1,7 +1,7 @@
 # TimeFlower App Store 심사 자료
 
-작성 기준일: 2026-07-30
-대상 버전: 1.0.0
+작성 기준일: 2026-08-22
+대상 버전: 소셜 로그인 반영 후 다음 제출 버전
 Bundle ID: `com.hiorio.timeline`
 대상 빌드: EAS `production` 프로필로 생성한 iOS 빌드만 사용
 
@@ -25,7 +25,7 @@ TimeFlower
 
 TimeFlower는 가까운 사람들과 일정을 함께 관리하는 공유 캘린더입니다.
 
-가입하지 않아도 바로 개인 캘린더를 시작할 수 있습니다. 앱을 다시 설치하거나 기기를 변경해도 데이터를 이어서 사용하려면 이메일 계정을 만들어 로그인할 수 있습니다.
+가입하지 않아도 바로 개인 캘린더를 시작할 수 있습니다. 앱을 다시 설치하거나 기기를 변경해도 데이터를 이어서 사용하려면 이메일·Google·Apple 계정을 연결해 로그인할 수 있습니다.
 
 주요 기능
 
@@ -102,7 +102,7 @@ TimeFlower는 첫 실행 시 Supabase 익명 세션을 자동 생성합니다. �
 4. 활동 탭에서 일정 생성·수정 기록을 확인합니다.
 5. 더보기/설정에서 테마, 화면 모드, 글꼴, 글자 크기와 앱 내 계정 삭제 진입점을 확인합니다.
 
-가입은 필수가 아닙니다. 앱 재설치 또는 기기 변경 후에도 데이터를 이어서 사용하거나 공유 캘린더를 사용하려는 경우에만 이메일 계정을 만들 수 있습니다. 이 버전은 Google 로그인 및 Apple 로그인을 제공하지 않습니다.
+가입은 필수가 아닙니다. 앱 재설치 또는 기기 변경 후에도 데이터를 이어서 사용하거나 공유 캘린더를 사용하려는 경우에만 이메일·Google·Apple 계정을 연결할 수 있습니다. `계정 만들기`에서 Google 또는 Apple을 선택하면 현재 게스트의 일정이 유지되고, `로그인`에서는 기존 계정의 데이터로 전환됩니다. 소셜 로그인은 이메일과 기본 프로필만 사용하며 기기 또는 Google 캘린더 접근 권한을 요청하지 않습니다.
 
 계정 삭제는 앱의 `더보기 > 계정 관리 > 계정 삭제`에서 앱을 벗어나지 않고 수행할 수 있습니다. 삭제 전에 단독 소유 캘린더의 삭제, 공유 캘린더의 소유권 이전, 다른 캘린더에서의 탈퇴 결과를 안내합니다. 남은 공유 구성원이 계속 사용해야 하는 일정과 댓글은 작성자의 식별 프로필을 제거한 뒤 유지될 수 있습니다.
 
@@ -122,7 +122,7 @@ Suggested review flow:
 4. Open the Activity tab to review event creation and edit history.
 5. Open More/Settings to review themes, appearance, fonts, text size, and the in-app account deletion entry point.
 
-Registration is optional. Users may create an email account only when they want to preserve data after reinstalling or changing devices, or when they need shared-calendar features. Google Sign-In and Sign in with Apple are not offered in this version.
+Registration is optional. Users may connect an email, Google, or Apple account only when they want to preserve data after reinstalling or changing devices, or when they need shared-calendar features. Choosing Google or Apple under `Create account` preserves the current guest's events; choosing one under `Sign in` switches to the existing account. Social sign-in requests only email and basic profile information, not device or Google Calendar access.
 
 Account deletion is available inside the app at `More > Account management > Delete account`. Before deletion, the app explains which sole-member calendars will be deleted, which shared calendars will transfer ownership, and which calendars the user will leave. Content required by remaining shared-calendar members may remain after the author's identifying profile is removed.
 
@@ -138,7 +138,7 @@ There are no in-app purchases, subscriptions, advertisements, or user tracking.
 |---|---:|---:|---:|---|
 | 사용자 ID | 예 | 예 | 아니요 | 앱 기능, 계정 관리 |
 | 이름 또는 닉네임 | 예 | 예 | 아니요 | 앱 기능 |
-| 이메일 주소 | 계정 생성 시 | 예 | 아니요 | 인증, 계정 관리 |
+| 이메일 주소 | 이메일 또는 소셜 계정 연결 시 | 예 | 아니요 | 인증, 계정 관리 |
 | 사용자 콘텐츠(캘린더·일정·메모·댓글·첨부 파일) | 예 | 예 | 아니요 | 앱 기능 |
 | 푸시 토큰 | 알림 활성화 시 | 예 | 아니요 | 앱 기능 |
 | 충돌·성능 진단 | Sentry 활성화 시 | 예 또는 익명 | 아니요 | 분석, 앱 기능 |
@@ -165,7 +165,7 @@ production 환경은 현재 Sentry 원격 전송이 비활성화되어 있다. �
 - 로그인 없이 첫 실행하고 월간 캘린더가 바로 표시되는지 확인
 - 캘린더·일정 생성, 수정, 삭제 확인
 - 반복 일정의 회차 수정·삭제 확인
-- 계정 생성, 로그인, 로그아웃, 계정 삭제 확인
+- 이메일·Google·Apple 계정 생성/연결, 로그인, 로그아웃, 계정 삭제 확인
 - 서로 다른 두 계정으로 초대 링크, 권한 분리, 다른 사용자의 비공개 데이터가 보이지 않는지 확인
 - 외부 캘린더 권한을 거부했을 때와 허용했을 때 모두 확인
 - 백엔드와 Edge Function이 심사 기간 동안 계속 동작하는지 확인

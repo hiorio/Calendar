@@ -1,5 +1,6 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -8,8 +9,13 @@ import { Notice } from '@/components/ui/notice';
 import { Content } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
-import { Spacing } from '@/constants/theme';
+import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { SignInCancelledError, isAppleSignInAvailable } from '@/features/auth/oauth';
+import {
+  getSocialProviderAvailability,
+  type SocialProviderAvailability,
+} from '@/features/auth/provider-settings';
 import { useTheme } from '@/hooks/use-theme';
 import { isSupabaseConfigured } from '@/lib/env';
 
@@ -25,8 +31,15 @@ const MODES = [
  * 게스트로 쓰던 사람이 여기서 계정을 만들면 쓰던 데이터를 그대로 들고 간다.
  */
 export default function AccountScreen() {
-  const { colors } = useTheme();
-  const { isGuest, bootstrapError, createAccount, signInWithEmail } = useAuth();
+  const { colors, scheme } = useTheme();
+  const {
+    isGuest,
+    bootstrapError,
+    createAccount,
+    signInWithEmail,
+    connectSocialAccount,
+    signInWithSocialAccount,
+  } = useAuth();
   const { reason, mode: requestedMode } = useLocalSearchParams<{
     reason?: string;
     mode?: Mode;
@@ -36,20 +49,64 @@ export default function AccountScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
-  const [pending, setPending] = useState<null | 'email'>(null);
+  const [pending, setPending] = useState<null | 'email' | 'google' | 'apple'>(null);
   const [message, setMessage] = useState<{ tone: 'error' | 'info'; text: string } | null>(null);
+  const [appleAvailable, setAppleAvailable] = useState(false);
+  const [providerAvailability, setProviderAvailability] =
+    useState<SocialProviderAvailability | null>(null);
+  const [providerCheckFailed, setProviderCheckFailed] = useState(false);
 
   const busy = pending !== null;
   const disabled = busy || !isSupabaseConfigured;
   const creating = mode === 'create';
+  const googleDisabled = disabled || providerAvailability?.google !== true;
+  const appleDisabled = disabled || providerAvailability?.apple !== true;
 
-  async function run(action: () => Promise<void>) {
+  useEffect(() => {
+    let active = true;
+
+    void isAppleSignInAvailable()
+      .then((available) => {
+        if (active) setAppleAvailable(available);
+      })
+      .catch(() => {
+        if (active) setAppleAvailable(false);
+      });
+
+    if (isSupabaseConfigured) {
+      void getSocialProviderAvailability()
+        .then((availability) => {
+          if (active) {
+            setProviderAvailability(availability);
+            setProviderCheckFailed(false);
+          }
+        })
+        .catch(() => {
+          if (active) setProviderCheckFailed(true);
+        });
+    }
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function run(kind: NonNullable<typeof pending>, action: () => Promise<void>) {
     if (busy) return;
     setMessage(null);
-    setPending('email');
+    setPending(kind);
     try {
       await action();
     } catch (e) {
+      if (e instanceof SignInCancelledError) return;
+      if (kind !== 'email' && isIdentityConflict(e)) {
+        setMode('sign-in');
+        setMessage({
+          tone: 'info',
+          text: '이미 다른 TimeFlower 계정에 연결된 소셜 계정입니다. 로그인으로 전환했으니 다시 눌러 주세요.',
+        });
+        return;
+      }
       setMessage({ tone: 'error', text: toMessage(e) });
     } finally {
       setPending(null);
@@ -71,7 +128,7 @@ export default function AccountScreen() {
       return;
     }
 
-    void run(async () => {
+    void run('email', async () => {
       if (!creating) {
         await signInWithEmail(email, password);
         done();
@@ -87,6 +144,23 @@ export default function AccountScreen() {
       }
       done();
     });
+  }
+
+  /** 계정 만들기에서는 게스트 identity에 연결하고, 로그인에서는 기존 계정으로 전환한다. */
+  function socialAction(provider: 'google' | 'apple') {
+    return async () => {
+      if (creating) {
+        if (!nickname.trim()) {
+          setMessage({ tone: 'error', text: '닉네임을 입력해 주세요' });
+          return;
+        }
+        if (!isGuest) throw new Error('이미 계정으로 로그인되어 있습니다');
+        await connectSocialAccount(provider, nickname);
+      } else {
+        await signInWithSocialAccount(provider);
+      }
+      done();
+    };
   }
 
   return (
@@ -184,6 +258,50 @@ export default function AccountScreen() {
             onPress={submitEmail}
           />
 
+          <View style={styles.dividerRow}>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+            <Txt variant="caption" tone="tertiary">
+              또는
+            </Txt>
+            <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          </View>
+
+          <Button
+            label={creating ? 'Google 계정 연결' : 'Google로 로그인'}
+            variant="secondary"
+            loading={pending === 'google'}
+            disabled={googleDisabled}
+            onPress={() => run('google', socialAction('google'))}
+          />
+
+          {appleAvailable && (
+            <AppleAuthentication.AppleAuthenticationButton
+              buttonType={AppleAuthentication.AppleAuthenticationButtonType.CONTINUE}
+              buttonStyle={
+                scheme === 'dark'
+                  ? AppleAuthentication.AppleAuthenticationButtonStyle.WHITE
+                  : AppleAuthentication.AppleAuthenticationButtonStyle.BLACK
+              }
+              cornerRadius={Radius.md}
+              style={[styles.appleButton, appleDisabled && styles.disabled]}
+              onPress={() => {
+                if (!appleDisabled) void run('apple', socialAction('apple'));
+              }}
+            />
+          )}
+
+          <Txt variant="micro" tone="tertiary">
+            {providerCheckFailed
+              ? '소셜 로그인 설정을 확인할 수 없습니다. 네트워크 연결 후 화면을 다시 열어 주세요.'
+              : providerAvailability &&
+                  (!providerAvailability.google ||
+                    (appleAvailable && !providerAvailability.apple))
+                ? '서버에서 활성화된 소셜 로그인만 사용할 수 있습니다.'
+                : providerAvailability
+                  ? '소셜 로그인에는 이메일과 기본 프로필만 사용하며 캘린더 접근 권한은 요청하지 않습니다.'
+                  : '사용할 수 있는 로그인 방식을 확인하고 있습니다.'}
+          </Txt>
+
           {isGuest ? (
             <Pressable accessibilityRole="button" onPress={done} style={styles.later}>
               <Txt variant="label" tone="tertiary">
@@ -205,8 +323,22 @@ function toMessage(error: unknown) {
     return '이미 가입된 이메일입니다. 로그인 쪽으로 이어서 사용하세요.';
   if (/password should be at least/i.test(raw)) return '비밀번호는 6자 이상이어야 합니다';
   if (/email not confirmed/i.test(raw)) return '이메일 확인이 아직 완료되지 않았습니다';
+  if (/manual linking is disabled/i.test(raw))
+    return 'Supabase에서 소셜 계정 연결을 활성화해야 합니다';
+  if (/provider is not enabled|unsupported provider/i.test(raw))
+    return '이 로그인 방식은 아직 서버에 연결되지 않았습니다';
+  if (/oauth state|flow state|code verifier/i.test(raw))
+    return '로그인 요청이 만료되었습니다. 처음부터 다시 시도해 주세요';
   if (/network request failed/i.test(raw)) return '네트워크에 연결할 수 없습니다';
   return raw;
+}
+
+function isIdentityConflict(error: unknown) {
+  const authError = error as { code?: string; message?: string };
+  return (
+    authError.code === 'identity_already_exists' ||
+    /identity.*already|already.*linked/i.test(authError.message ?? '')
+  );
 }
 
 const styles = StyleSheet.create({
@@ -217,5 +349,9 @@ const styles = StyleSheet.create({
   content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
   intro: { gap: Spacing.xs, marginBottom: Spacing.xs },
   form: { gap: Spacing.lg },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  divider: { flex: 1, height: StyleSheet.hairlineWidth },
+  appleButton: { height: 52 },
+  disabled: { opacity: 0.45 },
   later: { alignSelf: 'center', padding: Spacing.md },
 });
