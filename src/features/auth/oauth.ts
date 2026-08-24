@@ -172,7 +172,7 @@ export async function linkAppleNative(
   return finishIdentityLink(expectedUserId, preferredNickname);
 }
 
-async function finishIdentityLink(expectedUserId: string, nickname?: string) {
+export async function finishIdentityLink(expectedUserId: string, nickname?: string) {
   // 연결 직후 토큰에 익명 claim이 남지 않도록 새 세션을 받고, 같은 user인지 확인한다.
   const { data, error } = await supabase.auth.refreshSession();
   if (error) throw error;

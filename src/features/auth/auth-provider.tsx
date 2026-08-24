@@ -1,6 +1,7 @@
 import type { Session, User } from '@supabase/supabase-js';
 import { useQueryClient } from '@tanstack/react-query';
 import { createContext, use, useEffect, useMemo, useState, type PropsWithChildren } from 'react';
+import { Platform } from 'react-native';
 
 import { SOCIAL_AUTH_ENABLED } from '@/constants/features';
 import {
@@ -11,6 +12,11 @@ import {
   signInWithOAuth,
   type OAuthProvider,
 } from '@/features/auth/oauth';
+import {
+  isNativeGoogleSignInSupported,
+  linkGoogleNative,
+  signInWithGoogleNative,
+} from '@/features/auth/google-native';
 import {
   claimPendingGuestDataTransfer,
   discardPendingGuestDataTransfer,
@@ -200,7 +206,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
           throw new Error('게스트 세션에서만 소셜 계정을 연결할 수 있습니다');
         }
 
-        if (provider === 'apple' && isNativeAppleSignInSupported) {
+        if (provider === 'google' && Platform.OS === 'ios') {
+          if (!isNativeGoogleSignInSupported) {
+            throw new Error('이 앱 빌드에는 iOS Google 로그인 설정이 없습니다');
+          }
+          await linkGoogleNative(currentUserId, nickname);
+        } else if (provider === 'apple' && isNativeAppleSignInSupported) {
           await linkAppleNative(currentUserId, nickname);
         } else {
           await linkOAuthAccount(provider, currentUserId, nickname);
@@ -216,7 +227,12 @@ export function AuthProvider({ children }: PropsWithChildren) {
         const guestUserId = await prepareTransferChoice(session, transferGuestData);
         try {
           await withPushDetachedForAccountSwitch(session?.user.id, async () => {
-            if (provider === 'apple' && isNativeAppleSignInSupported) {
+            if (provider === 'google' && Platform.OS === 'ios') {
+              if (!isNativeGoogleSignInSupported) {
+                throw new Error('이 앱 빌드에는 iOS Google 로그인 설정이 없습니다');
+              }
+              await signInWithGoogleNative();
+            } else if (provider === 'apple' && isNativeAppleSignInSupported) {
               await signInWithAppleNative();
             } else {
               await signInWithOAuth(provider);

@@ -32,6 +32,8 @@ export const env = {
   pushEnabled: process.env.EXPO_PUBLIC_PUSH_ENABLED === 'true',
   /** 공개 DSN이다. 비어 있으면 오류 수집을 완전히 끈다. */
   sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() || null,
+  /** iOS 네이티브 Google 로그인용 OAuth 클라이언트 ID. 공개 설정값이다. */
+  googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || null,
   /** 오류 환경을 preview/production으로 분리한다. */
   appVariant:
     (Constants.expoConfig?.extra?.appVariant as string | undefined) ?? 'development',

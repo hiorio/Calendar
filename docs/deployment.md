@@ -31,6 +31,7 @@ preview와 production이 같은 DB를 쓰면 테스트 데이터·마이그레�
 | `expo-secure-store` | 향후 작은 보안 값 저장 |
 | `expo-application` | 앱 버전·설치 정보 확인 |
 | `@sentry/react-native` | 네이티브 크래시와 OTA 오류 수집 |
+| `@react-native-google-signin/google-signin` | iOS 네이티브 Google 로그인 |
 
 사진은 보관함 읽기만 선언하고 카메라·마이크 권한은 넣지 않았습니다. 기기 캘린더는
 가져오기를 위해 읽기 권한을 선언했습니다. 현재 앱이 사용하지 않는 권한을 미리 넓게
@@ -67,13 +68,23 @@ Dashboard의 Authentication에서 다음을 설정합니다.
 
 ### Google 로그인
 
-1. Google Auth Platform에서 OAuth 클라이언트를 **웹 애플리케이션**으로 만듭니다.
-2. Authorized redirect URI에는 앱 스킴이 아니라 Supabase가 표시하는
-   `https://<project-ref>.supabase.co/auth/v1/callback`을 등록합니다.
-3. Supabase Authentication → Providers → Google에 Client ID와 Client Secret을 넣고
-   활성화합니다.
-4. Google 동의 화면의 scope는 `openid`, 이메일, 기본 프로필만 둡니다. 캘린더 scope는
+1. Google Auth Platform에서 운영 bundle ID(`com.hiorio.timeline`)용 OAuth 클라이언트를
+   **iOS** 유형으로 만듭니다. preview 앱을 실제 기기에서 시험한다면 preview bundle ID용
+   iOS 클라이언트도 별도로 만듭니다.
+2. iOS 클라이언트 ID를 EAS 환경의 `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`에 등록합니다. 이 값은
+   공개 식별자이며 앱 설정이 역방향 URL scheme을 자동 생성합니다.
+3. Supabase Authentication → Providers → Google의 Client IDs에 기존 웹 클라이언트 ID와
+   iOS 클라이언트 ID를 쉼표로 함께 넣고 `Skip nonce checks`를 켭니다. Google iOS SDK는
+   Supabase가 검증할 요청 nonce를 앱에 제공하지 않기 때문입니다. 기존 웹 Client Secret은
+   그대로 사용합니다.
+4. 네이티브 앱은 Google SDK에서 받은 ID token을 `signInWithIdToken()`으로 Supabase에
+   전달합니다. 따라서 iPhone 로그인 화면에는 Supabase 프로젝트 주소가 표시되지 않습니다.
+5. Google 동의 화면의 scope는 `openid`, 이메일, 기본 프로필만 둡니다. 캘린더 scope는
    로그인에 섞지 않고 외부 캘린더 연동을 구현할 때 별도 동의로 받습니다.
+
+네이티브 모듈이므로 Expo Go에서는 실행되지 않습니다. 클라이언트 ID나 URL scheme을 바꾸면
+OTA가 아니라 새 iOS 바이너리를 빌드해야 합니다. 웹 빌드는 기존 Supabase PKCE OAuth를
+계속 사용하며 웹 클라이언트의 callback URL도 유지합니다.
 
 ### Apple 로그인
 

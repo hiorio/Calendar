@@ -20,6 +20,7 @@ import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { SignInCancelledError, isAppleSignInAvailable } from '@/features/auth/oauth';
+import { isNativeGoogleSignInSupported } from '@/features/auth/google-native';
 import {
   getSocialProviderAvailability,
   type SocialProviderAvailability,
@@ -67,7 +68,9 @@ export default function AccountScreen() {
   const busy = pending !== null;
   const disabled = busy || !isSupabaseConfigured;
   const creating = mode === 'create';
-  const googleDisabled = disabled || providerAvailability?.google !== true;
+  const googleNativeConfigMissing = Platform.OS === 'ios' && !isNativeGoogleSignInSupported;
+  const googleDisabled =
+    disabled || googleNativeConfigMissing || providerAvailability?.google !== true;
   const appleDisabled = disabled || providerAvailability?.apple !== true;
 
   useEffect(() => {
@@ -303,7 +306,9 @@ export default function AccountScreen() {
           )}
 
           <Txt variant="micro" tone="tertiary">
-            {providerCheckFailed
+            {googleNativeConfigMissing
+              ? '이 빌드에는 iOS Google 로그인 설정이 포함되지 않았습니다.'
+              : providerCheckFailed
               ? '소셜 로그인 설정을 확인할 수 없습니다. 네트워크 연결 후 화면을 다시 열어 주세요.'
               : providerAvailability &&
                   (!providerAvailability.google ||

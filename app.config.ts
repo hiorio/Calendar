@@ -19,6 +19,19 @@ function httpsHost(value: string | undefined) {
   }
 }
 
+function googleIosUrlScheme(clientId: string | undefined) {
+  const suffix = '.apps.googleusercontent.com';
+  const normalized = clientId?.trim();
+  if (!normalized) return null;
+  if (!normalized.endsWith(suffix) || normalized.length === suffix.length) {
+    throw new Error(
+      'EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID must be an iOS OAuth client ID ending in .apps.googleusercontent.com',
+    );
+  }
+
+  return `com.googleusercontent.apps.${normalized.slice(0, -suffix.length)}`;
+}
+
 export default ({ config }: ConfigContext): ExpoConfig => {
   const variant = appVariant();
   const isProduction = variant === 'production';
@@ -29,6 +42,9 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const iosBundleIdentifier =
     process.env.APP_IOS_BUNDLE_IDENTIFIER ?? `${bundleBase}${suffix}`;
   const universalLinkHost = httpsHost(process.env.EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL);
+  const googleUrlScheme = googleIosUrlScheme(
+    process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  );
   const existingEas = config.extra?.eas as { projectId?: string } | undefined;
   const easProjectId =
     process.env.EAS_PROJECT_ID ?? existingEas?.projectId;
@@ -60,6 +76,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     },
     plugins: [
       ...(config.plugins ?? []),
+      ...(googleUrlScheme
+        ? [
+            [
+              '@react-native-google-signin/google-signin',
+              { iosUrlScheme: googleUrlScheme },
+            ] as NonNullable<ExpoConfig['plugins']>[number],
+          ]
+        : []),
       [
         'expo-widgets',
         {

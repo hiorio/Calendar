@@ -890,11 +890,12 @@ EAS Update 채널에는 같은 runtime의 여러 빌드가 연결될 수 있습�
 `로그인`에서 선택하면 기존 소셜 계정의 사용자로 세션을 전환합니다. 이미 다른 사용자에게
 연결된 identity를 게스트에 연결하려 한 경우에는 새 계정을 만들지 않고 로그인 탭으로 안내합니다.
 
-Google은 Supabase PKCE OAuth와 `prompt=select_account`를 사용하며, Apple은 iOS 네이티브
-Authentication Services에서 매 요청마다 nonce와 state를 만들어 검증합니다. Apple의 정식
-시스템 버튼은 실제 기기에서 API가 제공될 때만 렌더합니다. 계정 화면은 GoTrue 공개 settings를
-읽어 운영 서버에서 활성화된 공급자만 사용 가능하게 하고, 로그인에는 이메일·기본 프로필만
-요청합니다. 기기 캘린더 접근은 기존 읽기 전용 외부 캘린더 기능과 계속 별개입니다.
+iOS Google 로그인은 네이티브 SDK의 ID token 흐름을 사용하고 웹에서는 Supabase PKCE OAuth와
+`prompt=select_account`를 유지합니다. Apple은 iOS 네이티브 Authentication Services에서 매
+요청마다 nonce와 state를 만들어 검증합니다. Apple의 정식 시스템 버튼은 실제 기기에서 API가
+제공될 때만 렌더합니다. 계정 화면은 GoTrue 공개 settings를 읽어 운영 서버에서 활성화된
+공급자만 사용 가능하게 하고, 로그인에는 이메일·기본 프로필만 요청합니다. 기기 캘린더 접근은
+기존 읽기 전용 외부 캘린더 기능과 계속 별개입니다.
 
 ## 47. 일정 행 스와이프는 같은 터치의 상세 열기를 취소한다
 
@@ -929,6 +930,29 @@ Authentication Services에서 매 요청마다 nonce와 state를 만들어 검�
 권한이 아니며 게스트는 청구할 수 없습니다. 성공 응답이 유실돼도 같은 대상 계정의 재청구만
 멱등 허용하고, 다른 계정의 재사용은 막습니다. 앱이 중간에 종료되면 로컬에 잠시 보관한 토큰을
 다음 시작 때 다시 청구합니다. 푸시 토큰은 계정 사이에 넘기지 않고 새 계정에서 다시 등록합니다.
+
+## 50. iOS Google 로그인은 브라우저 대신 네이티브 ID token 흐름을 사용한다
+
+iOS의 Google 로그인은 `@react-native-google-signin/google-signin`으로 계정 선택과 동의를
+받고, 반환된 ID token을 Supabase `signInWithIdToken()` 또는 `linkIdentity()`에 직접
+전달합니다. 인증 중간에 Supabase 호스트를 브라우저로 열지 않으므로 사용자는 TimeFlower 앱과
+Google 시스템 화면만 보게 됩니다. 로그인 전에는 SDK의 로컬 선택 상태를 지워 매번 사용할
+Google 계정을 명시적으로 고르게 합니다.
+
+Google iOS SDK는 Supabase가 대조할 요청 nonce를 앱에 노출하지 않으므로 공급자의
+`Skip nonce checks`를 켭니다. 이는 nonce 기반 재전송 방어를 사용할 수 없다는 절충이며,
+허용 audience는 등록한 웹·iOS client ID로 제한하고 토큰 검증과 세션 발급은 계속 Supabase가
+수행합니다.
+
+계정 만들기에서는 현재 게스트에 identity를 연결해 사용자 id와 기존 캘린더를 유지하고,
+기존 계정 로그인에서는 49절의 데이터 이관 선택을 그대로 거칩니다. Google Calendar scope는
+요청하지 않으며 이메일과 기본 프로필만 사용합니다. 웹은 네이티브 모듈을 로드하지 않고 기존
+Supabase PKCE 흐름을 유지합니다.
+
+이 모듈이 없는 1.2.0 바이너리에 새 JS가 OTA로 전달되면 시작 단계에서 실패할 수 있으므로 앱
+버전과 runtime을 1.3.0으로 올려 분리합니다. iOS OAuth 클라이언트 ID는 공개 EAS 환경 변수로
+주입하고 config plugin이 역방향 URL scheme을 생성합니다. 이 설정을 바꾸면 새 네이티브 빌드가
+필요합니다.
 
 ---
 

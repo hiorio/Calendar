@@ -48,6 +48,16 @@ if (
   errors.push('APP_IOS_BUNDLE_IDENTIFIER에 예시 값을 사용할 수 없습니다.');
 }
 
+const googleIosClientId = required('EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID');
+if (
+  googleIosClientId &&
+  !/^[^.]+\.apps\.googleusercontent\.com$/.test(googleIosClientId)
+) {
+  errors.push(
+    'EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID는 Google의 iOS OAuth 클라이언트 ID 형식이어야 합니다.',
+  );
+}
+
 let easProjectId = process.env.EAS_PROJECT_ID?.trim();
 if (!easProjectId && existsSync('app.json')) {
   const appJson = JSON.parse(readFileSync('app.json', 'utf8'));
