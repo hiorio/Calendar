@@ -3,6 +3,7 @@ import * as Crypto from 'expo-crypto';
 
 import { useAuth } from '@/features/auth/auth-provider';
 import { CALENDAR_MEDIA_BUCKET } from '@/features/calendars/cover';
+import { eventKeys } from '@/features/events/queries';
 import { supabase } from '@/lib/supabase';
 import type { CalendarInvite, MemberRole } from '@/types/database';
 
@@ -114,6 +115,8 @@ export function useUpdateCalendar(calendarId: string) {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+        // 일정 조회는 캘린더 이름과 색을 조인해 캐시하므로 함께 새로 받아야 한다.
+        queryClient.invalidateQueries({ queryKey: eventKeys.all }),
         queryClient.invalidateQueries({ queryKey: ['activity'] }),
       ]);
     },

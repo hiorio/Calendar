@@ -1,14 +1,16 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
-import { router, Stack, useLocalSearchParams, type Href } from 'expo-router';
+import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { useCallback, useRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
-import { useMyCalendars } from '@/features/calendars/queries';
+import { calendarKeys, useMyCalendars } from '@/features/calendars/queries';
 import { EventDetailTools } from '@/features/events/event-detail-tools';
-import { useEvent, useOccurrenceException } from '@/features/events/queries';
+import { eventKeys, useEvent, useOccurrenceException } from '@/features/events/queries';
 import { REMINDER_CHOICES, useMyReminders } from '@/features/events/reminders';
 import { useProfileById } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
@@ -17,10 +19,29 @@ import { formatDate, formatTime, parseDateKey } from '@/lib/event-time';
 export default function EventDetailScreen() {
   const { colors } = useTheme();
   const { id, occ } = useLocalSearchParams<{ id: string; occ?: string }>();
+  const queryClient = useQueryClient();
+  const hasFocusedOnce = useRef(false);
   const event = useEvent(id);
   const exception = useOccurrenceException(id, occ ?? null);
   const calendars = useMyCalendars();
   const reminders = useMyReminders(id);
+
+  useFocusEffect(
+    useCallback(() => {
+      // 최초 진입은 각 useQuery가 이미 요청한다. 수정 화면에서 돌아왔을 때만
+      // 화면 뒤에 남아 있던 상세 쿼리를 다시 확인한다.
+      if (!hasFocusedOnce.current) {
+        hasFocusedOnce.current = true;
+        return;
+      }
+
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: eventKeys.detail(id) }),
+        queryClient.invalidateQueries({ queryKey: eventKeys.exception(id, occ ?? null) }),
+        queryClient.invalidateQueries({ queryKey: calendarKeys.mine() }),
+      ]);
+    }, [id, occ, queryClient]),
+  );
 
   const exceptionPending = Boolean(occ) && !exception.isFetched;
   const creator = useProfileById(event.data?.created_by ?? null);

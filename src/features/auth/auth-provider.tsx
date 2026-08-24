@@ -11,6 +11,11 @@ import {
   signInWithOAuth,
   type OAuthProvider,
 } from '@/features/auth/oauth';
+import {
+  claimPendingGuestDataTransfer,
+  discardPendingGuestDataTransfer,
+  prepareGuestDataTransfer,
+} from '@/features/auth/guest-data-transfer';
 import { clearHomeSnapshotCache } from '@/features/calendar/home-snapshot';
 import {
   unregisterPush,
@@ -30,12 +35,15 @@ type AuthContextValue = {
 
   /** 게스트 → 정식 계정. 지금까지 쓴 데이터를 그대로 들고 간다 */
   createAccount: (email: string, password: string, nickname: string) => Promise<CreateAccountResult>;
-  /** 이미 있는 계정으로 로그인. 게스트로 쌓은 데이터는 따라오지 않는다 */
-  signInWithEmail: (email: string, password: string) => Promise<void>;
+  /** 이미 있는 계정으로 로그인. 동의하면 게스트 데이터를 새 계정에 합친다 */
+  signInWithEmail: (email: string, password: string, transferGuestData?: boolean) => Promise<void>;
   /** 게스트를 소셜 계정으로 전환. user.id와 기존 데이터를 유지한다 */
   connectSocialAccount: (provider: OAuthProvider, nickname: string) => Promise<void>;
-  /** 기존 소셜 계정으로 전환. 게스트 데이터는 따라오지 않는다 */
-  signInWithSocialAccount: (provider: OAuthProvider) => Promise<void>;
+  /** 기존 소셜 계정으로 전환. 동의하면 게스트 데이터를 새 계정에 합친다 */
+  signInWithSocialAccount: (
+    provider: OAuthProvider,
+    transferGuestData?: boolean,
+  ) => Promise<void>;
   /** 로그아웃하고 다시 게스트로 돌아간다 */
   signOut: () => Promise<void>;
   /** 계정과 데이터를 지우고, 처음 켠 것처럼 새 게스트로 시작한다 */
@@ -92,6 +100,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (!active) return;
 
       if (data.session) {
+        // 인증 전환 뒤 앱이 종료됐거나 성공 응답만 유실된 경우를 복구한다. 이관 RPC는
+        // 같은 대상 계정의 재호출을 멱등 처리한다.
+        if (!data.session.user.is_anonymous) {
+          try {
+            const transferred = await claimPendingGuestDataTransfer();
+            if (transferred) {
+              queryClient.clear();
+              await clearHomeSnapshotBestEffort();
+            }
+          } catch {
+            // 앱 시작을 막지 않는다. 토큰이 유효하면 다음 시작 때 다시 시도한다.
+          }
+        }
         setSession(data.session);
         setIsLoading(false);
         return;
@@ -147,14 +168,25 @@ export function AuthProvider({ children }: PropsWithChildren) {
         return data.user?.email === email.trim() ? { status: 'done' } : { status: 'confirmation-sent' };
       },
 
-      async signInWithEmail(email, password) {
-        await withPushDetachedForAccountSwitch(session?.user.id, async () => {
-          const { error } = await supabase.auth.signInWithPassword({
-            email: email.trim(),
-            password,
+      async signInWithEmail(email, password, transferGuestData = false) {
+        const guestUserId = await prepareTransferChoice(session, transferGuestData);
+        try {
+          await withPushDetachedForAccountSwitch(session?.user.id, async () => {
+            const { error } = await supabase.auth.signInWithPassword({
+              email: email.trim(),
+              password,
+            });
+            if (error) throw error;
           });
-          if (error) throw error;
-        });
+        } catch (error) {
+          if (guestUserId) await discardIfStillGuest(guestUserId);
+          throw error;
+        }
+
+        if (transferGuestData) {
+          await claimPendingGuestDataTransfer();
+          await queryClient.invalidateQueries();
+        }
         await clearHomeSnapshotBestEffort();
       },
 
@@ -176,18 +208,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
         await queryClient.invalidateQueries();
       },
 
-      async signInWithSocialAccount(provider) {
+      async signInWithSocialAccount(provider, transferGuestData = false) {
         if (!SOCIAL_AUTH_ENABLED) {
           throw new Error('소셜 로그인은 현재 제공하지 않습니다');
         }
 
-        await withPushDetachedForAccountSwitch(session?.user.id, async () => {
-          if (provider === 'apple' && isNativeAppleSignInSupported) {
-            await signInWithAppleNative();
-          } else {
-            await signInWithOAuth(provider);
-          }
-        });
+        const guestUserId = await prepareTransferChoice(session, transferGuestData);
+        try {
+          await withPushDetachedForAccountSwitch(session?.user.id, async () => {
+            if (provider === 'apple' && isNativeAppleSignInSupported) {
+              await signInWithAppleNative();
+            } else {
+              await signInWithOAuth(provider);
+            }
+          });
+        } catch (error) {
+          if (guestUserId) await discardIfStillGuest(guestUserId);
+          throw error;
+        }
+
+        if (transferGuestData) {
+          await claimPendingGuestDataTransfer();
+          await queryClient.invalidateQueries();
+        }
         await clearHomeSnapshotBestEffort();
       },
 
@@ -246,5 +289,36 @@ async function clearHomeSnapshotBestEffort(): Promise<void> {
     // 로컬 표시 캐시 삭제 실패가 로그인·로그아웃·계정 삭제를 막아서는 안 된다.
     // 새 화면에서도 저장된 userId를 현재 세션과 다시 대조하므로 다른 사용자의
     // 스냅샷이 화면에 표시되지는 않는다.
+  }
+}
+
+async function prepareTransferChoice(
+  session: Session | null,
+  transferGuestData: boolean,
+): Promise<string | null> {
+  const user = session?.user;
+
+  if (!user?.is_anonymous) {
+    if (transferGuestData) throw new Error('게스트 세션에서만 캘린더를 가져올 수 있습니다');
+    return null;
+  }
+
+  if (!transferGuestData) {
+    await discardPendingGuestDataTransfer(user.id);
+    return null;
+  }
+
+  await prepareGuestDataTransfer(user.id);
+  return user.id;
+}
+
+async function discardIfStillGuest(guestUserId: string) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    if (data.session?.user.id === guestUserId && data.session.user.is_anonymous) {
+      await discardPendingGuestDataTransfer(guestUserId);
+    }
+  } catch {
+    // 원래 로그인 오류를 보존한다. 토큰은 15분 뒤 서버에서 자동으로 무효가 된다.
   }
 }

@@ -361,6 +361,8 @@ export type Database = {
       accept_invite: { Args: { invite_code: string }; Returns: Json };
       account_deletion_preview: { Args: Record<string, never>; Returns: Json };
       delete_my_account: { Args: Record<string, never>; Returns: undefined };
+      prepare_guest_data_transfer: { Args: Record<string, never>; Returns: string };
+      claim_guest_data_transfer: { Args: { p_token: string }; Returns: Json };
       claim_notification_outbox: {
         Args: { p_limit?: number };
         Returns: NotificationOutbox[];

@@ -31,6 +31,8 @@ export const eventKeys = {
   /** 격자 범위 단위로 캐시한다. 달을 넘겨도 같은 범위면 다시 받지 않는다. */
   range: (startIso: string, endIso: string) => ['events', 'range', startIso, endIso] as const,
   detail: (eventId: string) => ['events', 'detail', eventId] as const,
+  exception: (eventId: string, originalStart: string | null) =>
+    ['events', 'exception', eventId, originalStart] as const,
   search: (query: string) => ['events', 'search', query] as const,
 };
 
@@ -188,7 +190,7 @@ export function useEvent(eventId: string) {
  */
 export function useOccurrenceException(eventId: string, originalStart: string | null) {
   return useQuery<EventException | null>({
-    queryKey: ['events', 'exception', eventId, originalStart],
+    queryKey: eventKeys.exception(eventId, originalStart),
     enabled: Boolean(eventId && originalStart),
     queryFn: async () => {
       const { data, error } = await supabase

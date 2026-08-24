@@ -1704,5 +1704,203 @@ console.log('\n22. 컬럼 단위 권한 — UPDATE 우회 차단 (0013)');
   );
 }
 
+// ---------------------------------------------------------------------------
+console.log('\n23. 게스트 데이터를 기존 계정으로 가져오기');
+{
+  const guest = await signInAnonymously();
+  const target = await signUp('이관 받을 사람');
+  const intruder = await signUp('토큰 공격자');
+  const anotherGuest = await signInAnonymously();
+
+  const regularPrepare = await rpc(target.token, 'prepare_guest_data_transfer', {});
+  check(
+    '정식 계정은 게스트 이관 토큰을 만들 수 없다',
+    regularPrepare.status >= 400,
+    `${regularPrepare.status} ${JSON.stringify(regularPrepare.body)}`,
+  );
+
+  const calendar = await rest(guest.token, 'calendars', {
+    method: 'POST',
+    body: JSON.stringify({ name: '게스트의 캘린더', owner_id: guest.userId }),
+  });
+  const transferCalendarId = calendar.body?.[0]?.id;
+
+  const event = await rest(guest.token, 'events', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: transferCalendarId,
+      title: '가져올 일정',
+      start_at: '2026-12-01T10:00:00+09:00',
+      end_at: '2026-12-01T11:00:00+09:00',
+      timezone: 'Asia/Seoul',
+      created_by: guest.userId,
+    }),
+  });
+  const transferEventId = event.body?.[0]?.id;
+
+  const comment = await rest(guest.token, 'event_comments', {
+    method: 'POST',
+    body: JSON.stringify({
+      event_id: transferEventId,
+      user_id: guest.userId,
+      content: '게스트 때 쓴 댓글',
+    }),
+  });
+  const transferCommentId = comment.body?.[0]?.id;
+
+  await rest(guest.token, 'memos', {
+    method: 'POST',
+    body: JSON.stringify({
+      calendar_id: transferCalendarId,
+      content: '게스트 메모',
+      created_by: guest.userId,
+    }),
+  });
+  await rpc(guest.token, 'set_calendar_sticker', {
+    p_calendar_id: transferCalendarId,
+    p_sticker_date: '2026-12-01',
+    p_sticker_key: 'star-celebration',
+  });
+  await rest(guest.token, 'event_participants', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: transferEventId, user_id: guest.userId }),
+  });
+  await rest(guest.token, 'event_reminders', {
+    method: 'POST',
+    body: JSON.stringify({ event_id: transferEventId, user_id: guest.userId, minutes_before: 30 }),
+  });
+  await rest(guest.token, 'comment_reactions', {
+    method: 'POST',
+    body: JSON.stringify({ comment_id: transferCommentId, user_id: guest.userId, emoji: '👍' }),
+  });
+  await rest(guest.token, 'device_tokens', {
+    method: 'POST',
+    body: JSON.stringify({
+      user_id: guest.userId,
+      expo_token: 'ExponentPushToken[guest-transfer]',
+      platform: 'ios',
+    }),
+  });
+
+  const prepared = await rpc(guest.token, 'prepare_guest_data_transfer', {});
+  const transferToken = prepared.body;
+  check(
+    '게스트는 일회용 이관 토큰을 만들 수 있다',
+    prepared.status === 200 && typeof transferToken === 'string',
+    `${prepared.status} ${JSON.stringify(prepared.body)}`,
+  );
+
+  const guestClaim = await rpc(anotherGuest.token, 'claim_guest_data_transfer', {
+    p_token: transferToken,
+  });
+  check(
+    '다른 게스트는 토큰을 청구할 수 없다',
+    guestClaim.status >= 400,
+    `${guestClaim.status} ${JSON.stringify(guestClaim.body)}`,
+  );
+
+  const claimed = await rpc(target.token, 'claim_guest_data_transfer', {
+    p_token: transferToken,
+  });
+  check(
+    '정식 계정은 동의한 게스트 데이터를 가져올 수 있다',
+    claimed.status === 200 && claimed.body?.calendar_count === 1 && claimed.body?.event_count === 1,
+    `${claimed.status} ${JSON.stringify(claimed.body)}`,
+  );
+
+  const importedCalendar = await rest(
+    target.token,
+    `calendars?select=id,owner_id&id=eq.${transferCalendarId}`,
+  );
+  check(
+    '게스트 캘린더의 소유권이 로그인 계정으로 넘어간다',
+    importedCalendar.body?.[0]?.owner_id === target.userId,
+    JSON.stringify(importedCalendar.body),
+  );
+
+  const importedEvent = await rest(
+    target.token,
+    `events?select=id,created_by&id=eq.${transferEventId}`,
+  );
+  check(
+    '일정과 작성자가 로그인 계정으로 이어진다',
+    importedEvent.body?.[0]?.created_by === target.userId,
+    JSON.stringify(importedEvent.body),
+  );
+
+  const importedContent = await Promise.all([
+    rest(target.token, `event_comments?select=user_id&id=eq.${transferCommentId}`),
+    rest(target.token, `memos?select=created_by&calendar_id=eq.${transferCalendarId}`),
+    rest(target.token, `calendar_stickers?select=created_by&calendar_id=eq.${transferCalendarId}`),
+    rest(target.token, `event_participants?select=user_id&event_id=eq.${transferEventId}`),
+    rest(target.token, `event_reminders?select=user_id&event_id=eq.${transferEventId}`),
+    rest(target.token, `comment_reactions?select=user_id&comment_id=eq.${transferCommentId}`),
+  ]);
+  check(
+    '댓글·메모·스티커·참여자·알림·반응도 모두 합쳐진다',
+    importedContent.every((result) => result.body?.[0] && Object.values(result.body[0]).includes(target.userId)),
+    JSON.stringify(importedContent.map((result) => result.body)),
+  );
+
+  const oldMembership = await rest(
+    guest.token,
+    `calendar_members?select=user_id&calendar_id=eq.${transferCalendarId}`,
+  );
+  const targetMembership = await rest(
+    target.token,
+    `calendar_members?select=user_id,role&calendar_id=eq.${transferCalendarId}`,
+  );
+  check(
+    '게스트 멤버십은 제거되고 로그인 계정만 OWNER로 남는다',
+    oldMembership.body?.length === 0 &&
+      targetMembership.body?.length === 1 &&
+      targetMembership.body[0].user_id === target.userId &&
+      targetMembership.body[0].role === 'OWNER',
+    `${JSON.stringify(oldMembership.body)} / ${JSON.stringify(targetMembership.body)}`,
+  );
+
+  const fakeLeave = await rest(
+    target.token,
+    `activity_logs?select=id&type=eq.MEMBER_LEFT&calendar_id=eq.${transferCalendarId}`,
+  );
+  check(
+    '이관을 탈퇴나 강퇴 활동으로 기록하지 않는다',
+    fakeLeave.body?.length === 0,
+    JSON.stringify(fakeLeave.body),
+  );
+
+  const oldTokens = await serviceRest(`device_tokens?select=user_id&user_id=eq.${guest.userId}`);
+  check(
+    '게스트의 푸시 토큰은 새 계정으로 넘기지 않고 지운다',
+    oldTokens.body?.length === 0,
+    JSON.stringify(oldTokens.body),
+  );
+
+  const replay = await rpc(target.token, 'claim_guest_data_transfer', {
+    p_token: transferToken,
+  });
+  check(
+    '성공 응답이 유실돼도 같은 계정의 재시도는 안전하다',
+    replay.status === 200 && replay.body?.already_claimed === true,
+    `${replay.status} ${JSON.stringify(replay.body)}`,
+  );
+
+  const stolen = await rpc(intruder.token, 'claim_guest_data_transfer', {
+    p_token: transferToken,
+  });
+  check(
+    '사용된 토큰을 다른 계정이 재사용할 수 없다',
+    stolen.status >= 400,
+    `${stolen.status} ${JSON.stringify(stolen.body)}`,
+  );
+
+  const deleteTarget = await rpc(target.token, 'delete_my_account', {});
+  check(
+    '이관 영수증이 남아 있어도 대상 계정을 삭제할 수 있다',
+    deleteTarget.status === 200 || deleteTarget.status === 204,
+    `${deleteTarget.status} ${JSON.stringify(deleteTarget.body)}`,
+  );
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -1,7 +1,15 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import {
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  View,
+} from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
@@ -130,7 +138,9 @@ export default function AccountScreen() {
 
     void run('email', async () => {
       if (!creating) {
-        await signInWithEmail(email, password);
+        const transferChoice = await chooseGuestDataTransfer(isGuest);
+        if (transferChoice === 'cancel') return;
+        await signInWithEmail(email, password, transferChoice === 'transfer');
         done();
         return;
       }
@@ -157,7 +167,9 @@ export default function AccountScreen() {
         if (!isGuest) throw new Error('이미 계정으로 로그인되어 있습니다');
         await connectSocialAccount(provider, nickname);
       } else {
-        await signInWithSocialAccount(provider);
+        const transferChoice = await chooseGuestDataTransfer(isGuest);
+        if (transferChoice === 'cancel') return;
+        await signInWithSocialAccount(provider, transferChoice === 'transfer');
       }
       done();
     };
@@ -194,8 +206,8 @@ export default function AccountScreen() {
           )}
 
           {!creating && isGuest && (
-            <Notice title="로그인은 기존 계정을 불러옵니다">
-              현재 기기의 내용을 보존하려면 ‘계정 만들기’를 선택해 주세요.
+            <Notice title="현재 캘린더를 함께 가져올 수 있습니다">
+              로그인할 때 이 기기에서 만든 캘린더와 일정을 가져올지 선택할 수 있습니다.
             </Notice>
           )}
 
@@ -339,6 +351,33 @@ function isIdentityConflict(error: unknown) {
     authError.code === 'identity_already_exists' ||
     /identity.*already|already.*linked/i.test(authError.message ?? '')
   );
+}
+
+type GuestTransferChoice = 'transfer' | 'skip' | 'cancel';
+
+function chooseGuestDataTransfer(isGuest: boolean): Promise<GuestTransferChoice> {
+  if (!isGuest) return Promise.resolve('skip');
+
+  const title = '이 기기의 캘린더도 가져올까요?';
+  const message =
+    '가져오기를 선택하면 게스트로 만든 캘린더와 일정이 로그인할 계정에 합쳐집니다. 가져오지 않아도 데이터는 삭제되지 않지만 로그인한 계정에서는 보이지 않습니다.';
+
+  if (Platform.OS === 'web') {
+    return Promise.resolve(window.confirm(`${title}\n\n${message}`) ? 'transfer' : 'skip');
+  }
+
+  return new Promise((resolve) => {
+    Alert.alert(
+      title,
+      message,
+      [
+        { text: '로그인 취소', style: 'cancel', onPress: () => resolve('cancel') },
+        { text: '가져오지 않기', onPress: () => resolve('skip') },
+        { text: '가져오기', onPress: () => resolve('transfer') },
+      ],
+      { cancelable: true, onDismiss: () => resolve('cancel') },
+    );
+  });
 }
 
 const styles = StyleSheet.create({
