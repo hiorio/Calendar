@@ -15,8 +15,15 @@ register('./ts-resolve.mjs', pathToFileURL('./scripts/'));
 const { toWallClock, fromWallClock } = await import('../src/lib/timezone.ts');
 const { buildRrule, parseRrule, expandEvent, computeRruleUntil, truncateRruleBefore, applyExceptions } =
   await import('../src/lib/recurrence.ts');
-const { deviceAllDayDateRange, eventDayKeys, switchAllDay, moveStart, moveEnd, quickEventTime } =
-  await import('../src/lib/event-time.ts');
+const {
+  deviceAllDayDateRange,
+  eventDayKeys,
+  switchAllDay,
+  moveStart,
+  moveEnd,
+  newEventTime,
+  quickEventTime,
+} = await import('../src/lib/event-time.ts');
 const { objectParticle, subjectParticle } = await import('../src/lib/korean.ts');
 const { CALENDAR_COLORS, DEFAULT_CALENDAR_COLOR, calendarColorForScheme, onColor } =
   await import('../src/features/calendars/colors.ts');
@@ -30,6 +37,8 @@ const { buildPushMessage, chunks, retryDelaySeconds, expoErrorCode } =
 const { parseOAuthCallback } = await import('../src/features/auth/oauth-callback.ts');
 const { parseSocialProviderAvailability } =
   await import('../src/features/auth/provider-settings-parser.ts');
+const { applyTimePickerParts, exactMinuteOptions, timePickerParts } =
+  await import('../src/features/experiments/time-picker-lab-model.ts');
 
 let passed = 0;
 let failed = 0;
@@ -129,6 +138,56 @@ console.log('0. 캘린더 표시 계산');
     [otherUserCache.userId, otherUserCache.months.map((month) => month.key)],
     ['user-b', ['2026-09:sunday']]);
   check('손상된 홈 스냅샷은 사용하지 않는다', parseHomeSnapshotCache('{broken') === null);
+}
+
+{
+  const now = new Date(2026, 7, 15, 14, 12, 47, 381);
+  const initial = newEventTime(new Date(2026, 8, 3), now);
+  eq(
+    '새 일정은 선택한 날짜와 현재 시각으로 시작',
+    [
+      initial.start.getFullYear(),
+      initial.start.getMonth(),
+      initial.start.getDate(),
+      initial.start.getHours(),
+      initial.start.getMinutes(),
+      initial.start.getSeconds(),
+      initial.start.getMilliseconds(),
+    ],
+    [2026, 8, 3, 14, 12, 0, 0],
+  );
+  check('새 일정 기본 길이는 한 시간', initial.end - initial.start === 60 * 60 * 1000);
+
+  const late = newEventTime(new Date(2026, 8, 3), new Date(2026, 7, 15, 23, 45));
+  eq(
+    '늦은 시각의 새 일정 종료는 다음 날로 넘어간다',
+    [late.end.getMonth(), late.end.getDate(), late.end.getHours(), late.end.getMinutes()],
+    [8, 4, 0, 45],
+  );
+}
+
+{
+  const source = new Date(2026, 8, 3, 23, 37, 42, 123);
+  eq('실험 피커는 시각을 다이얼 값으로 나눈다', timePickerParts(source), {
+    meridiem: 'pm',
+    hour12: 11,
+    coarseMinute: 30,
+    minute: 37,
+  });
+  eq('30분 선택 뒤에는 30~39분을 연다', exactMinuteOptions(30), [
+    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
+  ]);
+  const midnight = applyTimePickerParts(source, {
+    meridiem: 'am',
+    hour12: 12,
+    coarseMinute: 0,
+    minute: 5,
+  });
+  eq(
+    '오전 12시는 자정으로 적용하고 초는 버린다',
+    [midnight.getHours(), midnight.getMinutes(), midnight.getSeconds(), midnight.getMilliseconds()],
+    [0, 5, 0, 0],
+  );
 }
 
 {

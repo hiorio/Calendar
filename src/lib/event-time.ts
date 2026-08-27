@@ -228,6 +228,18 @@ export function addMinutes(date: Date, minutes: number): Date {
 }
 
 /**
+ * 새 일정 화면의 기본 시간.
+ *
+ * 월간·일별 화면에서 고른 날짜는 유지하고, 시각은 화면을 연 현재 시·분을 사용한다.
+ * 초와 밀리초는 피커에 보이지 않으므로 버리고 기본 길이는 한 시간으로 둔다.
+ */
+export function newEventTime(date: Date, now = new Date()): EventTimeForm {
+  const start = new Date(date);
+  start.setHours(now.getHours(), now.getMinutes(), 0, 0);
+  return { isAllDay: false, start, end: addMinutes(start, 60) };
+}
+
+/**
  * 위젯·바로가기에서 여는 빠른 일정의 기본 시간.
  *
  * 오늘이면 현재보다 뒤인 다음 30분 경계부터 한 시간, 다른 날이면 그 날

@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -39,6 +39,9 @@ const FONT_FAMILY_LABELS = {
   nanumGothic: '나눔고딕',
   nanumMyeongjo: '나눔명조',
 } as const;
+const TIME_PICKER_LAB_ENABLED =
+  Platform.OS === 'ios' &&
+  (__DEV__ || process.env.EXPO_PUBLIC_TIME_PICKER_LAB_ENABLED === 'true');
 
 export default function MoreScreen() {
   const { colors } = useTheme();
@@ -179,6 +182,19 @@ export default function MoreScreen() {
               />
             </Card>
           </Section>
+
+          {TIME_PICKER_LAB_ENABLED ? (
+            <Section title="실험">
+              <Card padded={false}>
+                <ListRow
+                  title="시간 선택기 A안"
+                  subtitle="10분을 고르면 옆에 1분 다이얼이 열립니다"
+                  icon="flask-outline"
+                  onPress={() => router.push('/time-picker-lab' as Href)}
+                />
+              </Card>
+            </Section>
+          ) : null}
         </Content>
       </ScrollView>
     </Screen>

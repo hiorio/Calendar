@@ -20,7 +20,7 @@ import { EventForm, type EventFormHandle } from '@/features/events/event-form';
 import { useCreateEvent, type EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { notify } from '@/lib/confirm';
-import { parseDateKey, startOfDay } from '@/lib/event-time';
+import { newEventTime, parseDateKey } from '@/lib/event-time';
 
 export default function NewEventScreen() {
   const { colors } = useTheme();
@@ -56,6 +56,10 @@ export default function NewEventScreen() {
   const formRef = useRef<EventFormHandle>(null);
   const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [initialTime] = useState(() => {
+    const now = new Date();
+    return newEventTime(date ? parseDateKey(date) : now, now);
+  });
 
   async function submit(input: EventInput) {
     setSaving(true);
@@ -120,13 +124,6 @@ export default function NewEventScreen() {
     );
   }
 
-  // 선택한 날의 09:00~10:00을 기본으로 연다. 날짜 파라미터가 없으면 오늘.
-  const base = date ? parseDateKey(date) : startOfDay(new Date());
-  const start = new Date(base);
-  start.setHours(9, 0, 0, 0);
-  const end = new Date(start);
-  end.setHours(10, 0, 0, 0);
-
   const copiedTime =
     copyAllDay === 'true' && copyStartDate
       ? {
@@ -140,7 +137,7 @@ export default function NewEventScreen() {
             start: new Date(copyStartAt),
             end: new Date(copyEndAt),
           }
-        : { isAllDay: false, start, end };
+        : initialTime;
 
   return (
     <>
