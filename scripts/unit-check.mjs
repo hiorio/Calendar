@@ -40,7 +40,6 @@ const { parseSocialProviderAvailability } =
 const {
   applyTimePickerParts,
   composeMinute,
-  exactMinuteOptions,
   minuteDigitOptions,
   timePickerParts,
 } =
@@ -180,9 +179,6 @@ console.log('0. 캘린더 표시 계산');
     coarseMinute: 30,
     minute: 37,
   });
-  eq('30분 선택 뒤에는 30~39분을 연다', exactMinuteOptions(30), [
-    30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
-  ]);
   eq('조합형 세부 다이얼은 0~9만 표시한다', minuteDigitOptions(), [
     0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
   ]);

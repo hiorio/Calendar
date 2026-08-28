@@ -32,7 +32,6 @@ import { Elevation, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import {
   applyTimePickerParts,
   composeMinute,
-  exactMinuteOptions,
   minuteDigitOptions,
   timePickerParts,
   type TimePickerMeridiem,
@@ -52,31 +51,27 @@ const HOUR_OPTIONS = Array.from({ length: 12 }, (_, index) => index + 1);
 const COARSE_MINUTE_OPTIONS = Array.from({ length: 6 }, (_, index) => index * 10);
 const PICKER_HEIGHT = 196;
 const BASE_PICKER_WIDTH = 184;
-const ABSOLUTE_PICKER_WIDTH = 248;
 const DIGIT_PICKER_WIDTH = 266;
+const AUTO_FINE_REVEAL_DURATION_MS = 200;
 const HOLD_DURATION_SECONDS = 0.6;
 const PICKER_EDGE_INSET = Spacing.sm;
 
 type VariantConfig = {
   title: string;
-  usesDigit: boolean;
   reveal: 'automatic' | 'always' | 'long-press';
 };
 
 const VARIANT_CONFIG: Record<TimePickerLabVariant, VariantConfig> = {
-  'absolute-auto': {
-    title: 'A안 · 범위 분 다이얼',
-    usesDigit: false,
+  'digit-auto': {
+    title: 'A안 · 0~9 자동 확장',
     reveal: 'automatic',
   },
   'digit-composed': {
     title: 'B안 · 10분 + 1분 조합',
-    usesDigit: true,
     reveal: 'always',
   },
   'digit-hold': {
     title: 'C안 · 길게 눌러 확장',
-    usesDigit: true,
     reveal: 'long-press',
   },
 };
@@ -91,22 +86,16 @@ export function TimePickerLabPicker({
   const { width: windowWidth } = useWindowDimensions();
   const config = VARIANT_CONFIG[variant];
   const variantLabel =
-    variant === 'absolute-auto' ? 'A안' : variant === 'digit-composed' ? 'B안' : 'C안';
+    variant === 'digit-auto' ? 'A안' : variant === 'digit-composed' ? 'B안' : 'C안';
   const initial = timePickerParts(value);
   const [meridiem, setMeridiem] = useState(initial.meridiem);
   const [hour12, setHour12] = useState(initial.hour12);
   const [coarseMinute, setCoarseMinute] = useState(initial.coarseMinute);
-  const [fineSelection, setFineSelection] = useState(
-    config.usesDigit ? initial.minute % 10 : initial.minute,
-  );
+  const [fineSelection, setFineSelection] = useState(initial.minute % 10);
   const [fineVisible, setFineVisible] = useState(config.reveal === 'always');
-  const minute = config.usesDigit
-    ? composeMinute(coarseMinute, fineSelection)
-    : fineSelection;
-  const fineMinuteOptions = config.usesDigit
-    ? minuteDigitOptions()
-    : exactMinuteOptions(coarseMinute);
-  const expandedWidth = config.usesDigit ? DIGIT_PICKER_WIDTH : ABSOLUTE_PICKER_WIDTH;
+  const minute = composeMinute(coarseMinute, fineSelection);
+  const fineMinuteOptions = minuteDigitOptions();
+  const expandedWidth = DIGIT_PICKER_WIDTH;
   const availableWidth = Math.min(windowWidth, MaxContentWidth);
   const pickerLeft = Math.min(
     availableWidth / 2 - BASE_PICKER_WIDTH / 2,
@@ -119,27 +108,31 @@ export function TimePickerLabPicker({
     minute,
   });
 
-  function revealFineMinute(announcedCoarseMinute = coarseMinute) {
+  function revealFineMinute() {
     if (fineVisible) return;
 
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const revealAnimation =
+      config.reveal === 'automatic'
+        ? LayoutAnimation.create(
+            AUTO_FINE_REVEAL_DURATION_MS,
+            LayoutAnimation.Types.easeInEaseOut,
+            LayoutAnimation.Properties.opacity,
+          )
+        : LayoutAnimation.Presets.easeInEaseOut;
+    LayoutAnimation.configureNext(revealAnimation);
     setFineVisible(true);
     requestAnimationFrame(() => {
-      const message = config.usesDigit
-        ? '오른쪽에 0부터 9까지 고르는 1분 자리 다이얼이 열렸습니다'
-        : `${announcedCoarseMinute}분부터 ${announcedCoarseMinute + 9}분까지 고르는 세부 분 다이얼이 열렸습니다`;
-      AccessibilityInfo.announceForAccessibility(message);
+      AccessibilityInfo.announceForAccessibility(
+        '오른쪽에 0부터 9까지 고르는 1분 자리 다이얼이 열렸습니다',
+      );
     });
   }
 
   function selectCoarseMinute(next: number) {
     setCoarseMinute(next);
-    if (!config.usesDigit) {
-      setFineSelection(next);
-    }
 
     if (config.reveal === 'automatic') {
-      revealFineMinute(next);
+      revealFineMinute();
     }
   }
 
@@ -165,12 +158,9 @@ export function TimePickerLabPicker({
       return '10분 휠을 고르고 손을 뗀 뒤, 같은 휠을 0.6초 길게 누르세요';
     }
     if (!fineVisible) {
-      return '10분 휠을 움직이면 오른쪽에 세부 분이 나타납니다';
+      return '10분 휠을 움직이면 오른쪽에 0~9가 빠르게 나타납니다';
     }
-    if (config.usesDigit) {
-      return `${coarseMinute} + ${fineSelection} = ${minute}분으로 선택됩니다`;
-    }
-    return `${coarseMinute}~${coarseMinute + 9}분 중 정확한 분을 고르세요`;
+    return `${coarseMinute} + ${fineSelection} = ${minute}분으로 선택됩니다`;
   })();
 
   return (
@@ -291,19 +281,16 @@ export function TimePickerLabPicker({
                     ))}
                   </Picker>
 
-                  {config.usesDigit ? (
-                    <SwiftText
-                      modifiers={[
-                        frame({ width: 18, height: PICKER_HEIGHT }),
-                        accessibilityHidden(),
-                      ]}>
-                      ＋
-                    </SwiftText>
-                  ) : null}
+                  <SwiftText
+                    modifiers={[
+                      frame({ width: 18, height: PICKER_HEIGHT }),
+                      accessibilityHidden(),
+                    ]}>
+                    ＋
+                  </SwiftText>
 
                   <Picker<number>
-                    key={config.usesDigit ? 'digit' : `absolute-${coarseMinute}`}
-                    label={config.usesDigit ? '1분 자리' : '세부 분'}
+                    label="1분 자리"
                     selection={fineSelection}
                     onSelectionChange={setFineSelection}
                     modifiers={[
@@ -313,18 +300,12 @@ export function TimePickerLabPicker({
                       disabled(!fineVisible),
                       accessibilityHidden(!fineVisible),
                       accessibilityIdentifier(`time-picker-${variant}-fine-minute`),
-                      accessibilityLabel(
-                        `${variantLabel} ${config.usesDigit ? '1분 숫자' : '세부 분'}`,
-                      ),
-                      accessibilityValue(
-                        config.usesDigit
-                          ? `${fineSelection}, 최종 ${minute}분`
-                          : `${minute}분`,
-                      ),
+                      accessibilityLabel(`${variantLabel} 1분 숫자`),
+                      accessibilityValue(`${fineSelection}, 최종 ${minute}분`),
                     ]}>
                     {fineMinuteOptions.map((option) => (
                       <SwiftText key={option} modifiers={[tag(option), monospacedDigit()]}>
-                        {config.usesDigit ? `${option}` : `${option}`.padStart(2, '0')}
+                        {`${option}`}
                       </SwiftText>
                     ))}
                   </Picker>
@@ -333,39 +314,39 @@ export function TimePickerLabPicker({
             </View>
           </View>
 
-          {config.usesDigit ? (
-            <View
-              style={[
-                styles.relation,
-                { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
-              ]}>
-              <Ionicons
-                name={fineVisible ? 'link-outline' : 'hand-left-outline'}
-                size={16}
-                color={fineVisible ? colors.accent : colors.textSecondary}
-              />
-              <Txt variant="caption" tone="secondary" style={styles.relationText}>
-                {fineVisible
-                  ? `${coarseMinute}분대와 오른쪽 ${fineSelection}을 합쳐 ${minute}분`
-                  : '선택을 마치고 손을 뗀 뒤 10분 휠을 다시 길게 눌러 연결합니다'}
-              </Txt>
-              {!fineVisible && config.reveal === 'long-press' ? (
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="1분 자리 직접 열기"
-                  hitSlop={8}
-                  onPress={() => revealFineMinute()}
-                  style={({ pressed }) => [
-                    styles.revealButton,
-                    { backgroundColor: pressed ? colors.accentPressed : colors.accent },
-                  ]}>
-                  <Txt variant="micro" tone="onAccent">
-                    직접 열기
-                  </Txt>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
+          <View
+            style={[
+              styles.relation,
+              { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
+            ]}>
+            <Ionicons
+              name={fineVisible ? 'link-outline' : 'hand-left-outline'}
+              size={16}
+              color={fineVisible ? colors.accent : colors.textSecondary}
+            />
+            <Txt variant="caption" tone="secondary" style={styles.relationText}>
+              {fineVisible
+                ? `${coarseMinute}분대와 오른쪽 ${fineSelection}을 합쳐 ${minute}분`
+                : config.reveal === 'long-press'
+                  ? '선택을 마치고 손을 뗀 뒤 10분 휠을 다시 길게 눌러 연결합니다'
+                  : '10분 휠을 움직이면 오른쪽에 0~9가 열립니다'}
+            </Txt>
+            {!fineVisible && config.reveal === 'long-press' ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="1분 자리 직접 열기"
+                hitSlop={8}
+                onPress={() => revealFineMinute()}
+                style={({ pressed }) => [
+                  styles.revealButton,
+                  { backgroundColor: pressed ? colors.accentPressed : colors.accent },
+                ]}>
+                <Txt variant="micro" tone="onAccent">
+                  직접 열기
+                </Txt>
+              </Pressable>
+            ) : null}
+          </View>
 
           <View style={styles.actions}>
             <View style={styles.action}>

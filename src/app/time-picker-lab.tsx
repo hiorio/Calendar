@@ -103,11 +103,11 @@ export default function TimePickerLabScreen() {
 
         <VariantCard
           badge="A안"
-          title="범위가 자동으로 열림"
-          description="10분 단위를 움직이면 해당 구간의 실제 분 10개가 오른쪽에 나타납니다."
-          example="30 선택 → 30·31·32 … 39"
+          title="0~9가 빠르게 자동 확장"
+          description="10분 단위를 움직이면 오른쪽에 0~9의 1분 자리 휠이 바로 나타납니다."
+          example="30 선택 → 0~9 등장 → 30 + 7 = 37분"
           buttonLabel="A안 다이얼 열기"
-          onOpen={() => setOpenVariant('absolute-auto')}
+          onOpen={() => setOpenVariant('digit-auto')}
         />
 
         <VariantCard
@@ -152,8 +152,8 @@ export default function TimePickerLabScreen() {
           ]}>
           <Txt variant="label">테스터에서 볼 것</Txt>
           <Txt variant="caption" tone="secondary">
-            오른쪽 휠이 나와도 기존 세 휠이 움직이지 않는지 · B안의 덧셈 관계가 바로 이해되는지
-            · C안에서 스크롤만 했을 때 열리지 않고 길게 눌렀을 때만 열리는지 확인해 주세요.
+            A안의 0~9가 빠르게 열리는지 · 오른쪽 휠이 나와도 기존 세 휠이 움직이지 않는지 ·
+            C안에서 스크롤만 했을 때 열리지 않고 길게 눌렀을 때만 열리는지 확인해 주세요.
           </Txt>
         </View>
       </Content>

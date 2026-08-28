@@ -19,11 +19,6 @@ export function timePickerParts(value: Date): TimePickerParts {
   };
 }
 
-export function exactMinuteOptions(coarseMinute: number): number[] {
-  const normalized = Math.min(50, Math.max(0, Math.floor(coarseMinute / 10) * 10));
-  return Array.from({ length: 10 }, (_, index) => normalized + index);
-}
-
 export function minuteDigitOptions(): number[] {
   return Array.from({ length: 10 }, (_, index) => index);
 }
