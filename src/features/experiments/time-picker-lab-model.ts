@@ -24,6 +24,16 @@ export function exactMinuteOptions(coarseMinute: number): number[] {
   return Array.from({ length: 10 }, (_, index) => normalized + index);
 }
 
+export function minuteDigitOptions(): number[] {
+  return Array.from({ length: 10 }, (_, index) => index);
+}
+
+export function composeMinute(coarseMinute: number, minuteDigit: number): number {
+  const normalizedCoarse = Math.min(50, Math.max(0, Math.floor(coarseMinute / 10) * 10));
+  const normalizedDigit = Math.min(9, Math.max(0, Math.trunc(minuteDigit)));
+  return normalizedCoarse + normalizedDigit;
+}
+
 export function applyTimePickerParts(value: Date, parts: TimePickerParts): Date {
   const next = new Date(value);
   const hour12 = Math.min(12, Math.max(1, Math.trunc(parts.hour12)));

@@ -187,8 +187,8 @@ export default function MoreScreen() {
             <Section title="실험">
               <Card padded={false}>
                 <ListRow
-                  title="시간 선택기 A안"
-                  subtitle="10분을 고르면 옆에 1분 다이얼이 열립니다"
+                  title="시간 선택기 실험실"
+                  subtitle="A·B·C 세 가지 전용 다이얼을 비교합니다"
                   icon="flask-outline"
                   onPress={() => router.push('/time-picker-lab' as Href)}
                 />

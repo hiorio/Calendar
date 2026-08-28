@@ -9,8 +9,18 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { TimePickerLabPicker } from '@/features/experiments/time-picker-lab-picker';
+import type { TimePickerLabVariant } from '@/features/experiments/time-picker-lab-picker.types';
 import { useTheme } from '@/hooks/use-theme';
 import { formatTime } from '@/lib/event-time';
+
+type VariantCardProps = {
+  badge: string;
+  title: string;
+  description: string;
+  example: string;
+  buttonLabel: string;
+  onOpen: () => void;
+};
 
 function currentMinute(): Date {
   const now = new Date();
@@ -18,10 +28,48 @@ function currentMinute(): Date {
   return now;
 }
 
+function VariantCard({
+  badge,
+  title,
+  description,
+  example,
+  buttonLabel,
+  onOpen,
+}: VariantCardProps) {
+  const { colors } = useTheme();
+
+  return (
+    <Card style={styles.variantCard}>
+      <View style={styles.variantHeader}>
+        <View style={[styles.variantBadge, { backgroundColor: colors.accentSoft }]}>
+          <Txt variant="label" tone="accent">
+            {badge}
+          </Txt>
+        </View>
+        <Txt variant="subtitle" style={styles.variantTitle}>
+          {title}
+        </Txt>
+      </View>
+      <Txt variant="body" tone="secondary">
+        {description}
+      </Txt>
+      <View
+        style={[
+          styles.example,
+          { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
+        ]}>
+        <Ionicons name="git-compare-outline" size={16} color={colors.accent} />
+        <Txt variant="label">{example}</Txt>
+      </View>
+      <Button label={buttonLabel} size="md" variant="secondary" onPress={onOpen} />
+    </Card>
+  );
+}
+
 export default function TimePickerLabScreen() {
   const { colors } = useTheme();
   const [value, setValue] = useState(currentMinute);
-  const [open, setOpen] = useState(false);
+  const [openVariant, setOpenVariant] = useState<TimePickerLabVariant | null>(null);
 
   if (Platform.OS !== 'ios') {
     return (
@@ -48,36 +96,46 @@ export default function TimePickerLabScreen() {
           <View style={styles.introText}>
             <Txt variant="display">시간 선택기 실험실</Txt>
             <Txt variant="body" tone="secondary">
-              A안의 조작감만 확인합니다. 실제 일정 데이터는 바뀌지 않습니다.
+              세 가지 조작감을 비교합니다. 결과는 실제 일정에 저장되지 않습니다.
             </Txt>
           </View>
         </View>
 
-        <Card style={styles.guideCard}>
-          <Txt variant="subtitle">A안 동작</Txt>
-          <View style={styles.guideRow}>
-            <View style={[styles.step, { backgroundColor: colors.accent }]}>
-              <Txt variant="caption" tone="onAccent">1</Txt>
-            </View>
-            <Txt variant="body" style={styles.guideText}>
-              오전·오후, 시, 00·10·20·30·40·50을 먼저 고릅니다.
-            </Txt>
-          </View>
-          <View style={styles.guideRow}>
-            <View style={[styles.step, { backgroundColor: colors.accent }]}>
-              <Txt variant="caption" tone="onAccent">2</Txt>
-            </View>
-            <Txt variant="body" style={styles.guideText}>
-              10분 휠을 움직이면 오른쪽에 해당 구간의 1분 휠이 자동으로 나타납니다.
-            </Txt>
-          </View>
-        </Card>
+        <VariantCard
+          badge="A안"
+          title="범위가 자동으로 열림"
+          description="10분 단위를 움직이면 해당 구간의 실제 분 10개가 오른쪽에 나타납니다."
+          example="30 선택 → 30·31·32 … 39"
+          buttonLabel="A안 다이얼 열기"
+          onOpen={() => setOpenVariant('absolute-auto')}
+        />
+
+        <VariantCard
+          badge="B안"
+          title="숫자를 더해 바로 조합"
+          description="10분 단위와 0~9의 1분 자리 휠을 항상 함께 보며 시간을 조합합니다."
+          example="30 + 7 = 37분"
+          buttonLabel="B안 다이얼 열기"
+          onOpen={() => setOpenVariant('digit-composed')}
+        />
+
+        <VariantCard
+          badge="C안"
+          title="길게 눌러 오른쪽으로 펼침"
+          description="10분 값을 고르고 손을 뗀 뒤 같은 휠을 0.6초 길게 누르면 0~9가 튀어나옵니다."
+          example="30 선택 · 손 떼기 · 길게 누르기 → 0~9"
+          buttonLabel="C안 다이얼 열기"
+          onOpen={() => setOpenVariant('digit-hold')}
+        />
 
         <Card padded={false}>
-          <ListRow title="실험 결과" subtitle="아직 실제 일정에는 적용되지 않습니다" value={formatTime(value)} />
+          <ListRow
+            title="마지막 실험 결과"
+            subtitle="세 안이 같은 결과값을 공유합니다"
+            value={formatTime(value)}
+          />
           <Divider />
-          <View style={styles.actions}>
-            <Button label="A안 다이얼 열기" onPress={() => setOpen(true)} />
+          <View style={styles.resetAction}>
             <Button
               label="현재 시각으로 초기화"
               size="md"
@@ -94,19 +152,20 @@ export default function TimePickerLabScreen() {
           ]}>
           <Txt variant="label">테스터에서 볼 것</Txt>
           <Txt variant="caption" tone="secondary">
-            휠이 나타날 때 화면이 거슬리게 움직이는지 · 원하는 분까지 빨리 도달하는지 ·
-            59분과 오전/오후 전환이 자연스러운지 확인해 주세요.
+            오른쪽 휠이 나와도 기존 세 휠이 움직이지 않는지 · B안의 덧셈 관계가 바로 이해되는지
+            · C안에서 스크롤만 했을 때 열리지 않고 길게 눌렀을 때만 열리는지 확인해 주세요.
           </Txt>
         </View>
       </Content>
 
-      {open ? (
+      {openVariant ? (
         <TimePickerLabPicker
           value={value}
-          onCancel={() => setOpen(false)}
+          variant={openVariant}
+          onCancel={() => setOpenVariant(null)}
           onConfirm={(next) => {
             setValue(next);
-            setOpen(false);
+            setOpenVariant(null);
           }}
         />
       ) : null}
@@ -126,17 +185,27 @@ const styles = StyleSheet.create({
     borderRadius: Radius.lg,
   },
   introText: { flex: 1, gap: Spacing.xs },
-  guideCard: { gap: Spacing.md },
-  guideRow: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  guideText: { flex: 1 },
-  step: {
-    width: 24,
-    height: 24,
+  variantCard: { gap: Spacing.md },
+  variantHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  variantBadge: {
+    minWidth: 44,
+    height: 30,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
     borderRadius: Radius.pill,
   },
-  actions: { gap: Spacing.sm, padding: Spacing.lg },
+  variantTitle: { flex: 1 },
+  example: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.md,
+  },
+  resetAction: { padding: Spacing.sm },
   checklist: {
     gap: Spacing.xs,
     padding: Spacing.lg,

@@ -37,7 +37,13 @@ const { buildPushMessage, chunks, retryDelaySeconds, expoErrorCode } =
 const { parseOAuthCallback } = await import('../src/features/auth/oauth-callback.ts');
 const { parseSocialProviderAvailability } =
   await import('../src/features/auth/provider-settings-parser.ts');
-const { applyTimePickerParts, exactMinuteOptions, timePickerParts } =
+const {
+  applyTimePickerParts,
+  composeMinute,
+  exactMinuteOptions,
+  minuteDigitOptions,
+  timePickerParts,
+} =
   await import('../src/features/experiments/time-picker-lab-model.ts');
 
 let passed = 0;
@@ -177,6 +183,11 @@ console.log('0. 캘린더 표시 계산');
   eq('30분 선택 뒤에는 30~39분을 연다', exactMinuteOptions(30), [
     30, 31, 32, 33, 34, 35, 36, 37, 38, 39,
   ]);
+  eq('조합형 세부 다이얼은 0~9만 표시한다', minuteDigitOptions(), [
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9,
+  ]);
+  check('30분대와 세부 숫자 7을 조합하면 37분이다', composeMinute(30, 7) === 37);
+  check('조합형 분 값은 59분을 넘지 않는다', composeMinute(58, 14) === 59);
   const midnight = applyTimePickerParts(source, {
     meridiem: 'am',
     hour12: 12,
