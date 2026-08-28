@@ -326,7 +326,7 @@ export function TimePickerLabPicker({
             />
             <Txt variant="caption" tone="secondary" style={styles.relationText}>
               {fineVisible
-                ? `${coarseMinute}분대와 오른쪽 ${fineSelection}을 합쳐 ${minute}분`
+                ? `${coarseMinute}분대 + 오른쪽 ${fineSelection} = ${minute}분`
                 : config.reveal === 'long-press'
                   ? '선택을 마치고 손을 뗀 뒤 10분 휠을 다시 길게 눌러 연결합니다'
                   : '10분 휠을 움직이면 오른쪽에 0~9가 열립니다'}
