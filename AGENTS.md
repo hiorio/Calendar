@@ -25,6 +25,33 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 개발 서버는 셸에서 직접 띄우지 않는다. `.claude/launch.json`의 `web` 설정을 preview
 도구로 실행한다 (포트 8081).
 
+## iOS 빌드는 로컬 Mac mini
+
+- iOS 네이티브 빌드에 **EAS Build를 사용하지 않는다.** `eas build`와
+  `eas build --local` 모두 실행하지 않는다. Expo 계정의 Build 사용량을 소비하지 않는
+  `expo prebuild → pod install → xcodebuild` 경로만 사용한다.
+- Xcode 검증은 GitHub Actions에 연결된 로컬 Mac mini self-hosted runner
+  `calendar-macmini`에서 `.github/workflows/ios.yml`로 실행한다. SSH에서 임의 명령으로
+  빌드하지 않는다.
+- iOS·위젯·네이티브 패키지·config plugin 변경은 Windows 정적 검사만으로 완료 처리하지
+  않는다. 변경 커밋이 원격 작업 브랜치에 있을 때 Mac mini workflow까지 통과시킨다.
+- workflow 실행 자체는 사전 승인된 검증이다. 다만 이 지침은 커밋·push, TestFlight,
+  App Store 제출, 배포, `main` 병합 권한까지 넓히지 않는다.
+- 수동 재실행과 실패 확인은 다음 명령을 사용한다.
+
+  ```powershell
+  $branch = git branch --show-current
+  gh workflow run ios.yml --ref $branch
+  gh run list --workflow=ios.yml --branch $branch --limit 5
+  gh run watch <run-id> --exit-status
+  gh run view <run-id> --log-failed
+  ```
+
+- EAS Update는 OTA 전달 서비스라 EAS Build와 별개다. 네이티브 변경이 없는 OTA에만
+  사용할 수 있으며, 새 바이너리는 항상 Mac mini에서 만든다.
+- TestFlight/App Store용 서명 archive와 upload는 사용자가 명시적으로 요청했을 때만
+  별도 보호된 workflow로 실행한다.
+
 ## 고쳤으면 돌릴 것
 
 커밋 전에 해당하는 것을 **전부** 통과시킨다.
@@ -35,6 +62,7 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (162개) |
 | `src/lib/` 계산 로직 · 라벨 팔레트 | `npm run test:unit` (55개) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
+| iOS·위젯·네이티브 설정 | 원격 작업 브랜치의 Mac mini `iOS` workflow |
 
 ## DB
 

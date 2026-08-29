@@ -1,0 +1,136 @@
+name: iOS
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'scripts/**'
+      - 'app.config.ts'
+      - 'app.json'
+      - 'metro.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: App and widgets on local Mac mini
+    runs-on: [self-hosted, macOS, ARM64, calendar-macmini, xcode-26]
+    timeout-minutes: 45
+    env:
+      APP_VARIANT: development
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+
+    steps:
+      # 이 공개 저장소의 self-hosted runner에서는 PR 코드를 실행하지 않는다.
+      # 외부 action도 변경 불가능한 커밋으로 고정한다.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: true
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.2.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Report native toolchain
+        run: |
+          node --version
+          npm --version
+          xcodebuild -version
+          pod --version
+          xcrun simctl list runtimes
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run portable checks
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run test:unit
+
+      - name: Generate the iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: Verify generated app and widget targets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(find ios -maxdepth 1 -type d -name '*.xcworkspace' -print -quit)"
+          project="$(find ios -maxdepth 1 -type d -name '*.xcodeproj' -print -quit)"
+          if [[ -z "$workspace" || -z "$project" ]]; then
+            echo 'Generated Xcode workspace or project was not found.' >&2
+            exit 1
+          fi
+
+          scheme="$(basename "$project" .xcodeproj)"
+          pbxproj="$project/project.pbxproj"
+          grep -q 'ExpoWidgetsTarget' "$pbxproj"
+
+          entitlement_count="$(grep -R -l 'group.com.hiorio.timeline.dev' ios --include='*.entitlements' | wc -l | tr -d ' ')"
+          if [[ "$entitlement_count" -lt 2 ]]; then
+            echo 'The app and widget App Group entitlements were not both generated.' >&2
+            exit 1
+          fi
+
+          xcodebuild -list -workspace "$workspace"
+          echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
+
+      - name: Compile app and widgets without signing
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/TimeFlowerDerivedData" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Launch smoke test in iOS Simulator
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          device="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; data=json.load(sys.stdin)["devices"]; print(next(device["udid"] for devices in data.values() for device in devices if device["name"].startswith("iPhone")))')"
+          app="$(find "$RUNNER_TEMP/TimeFlowerDerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app" ]]; then
+            echo 'Compiled app bundle was not found.' >&2
+            exit 1
+          fi
+
+          bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$app/Info.plist")"
+          xcrun simctl boot "$device" 2>/dev/null || true
+          xcrun simctl bootstatus "$device" -b
+          xcrun simctl install "$device" "$app"
+          xcrun simctl launch "$device" "$bundle_id"
+          sleep 10
+          xcrun simctl terminate "$device" "$bundle_id"
+          echo "Simulator launch passed: $bundle_id"

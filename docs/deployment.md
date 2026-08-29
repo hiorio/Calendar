@@ -15,7 +15,7 @@ Expo/Supabase/Sentry 계정, 고유 bundle ID, 도메인, Apple 서명은 소유
 | production | 실제 사용자 | 별도 프로젝트 | `com.company.timeline` |
 
 preview와 production이 같은 DB를 쓰면 테스트 데이터·마이그레이션·푸시가 실제 사용자에게
-영향을 줍니다. Supabase 프로젝트와 EAS 환경 변수, OAuth redirect URL을 분리합니다.
+영향을 줍니다. Supabase 프로젝트와 빌드 환경 변수, OAuth redirect URL을 분리합니다.
 
 ## 2. 첫 iOS 빌드에 포함된 네이티브 범위
 
@@ -71,7 +71,7 @@ Dashboard의 Authentication에서 다음을 설정합니다.
 1. Google Auth Platform에서 운영 bundle ID(`com.hiorio.timeline`)용 OAuth 클라이언트를
    **iOS** 유형으로 만듭니다. preview 앱을 실제 기기에서 시험한다면 preview bundle ID용
    iOS 클라이언트도 별도로 만듭니다.
-2. iOS 클라이언트 ID를 EAS 환경의 `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`에 등록합니다. 이 값은
+2. iOS 클라이언트 ID를 빌드 환경의 `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`에 등록합니다. 이 값은
    공개 식별자이며 앱 설정이 역방향 URL scheme을 자동 생성합니다.
 3. Supabase Authentication → Providers → Google의 Client IDs에 기존 웹 클라이언트 ID와
    iOS 클라이언트 ID를 쉼표로 함께 넣고 `Skip nonce checks`를 켭니다. Google iOS SDK는
@@ -126,16 +126,17 @@ Dashboard에서 `pg_cron`, `pg_net`, Vault를 활성화하고 기존 마이그�
 `notification-worker` 호출을 1분 주기로 연결합니다. 워커 배포와 cron 호출을 확인하기
 전에는 `EXPO_PUBLIC_PUSH_ENABLED=false`, 확인 후 `true`로 둡니다.
 
-## 4. EAS 프로젝트와 환경 변수
+## 4. Expo 프로젝트와 로컬 Mac mini 빌드
 
-Expo 계정으로 로그인하고 프로젝트를 연결합니다.
+EAS Update를 사용할 환경은 Expo 계정에 프로젝트를 연결합니다. 이 연결은 OTA 업데이트용이며
+네이티브 바이너리를 EAS Build에서 만들기 위한 것이 아닙니다.
 
 ```bash
 npx eas-cli login
 npx eas-cli init
 ```
 
-EAS의 `development`, `preview`, `production` 환경에 환경별 값을 넣습니다.
+OTA용 `development`, `preview`, `production` 환경에 환경별 값을 넣습니다.
 `EXPO_PUBLIC_*` 값은 앱 번들에 포함되므로 서버 비밀값을 넣으면 안 됩니다.
 
 ```text
@@ -150,8 +151,8 @@ SENTRY_ORG
 SENTRY_PROJECT
 ```
 
-Sentry 소스맵 업로드용 `SENTRY_AUTH_TOKEN`은 EAS의 **secret** 환경 변수로만 등록합니다.
-저장소나 로컬 `.env`에 커밋하지 않습니다.
+Sentry 소스맵 업로드용 `SENTRY_AUTH_TOKEN`은 GitHub의 보호된 release environment 또는
+Mac mini의 저장소 밖 권한 제한 파일에만 둡니다. 저장소나 로컬 `.env`에 커밋하지 않습니다.
 
 환경값을 받은 상태에서 검사합니다.
 
@@ -159,16 +160,20 @@ Sentry 소스맵 업로드용 `SENTRY_AUTH_TOKEN`은 EAS의 **secret** 환경 �
 npx eas-cli env:exec --environment preview "npm run deploy:check"
 ```
 
-설치 가능한 iOS 빌드:
+네이티브 앱과 Widget Extension 검증은 로컬 Mac mini의 self-hosted runner에서 수행합니다.
+EAS Build와 `eas build --local`은 사용하지 않습니다. 원격 작업 브랜치에 커밋이 있을 때:
 
-```bash
-npx eas-cli build --profile development --platform ios
-npx eas-cli build --profile preview --platform ios
-npx eas-cli build --profile production --platform ios
+```powershell
+$branch = git branch --show-current
+gh workflow run ios.yml --ref $branch
+gh run list --workflow=ios.yml --branch $branch --limit 5
+gh run watch <run-id> --exit-status
 ```
 
-내부 iOS 배포에는 Apple Developer 계정과 테스트 기기 등록이 필요하고, production은
-TestFlight/App Store Connect로 제출합니다.
+`.github/workflows/ios.yml`은 `expo prebuild → pod install → xcodebuild`로 앱과 위젯을
+서명 없이 Simulator용으로 함께 컴파일하고 실행합니다. 내부 설치용 개발 빌드와 production
+archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple 인증서와 프로파일을 연결한 별도
+보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로 요청했을 때만 실행합니다.
 
 ## 5. EAS Update와 재빌드 기준
 
@@ -206,9 +211,10 @@ runtime과 호환되는 범위에서 OTA로 보낼 수 있습니다.
 preview/production 환경과 EAS Update ID를 태그로 기록합니다. 개인정보는 기본 전송하지
 않고 성능 샘플링은 5%로 시작합니다.
 
-네이티브 빌드는 EAS의 `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`, `SENTRY_PROJECT`로 소스맵을
-업로드합니다. OTA를 배포한 뒤에도 해당 update의 JS 소스맵이 Sentry에 올라갔는지
-확인합니다. `eas update`가 만든 `dist`를 같은 환경 변수로 업로드합니다.
+네이티브 release 빌드는 Mac mini의 보호된 `SENTRY_AUTH_TOKEN`, `SENTRY_ORG`,
+`SENTRY_PROJECT`로 소스맵을 업로드합니다. OTA를 배포한 뒤에도 해당 update의 JS
+소스맵이 Sentry에 올라갔는지 확인합니다. `eas update`가 만든 `dist`를 같은 환경 변수로
+업로드합니다.
 
 ```bash
 npm run sentry:upload-update

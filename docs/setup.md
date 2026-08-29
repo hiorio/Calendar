@@ -128,8 +128,29 @@ npm run web
 | `supabase/migrations/` · RLS · 정책 | `npm run db:reset && npm run db:smoke` |
 | `src/lib/` 의 계산 로직 (반복·타임존·시간·조사) | `npm run test:unit` |
 | 화면 | 웹 미리보기에서 실제로 눌러 보기 |
+| iOS·위젯·네이티브 설정 | 원격 작업 브랜치에서 Mac mini `iOS` workflow |
 
 DB를 바꿨다면 `src/types/database.ts`도 함께 갱신합니다 (`npm run db:types` 또는 수기).
+
+### iOS 네이티브 빌드
+
+Windows의 `npm run ios`는 이미 설치된 개발 앱에 Metro를 연결할 뿐 Xcode 빌드가 아닙니다.
+iOS 앱과 Widget Extension은 로컬 Mac mini의 GitHub Actions self-hosted runner
+`calendar-macmini`에서 검증합니다. EAS Build는 사용하지 않습니다.
+
+원격 작업 브랜치에 커밋이 있을 때 수동으로 실행하려면:
+
+```powershell
+$branch = git branch --show-current
+gh workflow run ios.yml --ref $branch
+gh run list --workflow=ios.yml --branch $branch --limit 5
+gh run watch <run-id> --exit-status
+```
+
+`.github/workflows/ios.yml`은 Node 24 의존성 설치와 정적 검사를 한 뒤
+`expo prebuild → pod install → xcodebuild`로 앱과 `ExpoWidgetsTarget`을 서명 없이
+Simulator용으로 함께 컴파일하고 실행까지 확인합니다. Windows 검사만 통과한 결과를
+네이티브 빌드 성공으로 기록하지 않습니다.
 
 ---
 
