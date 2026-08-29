@@ -171,9 +171,10 @@ gh run watch <run-id> --exit-status
 ```
 
 `.github/workflows/ios.yml`은 `expo prebuild → pod install → xcodebuild`로 앱과 위젯을
-서명 없이 Simulator용으로 함께 컴파일하고 실행합니다. 내부 설치용 개발 빌드와 production
-archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple 인증서와 프로파일을 연결한 별도
-보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로 요청했을 때만 실행합니다.
+서명 없이 Simulator용으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. 내부
+설치용 개발 빌드와 production archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple
+인증서와 프로파일을 연결한 별도 보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로
+요청했을 때만 실행합니다.
 
 ## 5. EAS Update와 재빌드 기준
 

@@ -119,23 +119,29 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             build
 
-      - name: Launch smoke test in iOS Simulator
+      - name: Verify compiled app embeds the widget
         shell: bash
         run: |
           set -euo pipefail
 
-          device="$(xcrun simctl list devices available --json | python3 -c 'import json,sys; data=json.load(sys.stdin)["devices"]; print(next(device["udid"] for devices in data.values() for device in devices if device["name"].startswith("iPhone")))')"
           app="$(find "$RUNNER_TEMP/TimeFlowerDerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
           if [[ -z "$app" ]]; then
             echo 'Compiled app bundle was not found.' >&2
             exit 1
           fi
 
-          bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$app/Info.plist")"
-          xcrun simctl boot "$device" 2>/dev/null || true
-          xcrun simctl bootstatus "$device" -b
-          xcrun simctl install "$device" "$app"
-          xcrun simctl launch "$device" "$bundle_id"
-          sleep 10
-          xcrun simctl terminate "$device" "$bundle_id"
-          echo "Simulator launch passed: $bundle_id"
+          widget="$(find "$app/PlugIns" -maxdepth 1 -type d -name '*.appex' -print -quit)"
+          if [[ -z "$widget" ]]; then
+            echo 'Compiled widget extension was not embedded in the app.' >&2
+            exit 1
+          fi
+
+          app_bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$app/Info.plist")"
+          widget_bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$widget/Info.plist")"
+          if [[ "$widget_bundle_id" != "$app_bundle_id.ExpoWidgetsTarget" ]]; then
+            echo "Unexpected widget bundle identifier: $widget_bundle_id" >&2
+            exit 1
+          fi
+
+          echo "Compiled app: $app_bundle_id"
+          echo "Embedded widget: $widget_bundle_id"

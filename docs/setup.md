@@ -149,8 +149,8 @@ gh run watch <run-id> --exit-status
 
 `.github/workflows/ios.yml`은 Node 24 의존성 설치와 정적 검사를 한 뒤
 `expo prebuild → pod install → xcodebuild`로 앱과 `ExpoWidgetsTarget`을 서명 없이
-Simulator용으로 함께 컴파일하고 실행까지 확인합니다. Windows 검사만 통과한 결과를
-네이티브 빌드 성공으로 기록하지 않습니다.
+Simulator용으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. Windows 검사만
+통과한 결과를 네이티브 빌드 성공으로 기록하지 않습니다.
 
 ---
 
