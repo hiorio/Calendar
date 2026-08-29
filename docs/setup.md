@@ -51,13 +51,14 @@ npm run db:smoke
 ```
 
 앱이 실제로 쓰는 경로(GoTrue + PostgREST + anon key)로 RLS와 트리거를 확인합니다.
-**140개 전부 통과해야 정상입니다.**
+**162개 전부 통과해야 정상입니다.**
 
 ```bash
 npm run test:unit
 ```
 
-반복 전개·타임존·시간 보정·한국어 조사 같은 순수 함수를 확인합니다. **40개 전부 통과.**
+반복 전개·타임존·시간 보정·한국어 조사와 라벨 팔레트 대비를 확인합니다.
+**55개 전부 통과.**
 
 ---
 
@@ -127,8 +128,29 @@ npm run web
 | `supabase/migrations/` · RLS · 정책 | `npm run db:reset && npm run db:smoke` |
 | `src/lib/` 의 계산 로직 (반복·타임존·시간·조사) | `npm run test:unit` |
 | 화면 | 웹 미리보기에서 실제로 눌러 보기 |
+| iOS·위젯·네이티브 설정 | 원격 작업 브랜치에서 Mac mini `iOS` workflow |
 
 DB를 바꿨다면 `src/types/database.ts`도 함께 갱신합니다 (`npm run db:types` 또는 수기).
+
+### iOS 네이티브 빌드
+
+Windows의 `npm run ios`는 이미 설치된 개발 앱에 Metro를 연결할 뿐 Xcode 빌드가 아닙니다.
+iOS 앱과 Widget Extension은 로컬 Mac mini의 GitHub Actions self-hosted runner
+`calendar-macmini`에서 검증합니다. EAS Build는 사용하지 않습니다.
+
+원격 작업 브랜치에 커밋이 있을 때 수동으로 실행하려면:
+
+```powershell
+$branch = git branch --show-current
+gh workflow run ios.yml --ref $branch
+gh run list --workflow=ios.yml --branch $branch --limit 5
+gh run watch <run-id> --exit-status
+```
+
+`.github/workflows/ios.yml`은 Node 24 의존성 설치와 정적 검사를 한 뒤
+`expo prebuild → pod install → xcodebuild`로 앱과 `ExpoWidgetsTarget`을 서명 없이
+Simulator용으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. Windows 검사만
+통과한 결과를 네이티브 빌드 성공으로 기록하지 않습니다.
 
 ---
 
@@ -187,20 +209,17 @@ docs/design/ui-proposal.html  시안 원본. 브라우저로 열면 된다 (단�
 설계안 11장의 1~8단계를 **모두 구현했습니다** — 스키마·인증 → 캘린더·초대 →
 일정 → 반복 → 참여자·댓글 → 알림 → 활동 로그 → 계정 삭제.
 
-다만 **알림은 큐까지**입니다. 일정 변경과 댓글이 `notification_outbox`에 쌓이고 설정
-화면도 동작하지만, 그것을 Expo 푸시로 실제 보내는 워커는 없습니다. 이 환경에서
-확인할 방법이 없기 때문입니다(Expo Go는 원격 푸시 미지원, EAS projectId 없음).
-앱 화면에도 그렇게 적혀 있으니 "알림이 간다"고 바꾸지 마세요.
+알림 발송 Edge Function과 유니버설 링크용 앱 구성은 구현돼 있습니다. 로컬에서는
+`EXPO_PUBLIC_PUSH_ENABLED=false`라 미연결 안내를 표시합니다. 실제 Expo/Supabase
+프로젝트, 앱 식별자, HTTPS 도메인과 서명 인증서를 연결하는 순서는
+`docs/deployment.md`를 따르세요.
 
-출시 전에 남은 것은 그 **발송 워커**와, 초대 링크를 메신저에서 열 수 있게 하는
-**유니버설 링크**입니다(지금은 `timeline://` 스킴이라 카카오톡 등에서 눌리지 않습니다).
-그 밖에 미룬 것은 `docs/design-notes.md`에 이유와 함께 적혀 있습니다.
-
-### UI 시안 — 끝났지만 코드에는 안 들어갔습니다
+### UI 시안과 색 토큰
 
 별도로 UI 디자인 시안 작업이 끝나 있습니다. 기본 테마가 **살구**(`#E2673F` 계열)로
-확정됐는데, **`theme.ts`는 여전히 파란색(`#3F7FD4`)이고 라벨 팔레트도 8색입니다.**
-색을 만지기 전에 `docs/design-decisions.md`를 읽으세요 — 5장에 토큰 대응표가 있습니다.
+확정됐고, `theme.ts`와 12색 캘린더 라벨 팔레트까지 코드에 반영했습니다.
+색을 바꾸기 전에 `docs/design-decisions.md`를 읽으세요 — 5장에 토큰 대응표와 팔레트 순서
+규칙이 있습니다.
 
 시안은 `docs/design/ui-proposal.html`을 브라우저로 열면 봅니다. 세 방향과 앱 다크모드를
 실시간으로 전환할 수 있고, 필수·중요 범위 16화면이 들어 있습니다.

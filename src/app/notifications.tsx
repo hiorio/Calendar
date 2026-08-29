@@ -11,6 +11,7 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useMyCalendars, useSetMuted } from '@/features/calendars/queries';
 import {
   countRegisteredDevices,
@@ -18,9 +19,10 @@ import {
   type PushStatus,
 } from '@/features/notifications/push';
 import { useTheme } from '@/hooks/use-theme';
+import { env } from '@/lib/env';
 
 export default function NotificationsScreen() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { user } = useAuth();
   const calendars = useMyCalendars();
   const setMuted = useSetMuted();
@@ -60,12 +62,12 @@ export default function NotificationsScreen() {
           </Txt>
         </View>
 
-        {/* 발송 워커가 붙기 전까지는 여기서 켜도 실제로 울리지 않는다.
-            받는다고 해 놓고 안 오는 것보다 미리 말해 두는 편이 낫다. */}
-        <Notice tone="info" title="아직 실제로 발송되지는 않습니다">
-          누가 무엇을 바꿨는지는 이미 서버에 쌓이고 있습니다. 보내 주는 부분이 붙으면
-          여기 설정 그대로 동작합니다.
-        </Notice>
+        {!env.pushEnabled ? (
+          <Notice tone="info" title="이 환경은 푸시 발송이 연결되지 않았습니다">
+            누가 무엇을 바꿨는지는 서버 큐에 쌓입니다. 배포 환경에서 발송 워커를 연결하면
+            여기 설정 그대로 동작합니다.
+          </Notice>
+        ) : null}
 
         <View style={styles.section}>
           <Txt variant="label" tone="secondary">
@@ -108,7 +110,12 @@ export default function NotificationsScreen() {
                     subtitle={calendar.muted ? '알림 꺼짐' : '일정 등록·변경, 댓글'}
                     right={
                       <View style={styles.rowRight}>
-                        <View style={[styles.dot, { backgroundColor: calendar.color }]} />
+                        <View
+                          style={[
+                            styles.dot,
+                            { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                          ]}
+                        />
                         <Switch
                           value={!calendar.muted}
                           disabled={setMuted.isPending}

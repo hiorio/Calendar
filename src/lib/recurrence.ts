@@ -11,16 +11,23 @@
  *   ③ 각 회차를 events.timezone의 벽시계로 읽어 실제 순간으로 되돌린다.
  */
 
-import { RRule, type Options } from 'rrule';
+import * as RRuleModule from 'rrule';
+import type { Options, RRule as RRuleInstance } from 'rrule';
 
-import { toDateKey } from './date';
-import { addMinutes, parseDateKey, type EventTimeColumns } from './event-time';
+import { toDateKey } from './date.ts';
+import { addMinutes, parseDateKey, type EventTimeColumns } from './event-time.ts';
 import {
   floatingToWallClock,
   fromWallClock,
   toWallClock,
   wallClockToFloating,
-} from './timezone';
+} from './timezone.ts';
+
+// rrule 2.x는 Node/Metro에서는 named export, Deno의 npm 호환층에서는 CommonJS
+// default로 보인다. 두 런타임이 같은 계산 모듈을 쓰도록 한 번만 정규화한다.
+const RRule =
+  (RRuleModule as typeof RRuleModule & { default?: typeof RRuleModule }).RRule ??
+  (RRuleModule as typeof RRuleModule & { default?: typeof RRuleModule }).default!.RRule;
 
 export type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
@@ -143,7 +150,7 @@ export function expandEvent(event: EventTimeColumns & { rrule: string | null }, 
       })()
     : toWallClock(new Date(event.start_at!), timezone);
 
-  let rule: RRule;
+  let rule: RRuleInstance;
   try {
     rule = new RRule({
       ...RRule.parseString(event.rrule),

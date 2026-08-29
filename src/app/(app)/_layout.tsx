@@ -2,6 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Redirect, Tabs, router, type Href } from 'expo-router';
 import { Platform, StyleSheet } from 'react-native';
 
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Typography } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useTheme } from '@/hooks/use-theme';
@@ -32,12 +33,13 @@ const TABS: Tab[] = [
     opens: '/event-new',
   },
   { name: 'activity', title: '활동', icon: 'pulse-outline', activeIcon: 'pulse' },
-  { name: 'settings', title: '설정', icon: 'settings-outline', activeIcon: 'settings' },
+  { name: 'settings', title: '더보기', icon: 'grid-outline', activeIcon: 'grid' },
 ];
 
 export default function AppLayout() {
   const { session, isLoading } = useAuth();
   const { colors } = useTheme();
+  const preferredLabelStyle = usePreferredTextStyle(styles.label);
 
   // 스플래시가 아직 떠 있는 상태. 라우팅을 결정하지 않는다.
   if (isLoading) return null;
@@ -51,10 +53,10 @@ export default function AppLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
-        tabBarLabelStyle: styles.label,
+        tabBarLabelStyle: [styles.label, preferredLabelStyle],
         tabBarStyle: [
           styles.bar,
-          { backgroundColor: colors.surface, borderTopColor: colors.border },
+          { backgroundColor: colors.chrome, borderTopColor: colors.chromeBorder },
         ],
       }}>
       {TABS.map(({ name, title, icon, activeIcon, opens }) => (

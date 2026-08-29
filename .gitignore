@@ -32,6 +32,10 @@ yarn-error.*
 
 # local env files
 .env
+.env.*
+!.env.example
+supabase/functions/.env
+public/.well-known/apple-app-site-association
 .env*.local
 !.env.example
 

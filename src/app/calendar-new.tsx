@@ -7,12 +7,17 @@ import { Field } from '@/components/ui/field';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
-import { CALENDAR_COLORS, DEFAULT_CALENDAR_COLOR, onColor } from '@/features/calendars/colors';
+import {
+  CALENDAR_COLORS,
+  DEFAULT_CALENDAR_COLOR,
+  calendarColorForScheme,
+  onColor,
+} from '@/features/calendars/colors';
 import { useCreateCalendar } from '@/features/calendars/queries';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function NewCalendarScreen() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const create = useCreateCalendar();
 
   const [name, setName] = useState('');
@@ -29,10 +34,9 @@ export default function NewCalendarScreen() {
     create.mutate(
       { name, color },
       {
-        onSuccess: (calendar) => {
-          if (router.canGoBack()) router.back();
-          router.push({ pathname: '/calendar/[id]', params: { id: calendar.id } });
-        },
+        // 생성 직후에는 설정 화면에 머물지 않고 새 캘린더가 보이는 메인 화면으로 간다.
+        // dismissTo는 어느 경로에서 만들기를 열었든 중간 모달까지 함께 정리한다.
+        onSuccess: () => router.dismissTo('/'),
         onError: (e) => setError(e instanceof Error ? e.message : String(e)),
       },
     );
@@ -78,11 +82,11 @@ export default function NewCalendarScreen() {
                     onPress={() => setColor(option)}
                     style={[
                       styles.swatch,
-                      { backgroundColor: option },
+                      { backgroundColor: calendarColorForScheme(option, scheme) },
                       selected && { borderColor: colors.text, borderWidth: 2 },
                     ]}>
                     {selected ? (
-                      <Txt variant="caption" style={{ color: onColor(option) }}>
+                      <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
                         ✓
                       </Txt>
                     ) : null}
@@ -93,7 +97,12 @@ export default function NewCalendarScreen() {
           </View>
 
           <View style={[styles.preview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.previewDot, { backgroundColor: color }]} />
+            <View
+              style={[
+                styles.previewDot,
+                { backgroundColor: calendarColorForScheme(color, scheme) },
+              ]}
+            />
             <Txt variant="body">{name.trim() || '이름 없는 캘린더'}</Txt>
           </View>
 

@@ -1,4 +1,4 @@
-import { StyleSheet, View, type ViewProps } from 'react-native';
+import { Platform, StyleSheet, View, type ViewProps } from 'react-native';
 
 import { Elevation, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
@@ -19,7 +19,7 @@ export function Card({ style, flat = false, padded = true, ...rest }: CardProps)
         padded && styles.padded,
         { backgroundColor: colors.surface, borderColor: colors.border },
         !flat && Elevation.card,
-        !flat && { shadowColor: colors.shadow },
+        !flat && Platform.OS === 'ios' && { shadowColor: colors.shadow },
         style,
       ]}
       {...rest}

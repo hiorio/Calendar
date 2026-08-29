@@ -1,171 +1,158 @@
-import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { useQueryClient } from '@tanstack/react-query';
+import { Image } from 'expo-image';
+import { router, Stack, useFocusEffect, useLocalSearchParams, type Href } from 'expo-router';
+import { useCallback, useRef } from 'react';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { Notice } from '@/components/ui/notice';
-import { Content } from '@/components/ui/screen';
-import { Segmented } from '@/components/ui/segmented';
+import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Spacing } from '@/constants/theme';
-import { useMyCalendars } from '@/features/calendars/queries';
-import { CommentThread } from '@/features/events/comment-thread';
-import { EventForm } from '@/features/events/event-form';
-import { ParticipantPicker } from '@/features/events/participant-picker';
-import { ReminderPicker } from '@/features/events/reminder-picker';
-import {
-  useDeleteEvent,
-  useEvent,
-  useOccurrenceException,
-  useUpdateEvent,
-  useUpdateOccurrence,
-  type EditScope,
-} from '@/features/events/queries';
+import { Radius, Spacing } from '@/constants/theme';
+import { calendarKeys, useMyCalendars } from '@/features/calendars/queries';
+import { EventDetailTools } from '@/features/events/event-detail-tools';
+import { eventKeys, useEvent, useOccurrenceException } from '@/features/events/queries';
+import { REMINDER_CHOICES, useMyReminders } from '@/features/events/reminders';
+import { useProfileById } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
-import { confirm } from '@/lib/confirm';
-import { fromTimeColumns } from '@/lib/event-time';
-import { parseRrule } from '@/lib/recurrence';
-
-const SCOPE_OPTIONS = [
-  { value: 'THIS' as const, label: '이 일정만' },
-  { value: 'FOLLOWING' as const, label: '이후 모두' },
-  { value: 'ALL' as const, label: '전체' },
-];
+import { formatDate, formatTime, parseDateKey } from '@/lib/event-time';
 
 export default function EventDetailScreen() {
   const { colors } = useTheme();
-  // occ = 이 화면이 열린 회차. 반복 일정에서 "이 일정만"의 대상이 된다.
   const { id, occ } = useLocalSearchParams<{ id: string; occ?: string }>();
-
-  const calendars = useMyCalendars();
+  const queryClient = useQueryClient();
+  const hasFocusedOnce = useRef(false);
   const event = useEvent(id);
   const exception = useOccurrenceException(id, occ ?? null);
-  const update = useUpdateEvent(id);
-  const updateOccurrence = useUpdateOccurrence(id);
-  const remove = useDeleteEvent(id);
+  const calendars = useMyCalendars();
+  const reminders = useMyReminders(id);
 
-  const [scope, setScope] = useState<EditScope>('THIS');
+  useFocusEffect(
+    useCallback(() => {
+      // 최초 진입은 각 useQuery가 이미 요청한다. 수정 화면에서 돌아왔을 때만
+      // 화면 뒤에 남아 있던 상세 쿼리를 다시 확인한다.
+      if (!hasFocusedOnce.current) {
+        hasFocusedOnce.current = true;
+        return;
+      }
 
-  // 예외 조회가 끝나기 전에는 폼을 그리지 않는다.
-  // EventForm 은 initial 을 useState 로 한 번만 받으므로, 나중에 도착한 값은
-  // 반영되지 않는다 — 고쳐 둔 회차를 열었는데 마스터 값이 보이게 된다.
+      void Promise.all([
+        queryClient.invalidateQueries({ queryKey: eventKeys.detail(id) }),
+        queryClient.invalidateQueries({ queryKey: eventKeys.exception(id, occ ?? null) }),
+        queryClient.invalidateQueries({ queryKey: calendarKeys.mine() }),
+      ]);
+    }, [id, occ, queryClient]),
+  );
+
   const exceptionPending = Boolean(occ) && !exception.isFetched;
+  const creator = useProfileById(event.data?.created_by ?? null);
+
+  function openEdit() {
+    router.push({
+      pathname: '/event-edit',
+      params: { id, ...(occ ? { occ } : {}) },
+    } as unknown as Href);
+  }
 
   if (!event.data || !calendars.data || exceptionPending) {
     return (
-      <Content style={[styles.empty, { backgroundColor: colors.background }]}>
-        <Txt variant="body" tone="secondary">
-          {event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
-        </Txt>
-      </Content>
+      <Screen edges={['top', 'bottom']}>
+        <Stack.Screen options={{ headerShown: false }} />
+        <View style={styles.loadingHeader}>
+          <HeaderButton icon="chevron-back" label="뒤로가기" onPress={() => router.back()} />
+        </View>
+        <Content style={styles.empty}>
+          <Txt variant="body" tone="secondary">
+            {event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
+          </Txt>
+        </Content>
+      </Screen>
     );
   }
 
   const master = event.data;
-  // MODIFIED 예외만 값을 덮는다. CANCELLED는 목록에서 이미 빠져 여기 오지 않는다.
   const patch = exception.data?.type === 'MODIFIED' ? exception.data : null;
-  const isRecurring = Boolean(master.rrule);
-  // 회차 정보가 없으면(예: 링크로 직접 들어옴) 회차 단위 작업을 할 수 없다
-  const originalStart = occ ?? null;
-  const canScope = isRecurring && originalStart !== null;
-  const effectiveScope: EditScope = canScope ? scope : 'ALL';
-
-  // "이후 모두 수정"은 시리즈를 둘로 쪼개는 일이라 아직 없다. 삭제만 된다.
-  const submitBlocked = effectiveScope === 'FOLLOWING';
-
-  async function askDelete() {
-    const message = {
-      THIS: '이 날짜의 일정만 사라집니다. 나머지 회차는 그대로예요.',
-      FOLLOWING: '이 날짜부터 뒤의 모든 회차가 사라집니다.',
-      ALL: '함께 보는 사람들의 캘린더에서도 사라집니다.',
-    }[effectiveScope];
-
-    const ok = await confirm({
-      title: '이 일정을 삭제할까요?',
-      message,
-      confirmLabel: '삭제',
-      destructive: true,
-    });
-    if (!ok) return;
-
-    remove.mutate(
-      {
-        scope: effectiveScope,
-        originalStart: originalStart ?? undefined,
-        rrule: master.rrule,
-        timezone: master.timezone,
-      },
-      { onSuccess: () => router.back() },
-    );
-  }
+  const effective = occurrenceTime(master, occ, patch);
+  const calendar = calendars.data.find((item) => item.id === master.calendar_id);
+  const title = patch?.title ?? master.title;
+  const location = patch?.location ?? master.location;
+  const description = patch?.description ?? master.description;
+  const reminderLabel =
+    reminders.data && reminders.data.length > 0
+      ? reminders.data
+          .map(
+            (minutes) =>
+              REMINDER_CHOICES.find((choice) => choice.minutes === minutes)?.label ??
+              `${minutes}분 전`,
+          )
+          .join(' · ')
+      : '알림 없음';
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Content style={styles.content}>
-          <EventForm
-            calendars={calendars.data}
-            submitLabel="저장"
-            pending={update.isPending || updateOccurrence.isPending || remove.isPending}
-            submitDisabled={submitBlocked}
-            // 이 회차만 고치는 중이면 반복 규칙 자체는 만질 수 없다
-            lockRecurrence={canScope && scope === 'THIS'}
-            initial={{
-              calendarId: master.calendar_id,
-              // 이 회차만 고쳐 둔 값이 있으면 그것을 보여 준다
-              title: patch?.title ?? master.title,
-              location: patch?.location ?? master.location ?? '',
-              description: patch?.description ?? master.description ?? '',
-              time: fromTimeColumns(occurrenceTime(master, occ, patch)),
-              recurrence: parseRrule(master.rrule),
-            }}
-            onSubmit={(input) => {
-              if (effectiveScope === 'THIS' && originalStart) {
-                updateOccurrence.mutate(
-                  { originalStart, input },
-                  { onSuccess: () => router.back() },
-                );
-                return;
-              }
-              update.mutate(input, { onSuccess: () => router.back() });
-            }}
-            onDelete={askDelete}
-            deleteLabel={canScope ? '이 범위 삭제' : '일정 삭제'}>
-            {canScope ? (
-              <View style={styles.scopeSection}>
-                <Txt variant="label" tone="secondary">
-                  적용 범위
-                </Txt>
-                <Segmented options={SCOPE_OPTIONS} value={scope} onChange={setScope} />
-                {submitBlocked ? (
-                  <Notice tone="info" title="이후 모두 수정은 아직 없습니다">
-                    시리즈를 둘로 나눠야 해서 다음에 붙입니다. 삭제는 지금도 됩니다.
-                  </Notice>
-                ) : null}
-              </View>
-            ) : null}
-          </EventForm>
+    <Screen edges={['top', 'bottom']}>
+      <Stack.Screen options={{ headerShown: false }} />
 
-          {update.isError || updateOccurrence.isError || remove.isError ? (
-            <Txt variant="caption" tone="danger">
-              처리하지 못했습니다:{' '}
-              {((update.error ?? updateOccurrence.error ?? remove.error) as Error).message}
+      <View style={styles.topBar}>
+        <HeaderButton icon="chevron-back" label="뒤로가기" onPress={() => router.back()} />
+        <ProfileBadge
+          imageUrl={creator.data?.avatar_url ?? calendar?.coverUrl ?? null}
+          label={creator.data?.nickname ?? calendar?.name ?? '일정'}
+        />
+        <HeaderButton icon="ellipsis-horizontal" label="일정 수정" onPress={openEdit} />
+      </View>
+
+      <ScrollView
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}>
+        <Content>
+          <View style={styles.hero}>
+            <Txt variant="display" tone="accent" style={styles.title}>
+              {title}
             </Txt>
-          ) : null}
+            <TimeHero event={effective} />
+          </View>
 
-          {/* 참여자와 댓글은 저장 버튼과 무관하게 바로 반영된다.
-              폼과 섞이지 않도록 아래에 따로 둔다. */}
-          <View style={[styles.divider, { backgroundColor: colors.border }]} />
+          <View style={[styles.details, { borderColor: colors.border }]}>
+            <DetailRow icon="alarm-outline" label={reminderLabel} />
+            <DetailRow
+              icon="calendar-outline"
+              label={calendar?.name ?? master.calendarName}
+              imageUrl={calendar?.coverUrl}
+            />
+            {location ? <DetailRow icon="location-outline" label={location} /> : null}
+            {description ? <DetailRow icon="document-text-outline" label={description} /> : null}
+          </View>
 
-          <ParticipantPicker eventId={id} calendarId={master.calendar_id} />
+          <View style={styles.activity}>
+            <View style={styles.dateDivider}>
+              <View style={[styles.line, { backgroundColor: colors.border }]} />
+              <Txt variant="label" tone="tertiary">
+                {formatActivityDate(master.created_at)}
+              </Txt>
+              <View style={[styles.line, { backgroundColor: colors.border }]} />
+            </View>
+            <View style={styles.activityLine}>
+              <ProfileBadge
+                imageUrl={creator.data?.avatar_url ?? null}
+                label={creator.data?.nickname ?? '알 수 없는 사용자'}
+                compact
+              />
+              <Txt variant="body" tone="secondary">
+                일정을 등록했습니다
+              </Txt>
+            </View>
+          </View>
 
-          <ReminderPicker eventId={id} />
-
-          <CommentThread eventId={id} isRecurring={isRecurring} />
+          <View style={styles.tools}>
+            <EventDetailTools
+              eventId={id}
+              calendarId={master.calendar_id}
+              isRecurring={Boolean(master.rrule)}
+            />
+          </View>
         </Content>
       </ScrollView>
-    </KeyboardAvoidingView>
+    </Screen>
   );
 }
 
@@ -178,30 +165,178 @@ type TimeShape = {
   timezone: string;
 };
 
+function TimeHero({ event }: { event: TimeShape }) {
+  const { colors } = useTheme();
+
+  if (event.is_all_day) {
+    const start = parseDateKey(event.start_date!);
+    const end = parseDateKey(event.end_date!);
+    return (
+      <View style={styles.allDayTime}>
+        <Txt variant="title">{formatFullDate(start)}</Txt>
+        {event.start_date !== event.end_date ? (
+          <>
+            <Ionicons name="chevron-forward" size={28} color={colors.accent} />
+            <Txt variant="title">{formatFullDate(end)}</Txt>
+          </>
+        ) : null}
+        <Txt variant="body" tone="secondary">
+          종일
+        </Txt>
+      </View>
+    );
+  }
+
+  const start = new Date(event.start_at!);
+  const end = new Date(event.end_at!);
+
+  return (
+    <View style={styles.timeRange}>
+      <TimeColumn date={start} />
+      <Ionicons
+        name="chevron-forward"
+        size={34}
+        color={colors.accent}
+        style={styles.timeArrow}
+      />
+      <TimeColumn date={end} />
+    </View>
+  );
+}
+
+function TimeColumn({ date }: { date: Date }) {
+  const [meridiem, clock] = formatTime(date).split(' ');
+  return (
+    <View style={styles.timeColumn}>
+      <Txt variant="subtitle">{formatFullDate(date)}</Txt>
+      <View style={styles.clockRow}>
+        <Txt variant="body">{meridiem}</Txt>
+        <Txt variant="hero">{clock}</Txt>
+      </View>
+    </View>
+  );
+}
+
+function DetailRow({
+  icon,
+  label,
+  imageUrl,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  imageUrl?: string | null;
+}) {
+  const { colors } = useTheme();
+  return (
+    <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
+      <Ionicons name={icon} size={24} color={colors.accent} />
+      <Txt variant="subtitle" style={styles.detailLabel} numberOfLines={3}>
+        {label}
+      </Txt>
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} contentFit="cover" style={styles.calendarThumb} />
+      ) : null}
+    </View>
+  );
+}
+
+function HeaderButton({
+  icon,
+  label,
+  onPress,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+  label: string;
+  onPress: () => void;
+}) {
+  const { colors } = useTheme();
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      hitSlop={8}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.headerButton,
+        pressed && { backgroundColor: colors.surfacePressed },
+      ]}>
+      <Ionicons name={icon} size={27} color={colors.accent} />
+    </Pressable>
+  );
+}
+
+function ProfileBadge({
+  imageUrl,
+  label,
+  compact = false,
+}: {
+  imageUrl: string | null;
+  label: string;
+  compact?: boolean;
+}) {
+  const { colors } = useTheme();
+  const size = compact ? 25 : 30;
+  return (
+    <View
+      accessibilityLabel={label}
+      style={[
+        styles.profileBadge,
+        {
+          width: size,
+          height: size,
+          backgroundColor: colors.accentSoft,
+        },
+      ]}>
+      {imageUrl ? (
+        <Image source={{ uri: imageUrl }} contentFit="cover" style={StyleSheet.absoluteFill} />
+      ) : (
+        <Txt variant={compact ? 'micro' : 'caption'} tone="accent">
+          {label.slice(0, 1)}
+        </Txt>
+      )}
+    </View>
+  );
+}
+
+function formatFullDate(date: Date) {
+  return `${date.getFullYear()}년 ${formatDate(date)}`;
+}
+
+function formatActivityDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '' : formatFullDate(date);
+}
+
 /**
- * 마스터의 시간 컬럼을 이 회차의 시각으로 갈아 끼운다.
- *
- * 반복 일정의 마스터는 첫 회차의 시각만 갖고 있다. 3월 회차를 열었는데 1월
- * 날짜가 보이면 안 된다.
- *
- * 이 회차만 시간을 고쳐 둔 예외가 있으면 계산하지 않고 그 값을 그대로 쓴다.
+ * 반복 일정 마스터의 시간 컬럼을 사용자가 누른 회차의 시각으로 바꾼다.
+ * 이 회차만 수정한 예외가 있으면 그 값이 가장 우선한다.
  */
 function occurrenceTime<T extends TimeShape>(
   master: T,
   occ: string | undefined,
-  // 예외의 컬럼은 "안 정함"을 NULL로 표현한다
   patch?: { [K in keyof TimeShape]?: TimeShape[K] | null } | null,
 ): T {
   if (patch) {
     const allDay = patch.is_all_day ?? master.is_all_day;
-    // 종일이면 date 쪽만, 시간 지정이면 at 쪽만 채운다. 섞으면 폼이 어긋난다.
     if (allDay && patch.start_date) {
-      return { ...master, is_all_day: true, start_at: null, end_at: null,
-        start_date: patch.start_date, end_date: patch.end_date ?? patch.start_date };
+      return {
+        ...master,
+        is_all_day: true,
+        start_at: null,
+        end_at: null,
+        start_date: patch.start_date,
+        end_date: patch.end_date ?? patch.start_date,
+      };
     }
     if (!allDay && patch.start_at) {
-      return { ...master, is_all_day: false, start_date: null, end_date: null,
-        start_at: patch.start_at, end_at: patch.end_at ?? patch.start_at };
+      return {
+        ...master,
+        is_all_day: false,
+        start_date: null,
+        end_date: null,
+        start_at: patch.start_at,
+        end_at: patch.end_at ?? patch.start_at,
+      };
     }
   }
 
@@ -229,10 +364,76 @@ function occurrenceTime<T extends TimeShape>(
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingVertical: Spacing.xxl },
-  content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
-  empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
-  scopeSection: { gap: Spacing.sm },
-  divider: { height: StyleSheet.hairlineWidth, marginVertical: Spacing.sm },
+  topBar: {
+    height: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.sm,
+  },
+  loadingHeader: {
+    height: 54,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.sm,
+  },
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  profileBadge: {
+    borderRadius: Radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+  },
+  empty: { justifyContent: 'center', alignItems: 'center' },
+  scrollContent: { flexGrow: 1, paddingBottom: Spacing.lg },
+  hero: {
+    alignItems: 'center',
+    gap: Spacing.xxl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxxl,
+  },
+  title: { textAlign: 'center' },
+  timeRange: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+  },
+  timeColumn: { flex: 1, alignItems: 'center', gap: Spacing.xs },
+  clockRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.xs },
+  timeArrow: { opacity: 0.75 },
+  allDayTime: { alignItems: 'center', gap: Spacing.sm },
+  details: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  detailRow: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  detailLabel: { flex: 1 },
+  calendarThumb: { width: 38, height: 38, borderRadius: Radius.sm },
+  activity: {
+    minHeight: 190,
+    alignItems: 'center',
+    gap: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.xxxl,
+  },
+  dateDivider: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  line: { flex: 1, height: StyleSheet.hairlineWidth },
+  activityLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
+  tools: { paddingHorizontal: Spacing.lg },
 });

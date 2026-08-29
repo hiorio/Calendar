@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Linking from 'expo-linking';
 
 import { calendarKeys } from '@/features/calendars/queries';
+import { env } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 
 export type InvitePreview = {
@@ -18,10 +19,13 @@ export type InvitePreview = {
 /**
  * 초대 링크.
  *
- * 개발 중에는 `timeline://join?code=...` / `http://localhost:8081/join?code=...`가 된다.
- * 실제 출시할 때는 메신저에서 눌리도록 웹 도메인 기반의 유니버설 링크로 바꿔야 한다.
+ * 운영 도메인이 설정되면 HTTPS 유니버설 링크를 만들고, 로컬에서는 Expo Linking
+ * 스킴/웹 주소를 사용한다.
  */
 export function buildInviteLink(code: string) {
+  if (env.universalLinkBaseUrl) {
+    return `${env.universalLinkBaseUrl}/join?code=${encodeURIComponent(code)}`;
+  }
   return Linking.createURL('/join', { queryParams: { code } });
 }
 

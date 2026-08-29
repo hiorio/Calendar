@@ -1,13 +1,24 @@
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { NanumGothic_400Regular } from '@expo-google-fonts/nanum-gothic/400Regular';
+import { NanumGothic_700Bold } from '@expo-google-fonts/nanum-gothic/700Bold';
+import { NanumMyeongjo_400Regular } from '@expo-google-fonts/nanum-myeongjo/400Regular';
+import { NanumMyeongjo_700Bold } from '@expo-google-fonts/nanum-myeongjo/700Bold';
+import { useFonts } from 'expo-font';
 import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, type PropsWithChildren } from 'react';
-import { AppState, Platform, useColorScheme } from 'react-native';
+import { AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
+import { Typography } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-provider';
+import { useNotificationNavigation } from '@/features/notifications/navigation';
 import { configureNotificationHandler } from '@/features/notifications/push';
+import { WidgetSyncGate } from '@/features/widgets/widget-capability';
+import { useTheme } from '@/hooks/use-theme';
+import { Sentry } from '@/lib/observability';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,27 +51,62 @@ const queryClient = new QueryClient({
 });
 
 /** 세션 복원이 끝나기 전까지는 스플래시를 유지해 화면 깜빡임을 막는다 */
-function SplashGate({ children }: PropsWithChildren) {
+function SplashGate({ children, fontsReady }: PropsWithChildren<{ fontsReady: boolean }>) {
   const { isLoading } = useAuth();
 
   useEffect(() => {
-    if (!isLoading) SplashScreen.hideAsync();
-  }, [isLoading]);
+    if (!isLoading && fontsReady) SplashScreen.hideAsync();
+  }, [fontsReady, isLoading]);
 
-  return children;
+  return !isLoading && fontsReady ? children : null;
 }
 
-export default function RootLayout() {
-  const scheme = useColorScheme();
+function NotificationNavigation() {
+  const { isLoading } = useAuth();
+  useNotificationNavigation(!isLoading);
+  return null;
+}
+
+function RootLayout() {
+  const [fontsLoaded, fontError] = useFonts({
+    NanumGothic_400Regular,
+    NanumGothic_700Bold,
+    NanumMyeongjo_400Regular,
+    NanumMyeongjo_700Bold,
+  });
+  const { colors, scheme, theme } = useTheme();
+  const preferredHeaderStyle = usePreferredTextStyle(Typography.subtitle);
+  // 폰트 파일 하나가 손상돼도 스플래시에 갇히지 않고 시스템 글꼴로 앱을 열 수 있어야 한다.
+  const fontsReady = fontsLoaded || Boolean(fontError);
+  const isDark = scheme === 'dark';
+  const baseNavigationTheme = isDark ? DarkTheme : DefaultTheme;
+  const navigationTheme = {
+    ...baseNavigationTheme,
+    dark: isDark || theme === 'ink',
+    colors: {
+      ...baseNavigationTheme.colors,
+      primary: colors.accent,
+      background: colors.background,
+      card: colors.chrome,
+      text: colors.chromeText,
+      border: colors.chromeBorder,
+    },
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <SplashGate>
-            <ThemeProvider value={scheme === 'dark' ? DarkTheme : DefaultTheme}>
-              <Stack screenOptions={{ headerShown: false }}>
-                <Stack.Screen name="(app)" />
+          <NotificationNavigation />
+          <WidgetSyncGate />
+          <SplashGate fontsReady={fontsReady}>
+            <ThemeProvider value={navigationTheme}>
+              <Stack
+                screenOptions={{
+                  headerShown: false,
+                  headerTitleStyle: preferredHeaderStyle,
+                }}>
+                <Stack.Screen name="(app)" options={{ title: '캘린더' }} />
                 <Stack.Screen
                   name="account"
                   options={{ presentation: 'modal', headerShown: true, title: '계정' }}
@@ -75,7 +121,19 @@ export default function RootLayout() {
                 />
                 <Stack.Screen
                   name="calendar/[id]"
-                  options={{ headerShown: true, title: '캘린더 설정' }}
+                  options={{
+                    headerShown: true,
+                    title: '캘린더 설정',
+                    headerBackTitle: '캘린더',
+                  }}
+                />
+                <Stack.Screen
+                  name="day"
+                  options={{
+                    presentation: 'modal',
+                    headerShown: false,
+                    title: '일정',
+                  }}
                 />
                 <Stack.Screen
                   name="join"
@@ -86,19 +144,55 @@ export default function RootLayout() {
                   options={{ presentation: 'modal', headerShown: true, title: '일정 추가' }}
                 />
                 <Stack.Screen
+                  name="quick-event"
+                  options={{ presentation: 'modal', headerShown: true, title: '빠른 일정' }}
+                />
+                <Stack.Screen
+                  name="quick-memo"
+                  options={{ presentation: 'modal', headerShown: true, title: '퀵 메모' }}
+                />
+                <Stack.Screen
                   name="event/[id]"
-                  options={{ presentation: 'modal', headerShown: true, title: '일정' }}
+                  options={{ presentation: 'modal', headerShown: false, title: '일정' }}
+                />
+                <Stack.Screen
+                  name="event-edit"
+                  options={{ presentation: 'modal', headerShown: true, title: '일정 수정' }}
                 />
                 <Stack.Screen
                   name="notifications"
                   options={{ presentation: 'modal', headerShown: true, title: '알림 설정' }}
                 />
                 <Stack.Screen
+                  name="preferences"
+                  options={{ presentation: 'modal', headerShown: true, title: '설정' }}
+                />
+                <Stack.Screen
+                  name="widget-settings"
+                  options={{ presentation: 'modal', headerShown: true, title: '위젯' }}
+                />
+                <Stack.Screen
+                  name="time-picker-lab"
+                  options={{ presentation: 'modal', headerShown: true, title: '시간 선택기 실험' }}
+                />
+                <Stack.Screen
+                  name="memos"
+                  options={{ presentation: 'modal', headerShown: true, title: '메모' }}
+                />
+                <Stack.Screen
+                  name="search"
+                  options={{ presentation: 'modal', headerShown: true, title: '검색' }}
+                />
+                <Stack.Screen
+                  name="external-calendars"
+                  options={{ presentation: 'modal', headerShown: true, title: '외부 캘린더' }}
+                />
+                <Stack.Screen
                   name="account-delete"
                   options={{ presentation: 'modal', headerShown: true, title: '계정 삭제' }}
                 />
               </Stack>
-              <StatusBar style="auto" />
+              <StatusBar style={isDark || theme === 'ink' ? 'light' : 'dark'} />
             </ThemeProvider>
           </SplashGate>
         </AuthProvider>
@@ -106,3 +200,5 @@ export default function RootLayout() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(RootLayout);

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { useAuth } from '@/features/auth/auth-provider';
-import { buildMonthMatrix, toDateKey } from '@/lib/date';
+import { buildMonthMatrix, toDateKey, type WeekStart } from '@/lib/date';
 import { compareEvents, eventDayKeys, type EventTimeColumns } from '@/lib/event-time';
 import {
   applyExceptions,
@@ -31,11 +31,14 @@ export const eventKeys = {
   /** 격자 범위 단위로 캐시한다. 달을 넘겨도 같은 범위면 다시 받지 않는다. */
   range: (startIso: string, endIso: string) => ['events', 'range', startIso, endIso] as const,
   detail: (eventId: string) => ['events', 'detail', eventId] as const,
+  exception: (eventId: string, originalStart: string | null) =>
+    ['events', 'exception', eventId, originalStart] as const,
+  search: (query: string) => ['events', 'search', query] as const,
 };
 
 /** 월간 격자가 실제로 그리는 6주 구간. 앞뒤 달의 칸에도 일정이 찍혀야 한다. */
-export function monthGridRange(month: Date): { start: Date; end: Date } {
-  const weeks = buildMonthMatrix(month);
+export function monthGridRange(month: Date, weekStart: WeekStart = 'sunday'): { start: Date; end: Date } {
+  const weeks = buildMonthMatrix(month, weekStart);
   const start = new Date(weeks[0][0]);
   start.setHours(0, 0, 0, 0);
 
@@ -53,7 +56,7 @@ function decorate(row: EventJoinRow) {
   return {
     ...row,
     calendarName: row.calendars?.name ?? '',
-    displayColor: row.color ?? row.calendars?.color ?? '#6B7683',
+    displayColor: row.color ?? row.calendars?.color ?? '#9AA1AC',
   };
 }
 
@@ -63,15 +66,19 @@ function decorate(row: EventJoinRow) {
  * 캘린더별로 나눠 받지 않는다. 표시/숨김은 화면에서 거르는 편이 칩을 눌렀을 때
  * 즉시 반영되고 요청도 줄어든다. 접근 범위는 어차피 RLS가 정한다.
  */
-export function useMonthEvents(month: Date) {
+export function useMonthEvents(
+  month: Date,
+  weekStart: WeekStart = 'sunday',
+  enabled = true,
+) {
   const { user } = useAuth();
-  const { start, end } = monthGridRange(month);
+  const { start, end } = monthGridRange(month, weekStart);
   const startIso = start.toISOString();
   const endIso = end.toISOString();
 
   return useQuery<EventOccurrence[]>({
     queryKey: eventKeys.range(startIso, endIso),
-    enabled: Boolean(user),
+    enabled: Boolean(user && enabled),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('events')
@@ -111,6 +118,32 @@ export function useMonthEvents(month: Date) {
       );
 
       return applyExceptions(occurrences, exceptions) as EventOccurrence[];
+    },
+  });
+}
+
+export type EventSearchResult = ReturnType<typeof decorate>;
+
+/** 접근 가능한 일정의 제목을 검색한다. 반복 일정은 마스터 한 건으로 표시한다. */
+export function useEventSearch(rawQuery: string) {
+  const { user } = useAuth();
+  const query = rawQuery.trim();
+
+  return useQuery<EventSearchResult[]>({
+    queryKey: eventKeys.search(query),
+    enabled: Boolean(user && query),
+    queryFn: async () => {
+      const escaped = query.replaceAll('%', '\\%').replaceAll('_', '\\_');
+      const { data, error } = await supabase
+        .from('events')
+        .select('*, calendars(name, color)')
+        .is('deleted_at', null)
+        .ilike('title', `%${escaped}%`)
+        .order('range_start', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+      return (data as unknown as EventJoinRow[]).map(decorate);
     },
   });
 }
@@ -157,7 +190,7 @@ export function useEvent(eventId: string) {
  */
 export function useOccurrenceException(eventId: string, originalStart: string | null) {
   return useQuery<EventException | null>({
-    queryKey: ['events', 'exception', eventId, originalStart],
+    queryKey: eventKeys.exception(eventId, originalStart),
     enabled: Boolean(eventId && originalStart),
     queryFn: async () => {
       const { data, error } = await supabase

@@ -1,12 +1,15 @@
-import { useState } from 'react';
-import { Pressable, StyleSheet, Switch, View } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { Image } from 'expo-image';
+import { forwardRef, useCallback, useImperativeHandle, useState } from 'react';
+import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
-import { Card, Divider } from '@/components/ui/card';
+import { Divider } from '@/components/ui/card';
 import { DateTimeField } from '@/components/ui/date-time-field';
-import { Field } from '@/components/ui/field';
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Radius, Spacing, Typography } from '@/constants/theme';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import type { MyCalendar } from '@/features/calendars/queries';
 import type { EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
@@ -42,23 +45,34 @@ export type EventFormProps = {
   /** 수정 화면에서만 준다 */
   onDelete?: () => void;
   deleteLabel?: string;
+  /** 네이티브 모달 헤더에 저장 버튼이 있을 때 본문 버튼을 숨긴다. */
+  showSubmitButton?: boolean;
+};
+
+export type EventFormHandle = {
+  submit: () => void;
 };
 
 const FREQ_OPTIONS: (Freq | null)[] = [null, 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'];
 
-export function EventForm({
-  calendars,
-  initial,
-  submitLabel,
-  pending = false,
-  lockRecurrence = false,
-  onSubmit,
-  children,
-  submitDisabled = false,
-  onDelete,
-  deleteLabel = '일정 삭제',
-}: EventFormProps) {
-  const { colors } = useTheme();
+export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function EventForm(
+  {
+    calendars,
+    initial,
+    submitLabel,
+    pending = false,
+    lockRecurrence = false,
+    onSubmit,
+    children,
+    submitDisabled = false,
+    onDelete,
+    deleteLabel = '일정 삭제',
+    showSubmitButton = true,
+  },
+  ref,
+) {
+  const { colors, scheme } = useTheme();
+  const titleTextStyle = usePreferredTextStyle(Typography.title);
 
   const [calendarId, setCalendarId] = useState(initial.calendarId);
   const [title, setTitle] = useState(initial.title);
@@ -68,7 +82,7 @@ export function EventForm({
   const [recurrence, setRecurrence] = useState<RecurrenceForm>(initial.recurrence);
   const [error, setError] = useState<string | null>(null);
 
-  function submit() {
+  const submit = useCallback(() => {
     if (!title.trim()) {
       setError('일정 이름을 입력해 주세요');
       return;
@@ -91,27 +105,32 @@ export function EventForm({
       ...toTimeColumns(time),
       rrule: lockRecurrence ? null : buildRrule(recurrence),
     });
-  }
+  }, [calendarId, description, location, lockRecurrence, onSubmit, recurrence, time, title]);
+
+  useImperativeHandle(ref, () => ({ submit }), [submit]);
 
   return (
-    <View style={styles.form}>
-      <Field
-        label="일정"
+    <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+      <TextInput
+        accessibilityLabel="일정 이름"
         value={title}
         onChangeText={setTitle}
         placeholder="무엇을 하나요?"
+        placeholderTextColor={colors.textTertiary}
         maxLength={100}
-        autoFocus={!initial.title}
         returnKeyType="next"
+        style={[styles.titleInput, { color: colors.text }, titleTextStyle]}
       />
 
-      {/* 캘린더가 하나뿐이면 고를 것이 없다 */}
-      {calendars.length > 1 ? (
-        <View style={styles.section}>
-          <Txt variant="label" tone="secondary">
-            캘린더
-          </Txt>
-          <View style={styles.calendarPicker}>
+      <Divider />
+
+      <View style={styles.optionRow}>
+        <Ionicons name="calendar-outline" size={20} color={colors.accent} />
+        <ScrollView
+          horizontal
+          style={styles.optionScroller}
+          contentContainerStyle={styles.optionScrollerContent}
+          showsHorizontalScrollIndicator={false}>
             {calendars.map((calendar) => {
               const selected = calendar.id === calendarId;
               return (
@@ -125,71 +144,106 @@ export function EventForm({
                     styles.calendarChip,
                     {
                       backgroundColor: selected ? colors.accentSoft : colors.surface,
-                      borderColor: selected ? colors.accent : colors.border,
+                      borderColor: selected ? colors.accent : colors.borderStrong,
                     },
                   ]}>
-                  <View style={[styles.dot, { backgroundColor: calendar.color }]} />
+                  {calendar.coverUrl ? (
+                    <Image
+                      source={{ uri: calendar.coverUrl }}
+                      contentFit="cover"
+                      style={[
+                        styles.calendarThumbnail,
+                        { borderColor: calendarColorForScheme(calendar.color, scheme) },
+                      ]}
+                    />
+                  ) : (
+                    <View
+                      style={[
+                        styles.dot,
+                        { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                      ]}
+                    />
+                  )}
                   <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
                     {calendar.name}
                   </Txt>
                 </Pressable>
               );
             })}
-          </View>
-        </View>
-      ) : null}
+        </ScrollView>
+      </View>
 
-      <Card flat style={styles.timeCard}>
-        <View style={styles.allDayRow}>
-          <Txt variant="body">종일</Txt>
-          <Switch
-            value={time.isAllDay}
-            onValueChange={(next) => setTime((current) => switchAllDay(current, next))}
-            trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
-          />
-        </View>
+      <Divider />
 
-        <Divider />
+      <View style={styles.optionRow}>
+        <Ionicons name="time-outline" size={20} color={colors.accent} />
+        <Txt variant="body" style={styles.rowLabel}>
+          종일
+        </Txt>
+        <Switch
+          value={time.isAllDay}
+          onValueChange={(next) => setTime((current) => switchAllDay(current, next))}
+          trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
+        />
+      </View>
 
-        <View style={styles.timeRows}>
+      <Divider />
+
+      <CompactTimeRow label="시작">
+        <DateTimeField
+          hideLabel
+          label="시작 날짜"
+          mode="date"
+          value={time.start}
+          onChange={(next) => setTime((current) => moveStart(current, next))}
+        />
+        {!time.isAllDay ? (
           <DateTimeField
-            label="시작"
-            mode="date"
+            hideLabel
+            label="시작 시각"
+            mode="time"
             value={time.start}
             onChange={(next) => setTime((current) => moveStart(current, next))}
           />
-          {!time.isAllDay ? (
-            <DateTimeField
-              label="시작 시각"
-              mode="time"
-              value={time.start}
-              onChange={(next) => setTime((current) => moveStart(current, next))}
-            />
-          ) : null}
+        ) : null}
+      </CompactTimeRow>
 
+      <CompactTimeRow label="종료">
+        <DateTimeField
+          hideLabel
+          label="종료 날짜"
+          mode="date"
+          value={time.end}
+          onChange={(next) => setTime((current) => moveEnd(current, next))}
+        />
+        {!time.isAllDay ? (
           <DateTimeField
-            label="종료"
-            mode="date"
+            hideLabel
+            label="종료 시각"
+            mode="time"
             value={time.end}
             onChange={(next) => setTime((current) => moveEnd(current, next))}
           />
-          {!time.isAllDay ? (
-            <DateTimeField
-              label="종료 시각"
-              mode="time"
-              value={time.end}
-              onChange={(next) => setTime((current) => moveEnd(current, next))}
-            />
-          ) : null}
-        </View>
-      </Card>
+        ) : null}
+      </CompactTimeRow>
 
-      {!lockRecurrence ? (
-        <View style={styles.section}>
-          <Txt variant="label" tone="secondary">
-            반복
+      <Divider />
+
+      <View style={styles.optionRow}>
+        <Ionicons name="repeat-outline" size={20} color={colors.accent} />
+        <Txt variant="body" style={styles.compactLabel}>
+          반복
+        </Txt>
+        {lockRecurrence ? (
+          <Txt variant="body" tone="secondary" style={styles.readOnlyValue}>
+            {recurrence.freq ? FREQ_LABELS[recurrence.freq] : '안 함'}
           </Txt>
-          <View style={styles.calendarPicker}>
+        ) : (
+          <ScrollView
+            horizontal
+            style={styles.optionScroller}
+            contentContainerStyle={styles.optionScrollerContent}
+            showsHorizontalScrollIndicator={false}>
             {FREQ_OPTIONS.map((freq) => {
               const selected = freq === recurrence.freq;
               const label = freq ? FREQ_LABELS[freq] : '안 함';
@@ -213,78 +267,139 @@ export function EventForm({
                 </Pressable>
               );
             })}
+          </ScrollView>
+        )}
+      </View>
+
+      {!lockRecurrence && recurrence.freq ? (
+        <>
+          <Divider />
+          <View style={styles.optionRow}>
+            <Ionicons name="calendar-number-outline" size={20} color={colors.accent} />
+            <Txt variant="body" style={styles.rowLabel}>
+              종료일
+            </Txt>
+            {recurrence.until ? (
+              <DateTimeField
+                hideLabel
+                label="반복 종료일"
+                mode="date"
+                value={recurrence.until}
+                onChange={(next) =>
+                  setRecurrence((current) => ({ ...current, until: next }))
+                }
+              />
+            ) : null}
+            <Switch
+              value={recurrence.until !== null}
+              onValueChange={(on) =>
+                setRecurrence((current) => ({
+                  ...current,
+                  until: on ? defaultUntil(time.start) : null,
+                }))
+              }
+              trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
+            />
           </View>
-
-          {recurrence.freq ? (
-            <Card flat style={styles.timeCard}>
-              <View style={styles.allDayRow}>
-                <Txt variant="body">종료일 정하기</Txt>
-                <Switch
-                  value={recurrence.until !== null}
-                  onValueChange={(on) =>
-                    setRecurrence((current) => ({
-                      ...current,
-                      // 켤 때는 1년 뒤를 기본으로 준다. 대부분 그 안에서 끝난다.
-                      until: on ? defaultUntil(time.start) : null,
-                    }))
-                  }
-                  trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
-                />
-              </View>
-
-              {recurrence.until ? (
-                <>
-                  <Divider />
-                  <View style={styles.timeRows}>
-                    <DateTimeField
-                      label="이 날까지"
-                      mode="date"
-                      value={recurrence.until}
-                      onChange={(next) => setRecurrence((current) => ({ ...current, until: next }))}
-                    />
-                  </View>
-                </>
-              ) : null}
-            </Card>
-          ) : null}
-        </View>
+        </>
       ) : null}
 
-      <Field
-        label="장소"
+      <Divider />
+
+      <InlineInput
+        icon="location-outline"
+        accessibilityLabel="장소"
         value={location}
         onChangeText={setLocation}
-        placeholder="어디에서 (선택)"
+        placeholder="장소 추가"
         maxLength={200}
       />
 
-      <Field
-        label="메모"
+      <Divider />
+
+      <InlineInput
+        icon="document-text-outline"
+        accessibilityLabel="메모"
         value={description}
         onChangeText={setDescription}
-        placeholder="남겨 둘 내용 (선택)"
+        placeholder="메모 추가"
         multiline
-        style={styles.memo}
       />
 
       {children}
 
       {error ? (
-        <Txt variant="caption" tone="danger">
-          {error}
-        </Txt>
+        <View style={styles.formMessage}>
+          <Txt variant="caption" tone="danger">
+            {error}
+          </Txt>
+        </View>
       ) : null}
 
-      <Button
-        label={submitLabel}
-        loading={pending}
-        onPress={submit}
-        disabled={submitDisabled}
-      />
+      {showSubmitButton ? (
+        <View style={styles.formAction}>
+          <Button
+            label={submitLabel}
+            loading={pending}
+            onPress={submit}
+            disabled={submitDisabled}
+          />
+        </View>
+      ) : null}
 
       {onDelete ? (
-        <Button label={deleteLabel} variant="danger" onPress={onDelete} disabled={pending} />
+        <View style={styles.formAction}>
+          <Button
+            label={deleteLabel}
+            variant="danger"
+            size="md"
+            onPress={onDelete}
+            disabled={pending}
+          />
+        </View>
       ) : null}
+    </View>
+  );
+});
+
+function CompactTimeRow({ label, children }: { label: string; children: React.ReactNode }) {
+  const { colors } = useTheme();
+
+  return (
+    <View style={styles.timeRow}>
+      <Ionicons name="calendar-clear-outline" size={20} color={colors.accent} />
+      <Txt variant="body" style={styles.rowLabel}>
+        {label}
+      </Txt>
+      <View style={styles.timeControls}>{children}</View>
+    </View>
+  );
+}
+
+function InlineInput({
+  icon,
+  multiline = false,
+  ...props
+}: React.ComponentProps<typeof TextInput> & {
+  icon: React.ComponentProps<typeof Ionicons>['name'];
+}) {
+  const { colors } = useTheme();
+  const preferredTextStyle = usePreferredTextStyle(Typography.body);
+
+  return (
+    <View style={[styles.inlineInputRow, multiline && styles.inlineInputRowMultiline]}>
+      <Ionicons name={icon} size={20} color={colors.accent} />
+      <TextInput
+        {...props}
+        multiline={multiline}
+        placeholderTextColor={colors.textTertiary}
+        style={[
+          styles.inlineInput,
+          multiline && styles.inlineInputMultiline,
+          { color: colors.text },
+          preferredTextStyle,
+        ]}
+      />
     </View>
   );
 }
@@ -297,9 +412,30 @@ function defaultUntil(start: Date): Date {
 }
 
 const styles = StyleSheet.create({
-  form: { gap: Spacing.xl },
-  section: { gap: Spacing.sm },
-  calendarPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  form: {
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: Radius.xl,
+  },
+  titleInput: {
+    ...Typography.title,
+    minHeight: 64,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.md,
+  },
+  optionRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  optionScroller: { flex: 1 },
+  optionScrollerContent: {
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingRight: Spacing.lg,
+  },
   calendarChip: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -310,15 +446,42 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   dot: { width: 8, height: 8, borderRadius: Radius.pill },
-  timeCard: { paddingVertical: Spacing.xs },
-  allDayRow: {
+  calendarThumbnail: {
+    width: 24,
+    height: 24,
+    borderWidth: 2,
+    borderRadius: Radius.sm,
+  },
+  compactLabel: { width: 36 },
+  rowLabel: { flex: 1 },
+  readOnlyValue: { marginLeft: 'auto' },
+  timeRow: {
+    minHeight: 50,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.sm,
-    minHeight: 48,
   },
-  timeRows: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm, gap: Spacing.xs },
-  memo: { height: 96, paddingTop: Spacing.md, textAlignVertical: 'top' },
+  timeControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: Spacing.xs,
+  },
+  inlineInputRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+  },
+  inlineInputRowMultiline: { minHeight: 58, alignItems: 'flex-start', paddingTop: Spacing.md },
+  inlineInput: { ...Typography.body, flex: 1, minHeight: 44, paddingVertical: Spacing.sm },
+  inlineInputMultiline: {
+    maxHeight: 58,
+    paddingTop: 0,
+    textAlignVertical: 'top',
+  },
+  formMessage: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  formAction: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
 });
