@@ -12,6 +12,8 @@ on:
       - 'package.json'
       - 'package-lock.json'
       - 'tsconfig.json'
+      - '.github/scripts/**'
+      - '.github/workflows/app-store.yml'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
     inputs:

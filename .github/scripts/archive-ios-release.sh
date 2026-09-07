@@ -53,7 +53,7 @@ if [[ -z "$workspace" || -z "$project" ]]; then
 fi
 
 scheme="$(basename "$project" .xcodeproj)"
-ruby .github/scripts/configure-ios-signing.rb "$project"
+node .github/scripts/configure-ios-signing.cjs ios
 
 archive_path="$RUNNER_TEMP/TimeFlower.xcarchive"
 export_path="$RUNNER_TEMP/TimeFlowerExport"
