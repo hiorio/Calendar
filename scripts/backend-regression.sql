@@ -5,6 +5,38 @@ begin;
 create function pg_temp.assert_true(value boolean, message text) returns void language plpgsql as $$
 begin if value is distinct from true then raise exception 'REGRESSION: %', message; end if; end; $$;
 
+select pg_temp.assert_true(
+  not has_function_privilege('anon', 'public.account_deletion_preview()', 'execute'),
+  'account deletion preview is closed to bare anon');
+select pg_temp.assert_true(
+  has_function_privilege('authenticated', 'public.account_deletion_preview()', 'execute'),
+  'account deletion preview remains available after sign-in');
+select pg_temp.assert_true(not exists (
+  select 1 from unnest(array[
+    'public.set_updated_at()',
+    'public.sync_event_range()',
+    'public.guard_calendar_owner_change()',
+    'public.guard_member_role_change()',
+    'public.handle_new_calendar()',
+    'public.handle_new_user()',
+    'public.on_calendar_change_log()',
+    'public.on_comment_log()',
+    'public.on_event_change_log()',
+    'public.on_exception_log()',
+    'public.on_member_leave_log()'
+  ]) signature
+  where has_function_privilege('anon', signature, 'execute')
+     or has_function_privilege('authenticated', signature, 'execute')
+), 'trigger helpers are not client RPCs');
+select pg_temp.assert_true(not exists (
+  select 1
+  from pg_proc p
+  join pg_namespace n on n.oid = p.pronamespace
+  where n.nspname = 'public'
+    and p.proname in ('set_updated_at', 'sync_event_range', 'uuid_from_object_path', 'is_guest')
+    and not ('search_path=pg_catalog' = any(coalesce(p.proconfig, array[]::text[])))
+), 'utility function search paths are fixed');
+
 insert into auth.users(id,email,is_anonymous) values
  ('9f6d0000-0000-4000-8000-000000000001','backend-a@example.invalid',false),
  ('9f6d0000-0000-4000-8000-000000000002','backend-b@example.invalid',false),
