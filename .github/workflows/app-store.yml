@@ -161,7 +161,13 @@ jobs:
           security set-keychain-settings -lut 21600 "$keychain"
           security unlock-keychain -p "$keychain_password" "$keychain"
           security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain"
+          if ! security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain" >/dev/null 2>&1; then
+            echo '::warning::macOS could not update the imported key partition list; validating the -A import directly.'
+          fi
           security list-keychains -d user -s "$keychain" "${keychains[@]}"
           security find-identity -v -p codesigning "$keychain" | grep 'Apple Distribution'
 
