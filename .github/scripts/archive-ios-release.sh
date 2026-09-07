@@ -54,6 +54,7 @@ fi
 
 scheme="$(basename "$project" .xcodeproj)"
 node .github/scripts/configure-ios-signing.cjs .
+xcodebuild -list -project "$project"
 
 archive_path="$RUNNER_TEMP/TimeFlower.xcarchive"
 export_path="$RUNNER_TEMP/TimeFlowerExport"

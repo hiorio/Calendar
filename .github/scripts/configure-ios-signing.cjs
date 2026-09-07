@@ -68,11 +68,8 @@ for (const [targetName, profile] of Object.entries(profiles)) {
     settings.DEVELOPMENT_TEAM = quote(process.env.APPLE_TEAM_ID);
     settings.CODE_SIGN_STYLE = 'Manual';
     settings.CODE_SIGN_IDENTITY = quote(process.env.APPLE_SIGNING_IDENTITY);
-    settings['CODE_SIGN_IDENTITY[sdk=iphoneos*]'] = quote(process.env.APPLE_SIGNING_IDENTITY);
     settings.PROVISIONING_PROFILE = quote(profile.uuid);
-    settings['PROVISIONING_PROFILE[sdk=iphoneos*]'] = quote(profile.uuid);
     settings.PROVISIONING_PROFILE_SPECIFIER = quote(profile.name);
-    settings['PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]'] = quote(profile.name);
   }
 
   for (const [, projectSection] of Object.entries(IOSConfig.XcodeUtils.getProjectSection(project)).filter(
