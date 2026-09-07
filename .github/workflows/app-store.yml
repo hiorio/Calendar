@@ -17,6 +17,20 @@ on:
         required: true
         default: '대형 위젯의 월간 달력·날짜 이동·숨은 일정 +N, 스티커 제거, 알림 및 일정 편집 안정성을 확인해 주세요.'
         type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        description: Type SUBMIT to create and upload the production archive
+        required: true
+        type: string
+      build_number:
+        description: App Store build number (must be unused)
+        required: true
+        type: string
+      what_to_test:
+        description: TestFlight test notes
+        required: true
+        type: string
 
 permissions:
   contents: read

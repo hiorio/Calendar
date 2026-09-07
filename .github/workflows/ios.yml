@@ -14,6 +14,26 @@ on:
       - 'tsconfig.json'
       - '.github/workflows/ios.yml'
   workflow_dispatch:
+    inputs:
+      release:
+        description: Run the protected App Store archive after unsigned validation
+        required: true
+        default: false
+        type: boolean
+      confirmation:
+        description: Type SUBMIT to create and upload the production archive
+        required: false
+        type: string
+      build_number:
+        description: App Store build number (must be unused)
+        required: false
+        default: '27'
+        type: string
+      what_to_test:
+        description: TestFlight test notes
+        required: false
+        default: '대형 위젯의 월간 달력·날짜 이동·숨은 일정 +N, 스티커 제거, 알림 및 일정 편집 안정성을 확인해 주세요.'
+        type: string
 
 permissions:
   contents: read
@@ -146,3 +166,13 @@ jobs:
 
           echo "Compiled app: $app_bundle_id"
           echo "Embedded widget: $widget_bundle_id"
+
+  release:
+    if: inputs.release && inputs.confirmation == 'SUBMIT'
+    needs: build
+    uses: ./.github/workflows/app-store.yml
+    with:
+      confirmation: ${{ inputs.confirmation }}
+      build_number: ${{ inputs.build_number }}
+      what_to_test: ${{ inputs.what_to_test }}
+    secrets: inherit

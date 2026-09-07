@@ -1251,6 +1251,9 @@ iOS 17 이상에서는 Expo Widgets의 AppIntent 버튼으로 이전 달·다음
 1.4.0과 빌드 27부터 시작합니다. `expo-network`와 위젯 번들이 들어가므로 OTA로 대신하지
 않습니다. 서명 없는 `iOS` 검증이 통과한 커밋만 별도의 수동 `App Store` workflow에서
 archive하며, workflow는 production environment·작업 브랜치·명시적 확인 문구로 제한합니다.
+새 workflow 이름이 기본 브랜치에 아직 등록되지 않은 동안에는 이미 등록된 `iOS` 수동
+진입점이 서명 없는 검증을 먼저 끝낸 뒤 같은 커밋의 `App Store` reusable workflow를 호출합니다.
+기본 브랜치를 출시 준비 때문에 직접 수정하지 않습니다.
 
 앱과 위젯 인증서는 실행 중 임시 keychain에만 넣고 프로비저닝 프로파일도 기존 파일을
 백업했다가 복구합니다. 실제 바이너리는 `expo prebuild → pod install → xcodebuild archive`
