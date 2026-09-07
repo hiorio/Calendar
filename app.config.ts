@@ -8,6 +8,15 @@ function appVariant(): AppVariant {
   return 'development';
 }
 
+function releaseBuildNumber() {
+  const value = process.env.RELEASE_BUILD_NUMBER?.trim();
+  if (!value) return undefined;
+  if (!/^[1-9]\d*$/.test(value)) {
+    throw new Error('RELEASE_BUILD_NUMBER must be a positive integer');
+  }
+  return value;
+}
+
 function httpsHost(value: string | undefined) {
   if (!value) return null;
 
@@ -35,6 +44,7 @@ function googleIosUrlScheme(clientId: string | undefined) {
 export default ({ config }: ConfigContext): ExpoConfig => {
   const variant = appVariant();
   const isProduction = variant === 'production';
+  const iosBuildNumber = releaseBuildNumber();
   const suffix = variant === 'development' ? '.dev' : variant === 'preview' ? '.preview' : '';
   const displaySuffix = variant === 'development' ? ' Dev' : variant === 'preview' ? ' Preview' : '';
 
@@ -63,6 +73,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ios: {
       ...config.ios,
       bundleIdentifier: iosBundleIdentifier,
+      ...(iosBuildNumber ? { buildNumber: iosBuildNumber } : {}),
       config: {
         ...config.ios?.config,
         usesNonExemptEncryption: false,

@@ -31,11 +31,6 @@ on:
         required: false
         default: '27'
         type: string
-      what_to_test:
-        description: TestFlight test notes
-        required: false
-        default: '대형 위젯의 월간 달력·날짜 이동·숨은 일정 +N, 스티커 제거, 알림 및 일정 편집 안정성을 확인해 주세요.'
-        type: string
 
 permissions:
   contents: read
@@ -176,5 +171,4 @@ jobs:
     with:
       confirmation: ${{ inputs.confirmation }}
       build_number: ${{ inputs.build_number }}
-      what_to_test: ${{ inputs.what_to_test }}
     secrets: inherit

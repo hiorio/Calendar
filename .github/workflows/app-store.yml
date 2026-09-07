@@ -12,11 +12,6 @@ on:
         required: true
         default: '27'
         type: string
-      what_to_test:
-        description: TestFlight test notes
-        required: true
-        default: '대형 위젯의 월간 달력·날짜 이동·숨은 일정 +N, 스티커 제거, 알림 및 일정 편집 안정성을 확인해 주세요.'
-        type: string
   workflow_call:
     inputs:
       confirmation:
@@ -25,10 +20,6 @@ on:
         type: string
       build_number:
         description: App Store build number (must be unused)
-        required: true
-        type: string
-      what_to_test:
-        description: TestFlight test notes
         required: true
         type: string
 
@@ -57,7 +48,6 @@ jobs:
       RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
       RELEASE_VERSION: 1.4.0
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
-      WHAT_TO_TEST: ${{ inputs.what_to_test }}
 
     steps:
       - name: Checkout approved release commit
@@ -226,7 +216,6 @@ jobs:
             --platform ios \
             --profile production \
             --path "$IPA_PATH" \
-            --what-to-test "$WHAT_TO_TEST" \
             --wait \
             --non-interactive
 
