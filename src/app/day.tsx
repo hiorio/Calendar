@@ -17,6 +17,7 @@ import Swipeable, {
   type SwipeableMethods,
 } from 'react-native-gesture-handler/ReanimatedSwipeable';
 
+import { Button } from '@/components/ui/button';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Elevation, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -35,6 +36,7 @@ import type { EventOccurrence } from '@/features/events/queries';
 import { stickerByKey } from '@/features/stickers/catalog';
 import { StickerPicker } from '@/features/stickers/sticker-picker';
 import { useDayStickers } from '@/features/stickers/queries';
+import { useStickerRemoval } from '@/features/stickers/use-sticker-removal';
 import { useTheme } from '@/hooks/use-theme';
 import { confirm, notify } from '@/lib/confirm';
 import { formatDayTitle, formatLunarDate, startOfMonth, toDateKey } from '@/lib/date';
@@ -50,9 +52,7 @@ export default function DayScreen() {
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
   const [featuredCalendarId, setFeaturedCalendarId] = useState<string | null>(null);
   const [pagerScrollEnabled, setPagerScrollEnabled] = useState(true);
-  const [dateKey, setDateKey] = useState(() =>
-    validDateKey(dateParam) ? dateParam : toDateKey(new Date()),
-  );
+  const dateKey = validDateKey(dateParam) ? dateParam : toDateKey(new Date());
   const pagerRef = useRef<ScrollView>(null);
   const pagerWidth = Math.min(windowWidth, MaxContentWidth);
 
@@ -75,7 +75,6 @@ export default function DayScreen() {
   const moveDate = useCallback(
     (amount: number) => {
       const nextKey = toDateKey(addDays(parseDateKey(dateKey), amount));
-      setDateKey(nextKey);
       setFeaturedCalendarId(null);
       router.setParams({ date: nextKey });
       requestAnimationFrame(() => {
@@ -169,6 +168,7 @@ function DayPage({
   const lunarDate = formatLunarDate(date);
   const stickers = useDayStickers(dateKey);
   const events = useMonthEvents(startOfMonth(date), weekStart);
+  const stickerRemoval = useStickerRemoval(dateKey);
   const deviceRange = monthGridRange(startOfMonth(date), weekStart);
   const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end);
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
@@ -262,7 +262,7 @@ function DayPage({
                 accessibilityRole="button"
                 accessibilityLabel={`${formatDayTitle(date)} 스티커 꾸미기`}
                 accessibilityHint="대상 캘린더와 스티커를 선택합니다"
-                disabled={!onOpenSticker}
+                disabled={!onOpenSticker || stickerRemoval.isPending}
                 hitSlop={8}
                 onPress={onOpenSticker}
                 style={({ pressed }) => [
@@ -322,6 +322,57 @@ function DayPage({
             </View>
           ) : null}
         </View>
+
+        {stickers.isError ? (
+          <View style={styles.stickerList}>
+            <Txt variant="caption" tone="danger">
+              스티커를 불러오지 못했습니다. 다시 시도해 주세요.
+            </Txt>
+            <Button
+              label="스티커 다시 불러오기"
+              loading={stickers.isFetching}
+              onPress={() => void stickers.refetch()}
+              size="md"
+              variant="secondary"
+            />
+          </View>
+        ) : visibleStickers.length > 0 ? (
+          <View style={styles.stickerList}>
+            <Txt variant="label" tone="secondary">이 날짜의 스티커</Txt>
+            {visibleStickers.map((sticker) => {
+              const definition = stickerByKey(sticker.stickerKey);
+              return (
+                <View
+                  key={sticker.id}
+                  style={[styles.stickerRow, { backgroundColor: colors.surfaceMuted }]}>
+                  {definition ? (
+                    <Image
+                      contentFit="contain"
+                      source={definition.cutoutSource}
+                      style={styles.stickerThumbnail}
+                    />
+                  ) : null}
+                  <View style={styles.stickerText}>
+                    <Txt variant="bodyStrong" numberOfLines={1}>{sticker.calendarName}</Txt>
+                    <Txt variant="caption" tone="secondary" numberOfLines={1}>
+                      {definition?.label ?? '스티커'}
+                    </Txt>
+                  </View>
+                  <Button
+                    accessibilityLabel={`${sticker.calendarName} 캘린더의 ${definition?.label ?? ''} 스티커 제거`}
+                    block={false}
+                    disabled={!onOpenSticker || stickerRemoval.isPending}
+                    label="제거"
+                    loading={stickerRemoval.removingId === sticker.id}
+                    onPress={() => void stickerRemoval.requestRemoval(sticker)}
+                    size="md"
+                    variant="danger"
+                  />
+                </View>
+              );
+            })}
+          </View>
+        ) : null}
 
         {events.isPending || deviceEvents.isLoading ? (
           <ActivityIndicator color={colors.accent} style={styles.loading} />
@@ -702,6 +753,16 @@ const styles = StyleSheet.create({
   },
   badgeBackdrop: { opacity: 0.86 },
   badgeDot: { width: 7, height: 7, borderRadius: Radius.pill },
+  stickerList: { marginHorizontal: Spacing.xl, marginTop: Spacing.lg, gap: Spacing.sm },
+  stickerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    padding: Spacing.sm,
+    borderRadius: Radius.md,
+  },
+  stickerThumbnail: { width: 42, height: 42 },
+  stickerText: { flex: 1, gap: Spacing.xs },
   loading: { marginHorizontal: Spacing.xl, paddingVertical: Spacing.xxxl },
   feedback: { marginHorizontal: Spacing.xl, marginTop: Spacing.xl },
   empty: {

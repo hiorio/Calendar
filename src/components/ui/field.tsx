@@ -23,6 +23,8 @@ export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldPro
         {label}
       </Txt>
       <TextInput
+        accessibilityLabel={label}
+        accessibilityHint={hint}
         placeholderTextColor={colors.textTertiary}
         onFocus={(e) => {
           setFocused(true);

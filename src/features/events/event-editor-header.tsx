@@ -29,6 +29,8 @@ export function EventEditorHeader({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="닫기"
+            accessibilityState={{ disabled: pending }}
+            disabled={pending}
             hitSlop={8}
             onPress={() => router.back()}
             style={({ pressed }) => [

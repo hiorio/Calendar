@@ -21,21 +21,29 @@ export function useMemos() {
   return useQuery<MemoWithCalendar[]>({
     queryKey: memoKeys.list(),
     enabled: Boolean(user),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('memos')
-        .select('*, calendars(name, color)')
-        .order('done', { ascending: true })
-        .order('updated_at', { ascending: false });
+    queryFn: async ({ signal }) => {
+      const rows = new Map<string, MemoWithCalendar>();
+      const pageSize = 250;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data, error } = await supabase
+          .from('memos')
+          .select('*, calendars(name, color)')
+          .order('done', { ascending: true })
+          .order('updated_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(offset, offset + pageSize - 1)
+          .abortSignal(signal);
 
-      if (error) throw error;
+        if (error) throw error;
 
-      type Row = Memo & { calendars: { name: string; color: string } | null };
-      return (data as unknown as Row[]).map((row) => ({
-        ...row,
-        calendarName: row.calendars?.name ?? '알 수 없는 캘린더',
-        calendarColor: row.calendars?.color ?? DEFAULT_CALENDAR_COLOR,
-      }));
+        type Row = Memo & { calendars: { name: string; color: string } | null };
+        for (const row of data as unknown as Row[]) rows.set(row.id, {
+          ...row,
+          calendarName: row.calendars?.name ?? '알 수 없는 캘린더',
+          calendarColor: row.calendars?.color ?? DEFAULT_CALENDAR_COLOR,
+        });
+        if (data.length < pageSize) return [...rows.values()];
+      }
     },
   });
 }
@@ -62,8 +70,9 @@ export function useToggleMemo() {
 
   return useMutation({
     mutationFn: async ({ id, done }: { id: string; done: boolean }) => {
-      const { error } = await supabase.from('memos').update({ done }).eq('id', id);
+      const { data, error } = await supabase.from('memos').update({ done }).eq('id', id).select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('메모가 삭제되었거나 수정 권한이 없습니다. 목록을 새로고침해 주세요.');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: memoKeys.all }),
   });
@@ -74,8 +83,9 @@ export function useDeleteMemo() {
 
   return useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('memos').delete().eq('id', id);
+      const { data, error } = await supabase.from('memos').delete().eq('id', id).select('id');
       if (error) throw error;
+      if (!data?.length) throw new Error('메모가 이미 삭제되었거나 삭제 권한이 없습니다. 목록을 새로고침해 주세요.');
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: memoKeys.all }),
   });

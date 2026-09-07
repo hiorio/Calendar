@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Image } from 'expo-image';
-import { forwardRef, useCallback, useImperativeHandle, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -13,9 +13,11 @@ import { calendarColorForScheme } from '@/features/calendars/colors';
 import type { MyCalendar } from '@/features/calendars/queries';
 import type { EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { toDateKey } from '@/lib/date';
 import {
   moveEnd,
   moveStart,
+  calendarDateKey,
   switchAllDay,
   toTimeColumns,
   type EventTimeForm,
@@ -29,6 +31,9 @@ export type EventFormValues = {
   description: string;
   time: EventTimeForm;
   recurrence: RecurrenceForm;
+  timezone?: string;
+  /** 입력하지 않은 RRULE 옵션(COUNT/BYDAY 등)을 제목 수정 때 보존한다. */
+  rawRrule?: string | null;
 };
 
 export type EventFormProps = {
@@ -38,7 +43,8 @@ export type EventFormProps = {
   pending?: boolean;
   /** 반복 입력을 숨긴다. 회차 하나만 고치는 중이면 규칙을 만질 수 없다. */
   lockRecurrence?: boolean;
-  onSubmit: (input: EventInput) => void;
+  onSubmit: (input: EventInput) => void | Promise<void>;
+  onDirtyChange?: (dirty: boolean) => void;
   /** 저장 버튼 위에 끼워 넣을 것 (수정 범위 선택 등) */
   children?: React.ReactNode;
   submitDisabled?: boolean;
@@ -51,6 +57,8 @@ export type EventFormProps = {
 
 export type EventFormHandle = {
   submit: () => void;
+  markSaved: () => void;
+  isDirty: () => boolean;
 };
 
 const FREQ_OPTIONS: (Freq | null)[] = [null, 'DAILY', 'WEEKLY', 'MONTHLY', 'YEARLY'];
@@ -63,6 +71,7 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
     pending = false,
     lockRecurrence = false,
     onSubmit,
+    onDirtyChange,
     children,
     submitDisabled = false,
     onDelete,
@@ -81,8 +90,15 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
   const [time, setTime] = useState<EventTimeForm>(initial.time);
   const [recurrence, setRecurrence] = useState<RecurrenceForm>(initial.recurrence);
   const [error, setError] = useState<string | null>(null);
+  const submitting = useRef(false);
+  const [initialRecurrence] = useState(() => JSON.stringify(initial.recurrence));
+  const snapshot = JSON.stringify({ calendarId, title, location, description, time, recurrence });
+  const [baseline, setBaseline] = useState(snapshot);
+  const dirty = snapshot !== baseline;
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
 
-  const submit = useCallback(() => {
+  const submit = useCallback(async () => {
+    if (pending || submitDisabled || submitting.current) return;
     if (!title.trim()) {
       setError('일정 이름을 입력해 주세요');
       return;
@@ -91,26 +107,30 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
       setError('어느 캘린더에 넣을지 골라 주세요');
       return;
     }
-    if (recurrence.freq && recurrence.until && recurrence.until < time.start) {
+    const startDate = time.isAllDay ? toDateKey(time.start) : calendarDateKey(time.start, initial.timezone);
+    if (!lockRecurrence && recurrence.freq && recurrence.until && toDateKey(recurrence.until) < startDate) {
       setError('반복 종료일이 시작보다 앞섭니다');
       return;
     }
     setError(null);
 
-    onSubmit({
+    submitting.current = true;
+    try { await onSubmit({
       calendar_id: calendarId,
       title: title.trim(),
       location: location.trim() || null,
       description: description.trim() || null,
-      ...toTimeColumns(time),
-      rrule: lockRecurrence ? null : buildRrule(recurrence),
-    });
-  }, [calendarId, description, location, lockRecurrence, onSubmit, recurrence, time, title]);
+      ...toTimeColumns(time, initial.timezone),
+      rrule: lockRecurrence ? null : (initial.rawRrule !== undefined && JSON.stringify(recurrence) === initialRecurrence ? initial.rawRrule : buildRrule(recurrence)),
+    }); } finally { submitting.current = false; }
+  }, [calendarId, description, initial.rawRrule, initial.timezone, initialRecurrence, location, lockRecurrence, onSubmit, pending, recurrence, submitDisabled, time, title]);
 
-  useImperativeHandle(ref, () => ({ submit }), [submit]);
+  useImperativeHandle(ref, () => ({ submit: () => { void submit(); }, isDirty: () => dirty,
+    markSaved: () => { setBaseline(snapshot); onDirtyChange?.(false); },
+  }), [dirty, onDirtyChange, snapshot, submit]);
 
   return (
-    <View style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+    <View pointerEvents={pending ? 'none' : 'auto'} style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <TextInput
         accessibilityLabel="일정 이름"
         value={title}
@@ -118,6 +138,7 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
         placeholder="무엇을 하나요?"
         placeholderTextColor={colors.textTertiary}
         maxLength={100}
+        editable={!pending}
         returnKeyType="next"
         style={[styles.titleInput, { color: colors.text }, titleTextStyle]}
       />
@@ -139,6 +160,7 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
                   accessibilityRole="button"
                   accessibilityState={{ selected }}
                   accessibilityLabel={calendar.name}
+                  disabled={lockRecurrence || pending}
                   onPress={() => setCalendarId(calendar.id)}
                   style={[
                     styles.calendarChip,
@@ -313,6 +335,7 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
         onChangeText={setLocation}
         placeholder="장소 추가"
         maxLength={200}
+        editable={!pending}
       />
 
       <Divider />
@@ -324,6 +347,7 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
         onChangeText={setDescription}
         placeholder="메모 추가"
         multiline
+        editable={!pending}
       />
 
       {children}

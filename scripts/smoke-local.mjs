@@ -895,6 +895,26 @@ console.log('\n15. 알림 큐 (6단계)');
   // --- 큐는 여전히 클라이언트에 닫혀 있다 ---------------------------------
   const peek = await rest(alice.token, 'notification_outbox?select=id');
   check('구성원도 알림 큐를 직접 읽을 수 없다', peek.status >= 400 || peek.body?.length === 0, `${peek.status} ${JSON.stringify(peek.body)}`);
+
+  const forgedDedup = `FORGED:${crypto.randomUUID()}`;
+  const forged = await rpc(alice.token, 'enqueue_notifications', {
+    p_calendar_id: calendarId,
+    p_actor_id: alice.userId,
+    p_type: 'FORGED',
+    p_dedup: forgedDedup,
+    p_payload: { title: '클라이언트가 만든 위조 알림' },
+  });
+  const forgedRows = await serviceRest(
+    `notification_outbox?select=id&dedup_key=like.${encodeURIComponent(`${forgedDedup}:*`)}`,
+  );
+  check(
+    '클라이언트는 내부 알림 enqueue 함수를 호출할 수 없다',
+    (forged.status === 403 || forged.status === 404) &&
+      forgedRows.status === 200 &&
+      Array.isArray(forgedRows.body) &&
+      forgedRows.body.length === 0,
+    `${forged.status} ${JSON.stringify(forged.body)} rows=${JSON.stringify(forgedRows.body)}`,
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -987,6 +1007,26 @@ console.log('\n17. 기기 토큰 (6단계)');
 
   const others = await rest(bob.token, 'device_tokens?select=expo_token');
   check('남의 토큰은 보이지 않는다', others.body?.length === 0, JSON.stringify(others.body));
+
+  const claimedDevice = await rpc(bob.token, 'claim_device_token', {
+    p_expo_token: 'ExponentPushToken[smoke-alice]',
+    p_platform: 'ios',
+  });
+  const previousOwner = await rest(
+    alice.token,
+    'device_tokens?select=expo_token&expo_token=eq.ExponentPushToken%5Bsmoke-alice%5D',
+  );
+  const currentOwner = await rest(
+    bob.token,
+    'device_tokens?select=expo_token&expo_token=eq.ExponentPushToken%5Bsmoke-alice%5D',
+  );
+  check(
+    '같은 설치의 토큰을 청구하면 이전 계정 행 없이 현재 사용자에게만 연결된다',
+    (claimedDevice.status === 200 || claimedDevice.status === 204) &&
+      previousOwner.body?.length === 0 &&
+      currentOwner.body?.length === 1,
+    `${claimedDevice.status} old=${JSON.stringify(previousOwner.body)} current=${JSON.stringify(currentOwner.body)}`,
+  );
 
   const hiddenDeliveries = await rest(alice.token, 'notification_deliveries?select=outbox_id');
   check(

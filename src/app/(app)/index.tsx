@@ -12,7 +12,6 @@ import {
   View,
 } from 'react-native';
 
-import { Card } from '@/components/ui/card';
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
@@ -333,10 +332,8 @@ export default function CalendarScreen() {
             </ScrollView>
           </View>
 
-          <Card
-            flat
-            padded={false}
-            style={styles.calendarCard}
+          <View
+            style={styles.calendarFrame}
             accessible
             accessibilityRole="adjustable"
             accessibilityLabel={`${formatMonthTitle(month)} 월간 캘린더`}
@@ -408,7 +405,7 @@ export default function CalendarScreen() {
                 </View>
               ))}
             </ScrollView>
-          </Card>
+          </View>
 
           {calendars.isError ? (
             <Txt variant="caption" tone="danger" style={styles.error}>
@@ -448,7 +445,7 @@ export default function CalendarScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { overflow: 'hidden', paddingBottom: Spacing.sm },
+  content: { overflow: 'hidden' },
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -491,11 +488,9 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   calendarThumbnail: { width: '100%', height: '100%' },
-  calendarCard: {
+  calendarFrame: {
     flex: 1,
     minHeight: 0,
-    marginHorizontal: 0,
-    paddingVertical: Spacing.sm,
   },
   monthPager: { flex: 1, width: '100%' },
   monthPage: { height: '100%' },

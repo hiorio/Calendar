@@ -110,11 +110,64 @@ OTA가 아니라 새 iOS 바이너리를 빌드해야 합니다. 웹 빌드는 �
 
 ### 푸시 워커
 
-충분히 긴 임의 문자열을 Edge Function secret으로 등록합니다.
+충분히 긴 임의 문자열을 만들고, **같은 값**을 Edge Function과 Vault에
+각각 등록합니다. 실제 값은 명령 히스토리·마이그레이션·저장소에 남기지
+않습니다.
 
 ```bash
 npx supabase secrets set WORKER_SECRET=<긴-임의-문자열>
 ```
+
+Supabase SQL Editor에서 스케줄러가 읽을 세 값을 Vault에 넣습니다.
+`publishable_key`는 Project Settings → API Keys의 publishable key입니다.
+
+```sql
+select vault.create_secret('https://<project-ref>.supabase.co', 'project_url');
+select vault.create_secret('<publishable-key>', 'publishable_key');
+select vault.create_secret('<위의-같은-임의-문자열>', 'notification_worker_secret');
+```
+
+위 세 문장은 최초 생성용입니다. 같은 이름은 유일하므로 값을 회전할 때 새 행을 만들지
+말고 기존 id로 갱신합니다.
+
+```sql
+select vault.update_secret(
+  (select id from vault.secrets where name = 'notification_worker_secret'),
+  new_secret := '<새-임의-문자열>'
+);
+```
+
+이 경우 Edge Function의 `WORKER_SECRET`도 같은 값으로 함께 바꿉니다.
+
+`20260903021118_notification_worker_scheduler.sql`이 `pg_cron`·`pg_net`을 켜고
+`notification-worker-every-minute`을 등록합니다. Vault 값이 아직 없으면 작업은
+외부 요청 없이 성공하고, 세 값이 모두 생긴 다음 1분부터 워커를 호출합니다.
+다음 쿼리로 스케줄과 HTTP 200을 둘 다 확인합니다.
+
+```sql
+select jobname, schedule, active
+from cron.job
+where jobname = 'notification-worker-every-minute';
+
+select status, return_message, start_time, end_time
+from cron.job_run_details
+where jobid = (
+  select jobid from cron.job where jobname = 'notification-worker-every-minute'
+)
+order by start_time desc
+limit 5;
+
+select status_code, timed_out, error_msg, content, created
+from net._http_response
+where content like '%"reminders"%'
+  and content like '%"receipts"%'
+order by created desc
+limit 5;
+```
+
+응답의 `claimed: 0`은 워커가 도달 가능하다는 뜻일 뿐 실제 푸시 전송 성공은 아닙니다.
+실기기 토큰을 등록한 뒤 알림을 하나 발생시켜 `notification_deliveries.ticket_id`와
+receipt의 `DELIVERED`까지 확인해야 APNs/FCM 경로가 검증됩니다.
 
 Expo Push Security를 켠 프로젝트라면 access token도 등록합니다.
 
@@ -122,8 +175,7 @@ Expo Push Security를 켠 프로젝트라면 access token도 등록합니다.
 npx supabase secrets set EXPO_ACCESS_TOKEN=<expo-access-token>
 ```
 
-Dashboard에서 `pg_cron`, `pg_net`, Vault를 활성화하고 기존 마이그레이션의
-`notification-worker` 호출을 1분 주기로 연결합니다. 워커 배포와 cron 호출을 확인하기
+워커 배포, cron `succeeded`, `net._http_response.status_code = 200`을 확인하기
 전에는 `EXPO_PUBLIC_PUSH_ENABLED=false`, 확인 후 `true`로 둡니다.
 
 ## 4. Expo 프로젝트와 로컬 Mac mini 빌드
@@ -135,6 +187,20 @@ EAS Update를 사용할 환경은 Expo 계정에 프로젝트를 연결합니다
 npx eas-cli login
 npx eas-cli init
 ```
+
+`expo-notifications` 설정만으로는 Expo Push Service가 APNs에 보낼 수 없습니다.
+로컬 Mac mini에서 빌드하더라도 최초 1회는 각 bundle ID의 Push Key를 Expo
+프로젝트에 연결합니다.
+
+```bash
+npx eas-cli credentials --platform ios
+```
+
+해당 환경·bundle ID를 고른 뒤 **Push Notifications → Set up**을 진행합니다.
+이 명령은 푸시 인증 정보만 연결하며 EAS Build를 실행하지 않습니다. 실제
+바이너리는 계속 Mac mini의 `expo prebuild → pod install → xcodebuild` 경로로
+만듭니다. [Expo SDK 57 푸시 설정](https://docs.expo.dev/versions/v57.0.0/sdk/notifications/)의
+credentials 요구사항을 기준으로 합니다.
 
 OTA용 `development`, `preview`, `production` 환경에 환경별 값을 넣습니다.
 `EXPO_PUBLIC_*` 값은 앱 번들에 포함되므로 서버 비밀값을 넣으면 안 됩니다.
@@ -175,6 +241,34 @@ gh run watch <run-id> --exit-status
 설치용 개발 빌드와 production archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple
 인증서와 프로파일을 연결한 별도 보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로
 요청했을 때만 실행합니다.
+
+App Store용 archive와 TestFlight 업로드는 `.github/workflows/app-store.yml`을 수동으로
+실행합니다. 이 workflow는 `app-store-production` environment와
+`codex/timeline-release` 브랜치로 제한하고, 확인 문구와 빌드 번호를 입력받습니다. 앱과
+위젯의 배포 인증서·프로비저닝 프로파일을 임시 keychain에만 설치하고 종료 시 복구합니다.
+빌드는 Mac mini의 `expo prebuild → pod install → xcodebuild archive`로 만들며 EAS Build나
+`eas build --local`을 호출하지 않습니다. 완성된 IPA의 업로드만 EAS Submit에 맡깁니다.
+
+environment에는 다음 secret이 필요합니다. 인증 자료 원문은 저장소에 두지 않습니다.
+
+```text
+APPLE_DISTRIBUTION_CERTIFICATE_P12_BASE64
+APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD
+APPLE_APP_PROVISIONING_PROFILE_BASE64
+APPLE_WIDGET_PROVISIONING_PROFILE_BASE64
+EXPO_TOKEN
+```
+
+`EXPO_TOKEN`은 최소 권한의 별도 토큰을 권장합니다. 긴급 1회 실행에서만 로컬 Expo 로그인
+상태를 `EXPO_AUTH_STATE_JSON`으로 임시 전달할 수 있으며, 실행 직후 environment secret을
+삭제하고 runner의 기존 상태 파일을 복구합니다. App Store Connect 심사 제출은 업로드된
+빌드가 처리 완료된 뒤 필요한 메타데이터와 빌드를 확인하고 별도로 수행합니다.
+
+```powershell
+gh workflow run app-store.yml --ref codex/timeline-release `
+  -f confirmation=SUBMIT `
+  -f build_number=27
+```
 
 ## 5. EAS Update와 재빌드 기준
 
@@ -253,8 +347,10 @@ associated domain이 들어간 iOS 앱을 빌드합니다.
 npm run lint
 npm run typecheck
 npm run test:unit
+npm run test:regression
 npm run db:reset
 npm run db:smoke
+npm run db:regression
 npm run deploy:check
 ```
 
@@ -267,3 +363,25 @@ npm run deploy:check
 5. 로그아웃한 기기에 이전 사용자의 알림이 오지 않는다.
 6. preview OTA는 preview 앱에만, production OTA는 production 앱에만 적용된다.
 7. Sentry 테스트 오류가 올바른 환경·update ID와 함께 표시된다.
+
+### 2026-09-05 결함 수정의 배포 경계 (아직 배포하지 않음)
+
+`20260905120904_audited_server_defects.sql`과 변경된 `notification-worker`는 함께
+검증·배포해야 합니다. 새 워커는 `begin_notification_delivery`, `SENDING` 상태,
+`storage_cleanup_jobs`와 `claim_storage_cleanup`에 의존합니다. 이전 워커와 새
+상태 처리가 섞이지 않도록 스케줄을 잠시 정지하고 진행 중 실행을 마친 뒤 마이그레이션,
+함수 교체, 스케줄 재개 순서로 적용합니다. 변경을 저장소에 반영한 것만으로 운영 반영된
+것은 아닙니다. cron HTTP 200, 각 기기의 ticket/receipt, 정리 큐의 재시도까지 확인합니다.
+
+삭제된 첨부·캘린더·프로필 소유 Storage 경로는 서버 전용 큐에서 정리합니다. Storage
+장애 시 경로를 잃지 않고 재시도하며, 큐를 클라이언트에 열지 않습니다. 이미 오래전에
+행과 경로가 모두 지워진 고아 파일까지 추측해서 일괄 삭제하지는 않습니다.
+
+Expo의 발송 수락 여부를 알 수 없는 응답 유실/프로세스 중단은 자동 중복 발송하지 않고
+실패 사유를 남깁니다. 서버가 수락한 알림을 이후 계정 전환으로 회수할 수는 없습니다.
+
+`expo-network`가 추가되어 완전한 네이티브 연결 복구 감지는 새 바이너리가 필요합니다.
+구형 바이너리는 모듈 존재 검사 후 전경 재시도 방식으로 동작합니다. 위젯·네이티브
+변경은 Mac mini iOS workflow와 실기기 표시를 확인하기 전 완료로 처리하지 않습니다.
+대형은 6주 전체, 중형은 현재 주, 소형은 오늘로 구분되며 앱을 열어 timeline을 다시
+써야 최신 표시가 전달됩니다. 이 작업에서 commit/push, OTA, TestFlight 제출은 하지 않았습니다.

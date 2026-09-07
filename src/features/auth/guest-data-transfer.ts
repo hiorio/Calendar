@@ -9,6 +9,8 @@ type PendingGuestDataTransfer = {
   token: string;
   guestUserId: string;
   preparedAt: string;
+  /** 로그인 성공 직후 고정하며 이후 다른 계정으로 절대로 재지정하지 않는다. */
+  targetUserId: string | null;
 };
 
 export class GuestDataTransferError extends Error {
@@ -28,8 +30,24 @@ export async function prepareGuestDataTransfer(guestUserId: string) {
     token,
     guestUserId,
     preparedAt: new Date().toISOString(),
+    targetUserId: null,
   };
   await AsyncStorage.setItem(PENDING_TRANSFER_KEY, JSON.stringify(pending));
+}
+
+/** 재시작 시 현재 계정을 추측해서 바인딩하지 않는다. 성공한 로그인 흐름에서만 호출한다. */
+export async function bindPendingGuestDataTransfer(guestUserId: string, targetUserId: string) {
+  const pending = await readPendingTransfer();
+  if (!pending || pending.guestUserId !== guestUserId) {
+    throw new GuestDataTransferError('가져올 캘린더 요청을 찾을 수 없습니다.');
+  }
+  if (pending.targetUserId && pending.targetUserId !== targetUserId) {
+    throw new GuestDataTransferError('다른 계정으로 준비한 캘린더 가져오기 요청입니다.');
+  }
+  await AsyncStorage.setItem(
+    PENDING_TRANSFER_KEY,
+    JSON.stringify({ ...pending, targetUserId }),
+  );
 }
 
 /**
@@ -38,9 +56,13 @@ export async function prepareGuestDataTransfer(guestUserId: string) {
  * 성공 응답이 유실될 수 있으므로 실패 시에는 토큰을 남긴다. 서버 함수가 같은 계정의
  * 재청구를 멱등 처리해서 앱을 다시 열었을 때 안전하게 마무리할 수 있다.
  */
-export async function claimPendingGuestDataTransfer(): Promise<Json | null> {
+export async function claimPendingGuestDataTransfer(expectedUserId: string): Promise<Json | null> {
   const pending = await readPendingTransfer();
-  if (!pending) return null;
+  // 구버전·로그인 중 강제 종료 등으로 대상이 없는 기록은 자동 청구하지 않는다.
+  if (!pending || pending.targetUserId !== expectedUserId) return null;
+  const { data: auth, error: authError } = await supabase.auth.getSession();
+  if (authError) throw authError;
+  if (auth.session?.user.id !== expectedUserId || auth.session.user.is_anonymous) return null;
 
   const { data, error } = await supabase.rpc('claim_guest_data_transfer', {
     p_token: pending.token,
@@ -83,7 +105,10 @@ async function readPendingTransfer(): Promise<PendingGuestDataTransfer | null> {
     ) {
       throw new Error('invalid pending transfer');
     }
-    return parsed as PendingGuestDataTransfer;
+    if (parsed.targetUserId !== undefined && parsed.targetUserId !== null && typeof parsed.targetUserId !== 'string') {
+      throw new Error('invalid transfer target');
+    }
+    return { ...parsed, targetUserId: parsed.targetUserId ?? null } as PendingGuestDataTransfer;
   } catch {
     await AsyncStorage.removeItem(PENDING_TRANSFER_KEY);
     return null;

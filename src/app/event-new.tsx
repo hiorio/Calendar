@@ -17,6 +17,7 @@ import {
 import { AttachmentDraftPicker } from '@/features/events/attachments';
 import { EventEditorHeader } from '@/features/events/event-editor-header';
 import { EventForm, type EventFormHandle } from '@/features/events/event-form';
+import { useEventEditorExit } from '@/features/events/use-event-editor-exit';
 import { useCreateEvent, type EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
 import { notify } from '@/lib/confirm';
@@ -56,12 +57,16 @@ export default function NewEventScreen() {
   const formRef = useRef<EventFormHandle>(null);
   const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const { finish, savingRef } = useEventEditorExit(saving || create.isPending, dirty || drafts.length > 0);
   const [initialTime] = useState(() => {
     const now = new Date();
     return newEventTime(date ? parseDateKey(date) : now, now);
   });
 
   async function submit(input: EventInput) {
+    if (savingRef.current) return;
+    savingRef.current = true;
     setSaving(true);
     try {
       const created = await create.mutateAsync(input);
@@ -83,13 +88,16 @@ export default function NewEventScreen() {
       }
 
       if (multiCopy === 'true') {
+        formRef.current?.markSaved();
+        setDrafts([]);
         notify('일정을 복사했습니다', '날짜를 바꾼 뒤 다시 저장하면 계속 복사할 수 있습니다.');
       } else {
-        router.back();
+        finish();
       }
     } catch {
       // mutation 상태의 오류 문구를 폼 아래에서 보여 준다.
     } finally {
+      savingRef.current = false;
       setSaving(false);
     }
   }
@@ -165,6 +173,7 @@ export default function NewEventScreen() {
             submitLabel="추가"
             showSubmitButton={false}
             pending={create.isPending || saving}
+            onDirtyChange={setDirty}
             initial={{
               calendarId: calendarId ?? calendars.data[0].id,
               title: copyTitle ?? '',

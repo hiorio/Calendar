@@ -59,8 +59,9 @@ npm install && npm run db:start && npm run db:env && npm run db:reset
 | 바꾼 것 | 확인 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke` (162개) |
-| `src/lib/` 계산 로직 · 라벨 팔레트 | `npm run test:unit` (55개) |
+| 마이그레이션 · RLS · 정책 | `npm run db:reset && npm run db:smoke && npm run db:regression` |
+| `src/lib/` 계산 로직 · 라벨 팔레트 | `npm run test:unit` |
+| 일정·인증·알림·메모·위젯 | `npm run test:regression` (실제 소스 + 모의 외부 경계) |
 | 화면 | 웹 미리보기에서 직접 눌러 볼 것 |
 | iOS·위젯·네이티브 설정 | 원격 작업 브랜치의 Mac mini `iOS` workflow |
 

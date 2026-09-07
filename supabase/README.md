@@ -81,6 +81,8 @@ npx supabase db push
 | `20260728000100_attachment_files.sql` | 일정 첨부파일 원본 이름과 nullable 작성자 보완 |
 | `20260728000200_calendar_stickers.sql` | 날짜·캘린더별 스티커와 RLS·컬럼 권한 |
 | `20260728000300_calendar_covers.sql` | 대표 사진 교체 시 구성원의 이전 커버 파일 정리 정책 |
+| `20260903021118_notification_worker_scheduler.sql` | Vault 기반 1분 알림 워커 스케줄·내부 RPC 권한 하드닝 |
+| `20260903024459_claim_device_token.sql` | Expo 토큰 단일 소유 제약·현재 설치의 원자적 토큰 청구 RPC |
 
 `0004`는 `storage.objects`에 정책을 만들기 때문에 SQL Editor(= `postgres` 역할)에서
 실행해야 합니다.

@@ -65,12 +65,12 @@ export default function SearchScreen() {
             <Card padded={false}>
               {results.data?.length ? (
                 results.data.map((event, index) => (
-                  <View key={event.id}>
+                  <View key={event.key}>
                     {index > 0 ? <Divider /> : null}
                     <Pressable
                       accessibilityRole="button"
                       onPress={() =>
-                        router.push({ pathname: '/event/[id]', params: { id: event.id } })
+                        router.push({ pathname: '/event/[id]', params: { id: event.id, ...(event.originalStart ? { occ: event.originalStart } : {}) } })
                       }
                       style={({ pressed }) => [
                         styles.result,

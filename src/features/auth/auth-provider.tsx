@@ -18,14 +18,19 @@ import {
   signInWithGoogleNative,
 } from '@/features/auth/google-native';
 import {
+  bindPendingGuestDataTransfer,
   claimPendingGuestDataTransfer,
   discardPendingGuestDataTransfer,
   prepareGuestDataTransfer,
 } from '@/features/auth/guest-data-transfer';
 import { clearHomeSnapshotCache } from '@/features/calendar/home-snapshot';
 import {
-  unregisterPush,
+  retryPendingPushRelink,
+  subscribeToPushTokenChanges,
+  withCurrentAuthSession,
   withPushDetachedForAccountSwitch,
+  withPushStateClearedAfterAccountDeletion,
+  withPushUnregisteredForSessionEnd,
 } from '@/features/notifications/push';
 import { supabase } from '@/lib/supabase';
 
@@ -110,7 +115,9 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // 같은 대상 계정의 재호출을 멱등 처리한다.
         if (!data.session.user.is_anonymous) {
           try {
-            const transferred = await claimPendingGuestDataTransfer();
+            const transferred = await withCurrentAuthSession(data.session.user.id, () =>
+              claimPendingGuestDataTransfer(data.session!.user.id),
+            );
             if (transferred) {
               queryClient.clear();
               await clearHomeSnapshotBestEffort();
@@ -119,7 +126,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
             // 앱 시작을 막지 않는다. 토큰이 유효하면 다음 시작 때 다시 시도한다.
           }
         }
-        setSession(data.session);
+        // 이관 복구를 기다리는 사이 로그인·로그아웃이 끝날 수 있으므로 옛 세션을
+        // 다시 넣지 않고 현재 인증 상태를 읽는다.
+        const restored = await supabase.auth.getSession();
+        if (!active) return;
+        setSession(restored.data.session);
         setIsLoading(false);
         return;
       }
@@ -139,6 +150,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
       listener.subscription.unsubscribe();
     };
   }, [queryClient]);
+
+  useEffect(() => {
+    const userId = session?.user.id;
+    if (!userId) return;
+
+    // 계정 전환 직후 네트워크가 끊겼다면 저장해 둔 같은 설치의 토큰을 다시 연결한다.
+    // 앱 부트스트랩과 사용자 id 변경 때 재시도하되, 실패로 앱 시작을 막지는 않는다.
+    void retryPendingPushRelink(userId).catch(() => undefined);
+    return subscribeToPushTokenChanges();
+  }, [session?.user.id]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -175,14 +196,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
       },
 
       async signInWithEmail(email, password, transferGuestData = false) {
-        const guestUserId = await prepareTransferChoice(session, transferGuestData);
+        let guestUserId: string | null = null;
         try {
           await withPushDetachedForAccountSwitch(session?.user.id, async () => {
+            guestUserId = await prepareTransferChoice(session, transferGuestData);
             const { error } = await supabase.auth.signInWithPassword({
               email: email.trim(),
               password,
             });
             if (error) throw error;
+            if (guestUserId) await finishGuestTransfer(guestUserId);
           });
         } catch (error) {
           if (guestUserId) await discardIfStillGuest(guestUserId);
@@ -190,7 +213,6 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
 
         if (transferGuestData) {
-          await claimPendingGuestDataTransfer();
           await queryClient.invalidateQueries();
         }
         await clearHomeSnapshotBestEffort();
@@ -224,9 +246,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
           throw new Error('소셜 로그인은 현재 제공하지 않습니다');
         }
 
-        const guestUserId = await prepareTransferChoice(session, transferGuestData);
+        let guestUserId: string | null = null;
         try {
           await withPushDetachedForAccountSwitch(session?.user.id, async () => {
+            guestUserId = await prepareTransferChoice(session, transferGuestData);
             if (provider === 'google' && Platform.OS === 'ios') {
               if (!isNativeGoogleSignInSupported) {
                 throw new Error('이 앱 빌드에는 iOS Google 로그인 설정이 없습니다');
@@ -237,6 +260,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
             } else {
               await signInWithOAuth(provider);
             }
+            if (guestUserId) await finishGuestTransfer(guestUserId);
           });
         } catch (error) {
           if (guestUserId) await discardIfStillGuest(guestUserId);
@@ -244,46 +268,44 @@ export function AuthProvider({ children }: PropsWithChildren) {
         }
 
         if (transferGuestData) {
-          await claimPendingGuestDataTransfer();
           await queryClient.invalidateQueries();
         }
         await clearHomeSnapshotBestEffort();
       },
 
       async signOut() {
-        // 세션이 살아 있는 동안 이 기기의 푸시 토큰을 떼어 낸다.
-        // 남겨 두면 다음 사용자 화면에 이전 사용자 앞으로 온 알림이 뜬다.
         const leavingUserId = session?.user?.id;
-        if (leavingUserId) {
-          try {
-            await unregisterPush(leavingUserId);
-          } catch {
-            // 토큰 정리 실패로 로그아웃을 막지는 않는다. 다음 등록 때 덮인다.
-          }
-        }
-
-        const { error } = await supabase.auth.signOut();
-        if (error) throw error;
-        await clearHomeSnapshotBestEffort();
-        // 로그인 화면에 가두지 않는다. 곧바로 새 게스트 세션으로 되돌린다.
-        const { error: guestError } = await supabase.auth.signInAnonymously();
-        if (guestError) setBootstrapError(guestError);
+        // 세션이 살아 있는 동안 토큰을 떼고, 그 사이 재등록이 끼지 않게 로그아웃까지
+        // 한 직렬 작업으로 묶는다. 남기면 다음 사용자에게 이전 계정 알림이 보인다.
+        await withPushUnregisteredForSessionEnd(leavingUserId, async () => {
+          const { error } = await supabase.auth.signOut();
+          if (error) throw error;
+          await clearHomeSnapshotBestEffort();
+          // 로그인 화면에 가두지 않는다. 곧바로 새 게스트 세션으로 되돌린다.
+          const { error: guestError } = await supabase.auth.signInAnonymously();
+          if (guestError) setBootstrapError(guestError);
+        });
       },
 
       async deleteAccount() {
-        // 캘린더 이전·삭제까지 한 트랜잭션으로 처리한다 (0012)
-        const { error } = await supabase.rpc('delete_my_account');
-        if (error) throw error;
-        await clearHomeSnapshotBestEffort();
+        const deletingUserId = session?.user.id;
+        if (!deletingUserId) throw new Error('삭제할 계정 세션이 없습니다.');
 
-        // 서버에서 사용자가 사라졌다. 남은 토큰을 들고 있으면 계속 401을 맞는다.
-        await supabase.auth.signOut();
-        queryClient.clear();
+        await withPushStateClearedAfterAccountDeletion(deletingUserId, async () => {
+          // 캘린더 이전·삭제까지 한 트랜잭션으로 처리한다 (0012)
+          const { error } = await supabase.rpc('delete_my_account');
+          if (error) throw error;
+          await clearHomeSnapshotBestEffort();
 
-        // 로그아웃과 같은 규칙 — 로그인 화면에 가두지 않는다. 계정을 지웠으니
-        // 앱을 처음 켠 것과 같은 상태로 돌려놓는다.
-        const { error: guestError } = await supabase.auth.signInAnonymously();
-        if (guestError) setBootstrapError(guestError);
+          // 서버에서 사용자가 사라졌다. device_tokens도 cascade로 함께 사라진다.
+          await supabase.auth.signOut();
+          queryClient.clear();
+
+          // 로그아웃과 같은 규칙 — 로그인 화면에 가두지 않는다. 계정을 지웠으니
+          // 앱을 처음 켠 것과 같은 상태로 돌려놓는다.
+          const { error: guestError } = await supabase.auth.signInAnonymously();
+          if (guestError) setBootstrapError(guestError);
+        });
       },
     }),
     [session, isLoading, bootstrapError, queryClient],
@@ -332,9 +354,21 @@ async function discardIfStillGuest(guestUserId: string) {
   try {
     const { data } = await supabase.auth.getSession();
     if (data.session?.user.id === guestUserId && data.session.user.is_anonymous) {
-      await discardPendingGuestDataTransfer(guestUserId);
+      await withCurrentAuthSession(guestUserId, () => discardPendingGuestDataTransfer(guestUserId));
     }
   } catch {
     // 원래 로그인 오류를 보존한다. 토큰은 15분 뒤 서버에서 자동으로 무효가 된다.
   }
+}
+
+/** 반드시 인증 변경 잠금 안에서 대상 고정 → 청구를 끝낸다. */
+async function finishGuestTransfer(guestUserId: string) {
+  const { data, error } = await supabase.auth.getSession();
+  if (error) throw error;
+  const target = data.session?.user;
+  if (!target || target.is_anonymous) {
+    throw new Error('로그인한 계정을 확인하지 못했습니다.');
+  }
+  await bindPendingGuestDataTransfer(guestUserId, target.id);
+  await claimPendingGuestDataTransfer(target.id);
 }

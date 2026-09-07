@@ -1,27 +1,37 @@
 import * as Linking from 'expo-linking';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 
 import { ThemePalettes, type AppTheme, type ThemeColors } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
-import { calendarColorForScheme } from '@/features/calendars/colors';
+import { layoutWeekMarks } from '@/features/calendar/month-layout';
+import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
 import { useMyCalendars, type MyCalendar } from '@/features/calendars/queries';
 import { useMonthEvents, type EventOccurrence } from '@/features/events/queries';
 import { useMemos, type MemoWithCalendar } from '@/features/memos/queries';
 import { addMonths, buildMonthMatrix, startOfMonth, toDateKey, weekdayLabels } from '@/lib/date';
-import { formatEventTimeRange, parseDateKey } from '@/lib/event-time';
+import {
+  compareEvents,
+  eventDayKeys,
+  formatEventTimeRange,
+  parseDateKey,
+} from '@/lib/event-time';
 import { useCalendarFilter } from '@/stores/calendar-filter';
 import { useCalendarPreference } from '@/stores/calendar-preference';
 import { useThemePreference, type SchemePreference } from '@/stores/theme-preference';
 import { useWidgetPreference, type WidgetCalendarMode } from '@/stores/widget-preference';
+import { Sentry } from '@/lib/observability';
 
 import { CalendarWidget, QuickMemoWidget } from './timeflower-widgets';
+import { visibleCalendarIds, widgetTimelineDates } from './widget-policy';
 import type {
   TimeFlowerWidgetProps,
   WidgetColorPair,
   WidgetDayItem,
   WidgetEventItem,
   WidgetMemoItem,
+  WidgetMonthPage,
+  WidgetWeekItem,
 } from './types';
 
 function widgetColors(colors: ThemeColors): WidgetColorPair {
@@ -32,9 +42,12 @@ function widgetColors(colors: ThemeColors): WidgetColorPair {
     text: colors.text,
     textSecondary: colors.textSecondary,
     textTertiary: colors.textTertiary,
+    onAccent: colors.onAccent,
     accent: colors.accent,
     accentSoft: colors.accentSoft,
     border: colors.border,
+    sunday: colors.sunday,
+    saturday: colors.saturday,
   };
 }
 
@@ -53,24 +66,6 @@ function eventEnd(event: EventOccurrence) {
   const end = parseDateKey(event.end_date!);
   end.setDate(end.getDate() + 1);
   return end.getTime();
-}
-
-function visibleCalendarIds(
-  calendars: MyCalendar[],
-  mode: WidgetCalendarMode,
-  selectedCalendarIds: string[],
-  hiddenCalendarIds: string[],
-) {
-  const available = new Set(calendars.map((calendar) => calendar.id));
-  if (mode === 'app') {
-    const hidden = new Set(hiddenCalendarIds);
-    return new Set(calendars.filter((calendar) => !hidden.has(calendar.id)).map((calendar) => calendar.id));
-  }
-  if (mode === 'custom') {
-    const selected = selectedCalendarIds.filter((id) => available.has(id));
-    return new Set(selected.length > 0 ? selected : calendars.map((calendar) => calendar.id));
-  }
-  return available;
 }
 
 function viewName(mode: WidgetCalendarMode, count: number) {
@@ -93,6 +88,7 @@ function makeProps({
   weekStart,
   theme,
   preferredScheme,
+  availableMonths,
 }: {
   month: Date;
   now: Date;
@@ -107,6 +103,7 @@ function makeProps({
   weekStart: 'sunday' | 'monday';
   theme: AppTheme;
   preferredScheme: SchemePreference;
+  availableMonths: Date[];
 }): TimeFlowerWidgetProps {
   const visibleIds = visibleCalendarIds(
     calendars,
@@ -122,23 +119,22 @@ function makeProps({
     .filter((event) => visibleIds.has(event.calendar_id))
     .sort((a, b) => eventStart(a) - eventStart(b));
   const eventsByDay = new Map<string, EventOccurrence[]>();
+  const filledEventKeys = new Set<string>();
 
   for (const event of visibleEvents) {
-    const start = event.is_all_day ? parseDateKey(event.start_date!) : new Date(event.start_at!);
-    const end = event.is_all_day ? parseDateKey(event.end_date!) : new Date(event.end_at!);
-    const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 12);
-    const last = new Date(end.getFullYear(), end.getMonth(), end.getDate(), 12);
-    if (!event.is_all_day && end.getHours() === 0 && end.getMinutes() === 0) last.setDate(last.getDate() - 1);
-    while (cursor <= last) {
-      const key = toDateKey(cursor);
+    const dayKeys = eventDayKeys(event);
+    if (event.is_all_day || dayKeys.length > 1) filledEventKeys.add(event.key);
+    for (const key of dayKeys) {
       const dayEvents = eventsByDay.get(key) ?? [];
       dayEvents.push(event);
       eventsByDay.set(key, dayEvents);
-      cursor.setDate(cursor.getDate() + 1);
     }
   }
+  for (const dayEvents of eventsByDay.values()) dayEvents.sort(compareEvents);
 
-  const eventItems: WidgetEventItem[] = visibleEvents.map((event) => ({
+  const upcomingVisibleEvents = visibleEvents.filter((event) => eventEnd(event) > now.getTime());
+  // 잠금 화면에는 첫 일정만 필요하므로 WidgetKit payload에 두 달치 상세를 전부 복제하지 않는다.
+  const eventItems: WidgetEventItem[] = upcomingVisibleEvents.slice(0, 8).map((event) => ({
     id: event.id,
     title: event.title,
     timeLabel: formatEventTimeRange(event),
@@ -165,32 +161,119 @@ function makeProps({
       },
     }));
 
-  const monthWeeks: WidgetDayItem[][] = buildMonthMatrix(month, weekStart).map((week) =>
-    week.map((day) => {
-      const key = toDateKey(day);
-      return {
-        key,
-        number: day.getDate(),
-        inMonth: day.getMonth() === month.getMonth(),
-        isToday: key === toDateKey(now),
-        eventColors: (eventsByDay.get(key) ?? []).slice(0, 3).map((event) => ({
-          light: calendarColorForScheme(event.displayColor, 'light'),
-          dark: calendarColorForScheme(event.displayColor, 'dark'),
-        })),
-        url: deepLink('/day', { date: key }),
-      };
-    }),
-  );
+  const layoutMarksByDate: Record<
+    string,
+    { id: string; isAllDay: boolean; event: EventOccurrence }[]
+  > = {};
+  for (const [key, dayEvents] of eventsByDay) {
+    layoutMarksByDate[key] = dayEvents.map((event) => ({
+      // 반복 일정의 서로 다른 회차를 한 기간 일정으로 합치지 않는다.
+      id: event.key,
+      isAllDay: event.is_all_day,
+      event,
+    }));
+  }
+
+  const makeMonthPage = (pageMonth: Date): WidgetMonthPage => {
+    const normalizedMonth = startOfMonth(pageMonth);
+    const weeks: WidgetWeekItem[] = buildMonthMatrix(normalizedMonth, weekStart).map((week) => {
+      const weekKeys = week.map(toDateKey);
+      const placements = layoutWeekMarks(weekKeys, layoutMarksByDate);
+      const days: WidgetDayItem[] = week.map((day, dayIndex) => {
+        const key = toDateKey(day);
+        const dayEvents = eventsByDay.get(key) ?? [];
+        return {
+          key,
+          number: day.getDate(),
+          weekday: day.getDay(),
+          inMonth:
+            day.getMonth() === normalizedMonth.getMonth() &&
+            day.getFullYear() === normalizedMonth.getFullYear(),
+          isToday: key === toDateKey(now),
+          events: dayEvents.slice(0, 1).map((event) => ({
+            key: event.key,
+            title: event.title,
+            filled: filledEventKeys.has(event.key),
+            colors: {
+              light: calendarColorForScheme(event.displayColor, 'light'),
+              dark: calendarColorForScheme(event.displayColor, 'dark'),
+            },
+            textColors: {
+              light: onColor(event.displayColor, 'light'),
+              dark: onColor(event.displayColor, 'dark'),
+            },
+          })),
+          eventCount: dayEvents.length,
+          // The large widget renders two lanes. Count placements below them instead of
+          // subtracting two events, because spanning events can occupy different lanes.
+          hiddenEventCount: placements.filter(
+            (placement) =>
+              placement.lane >= 2 &&
+              placement.startColumn <= dayIndex &&
+              placement.endColumn >= dayIndex,
+          ).length,
+          url: deepLink('/day', { date: key }),
+        };
+      });
+      const lanes = Array.from({ length: 3 }, (_, lane) =>
+        placements
+          .filter((placement) => placement.lane === lane)
+          .map((placement) => {
+            const event = placement.mark.event;
+            return {
+              key: `${event.key}-${weekKeys[0]}`,
+              title: event.title,
+              startColumn: placement.startColumn,
+              endColumn: placement.endColumn,
+              filled: placement.isSpanning || event.is_all_day,
+              colors: {
+                light: calendarColorForScheme(event.displayColor, 'light'),
+                dark: calendarColorForScheme(event.displayColor, 'dark'),
+              },
+              textColors: {
+                light: onColor(event.displayColor, 'light'),
+                dark: onColor(event.displayColor, 'dark'),
+              },
+              url: deepLink(`/event/${event.id}`, { occ: event.originalStart }),
+            };
+          }),
+      );
+
+      return { key: weekKeys[0], days, lanes };
+    });
+
+    return {
+      key: toDateKey(normalizedMonth).slice(0, 7),
+      title: new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(normalizedMonth),
+      shortTitle: new Intl.DateTimeFormat('ko-KR', { month: 'long' }).format(normalizedMonth),
+      weeks,
+    };
+  };
+  const currentMonthPage = makeMonthPage(month);
+  const adjacentMonthPages = [...new Map(
+    availableMonths
+      .map((availableMonth) => makeMonthPage(availableMonth))
+      .filter((page) => page.key !== currentMonthPage.key)
+      .map((page) => [page.key, page]),
+  ).values()].sort((a, b) => a.key.localeCompare(b.key));
+  const monthWeeks = currentMonthPage.weeks;
   const quickQuery = quickCalendar ? { calendarId: quickCalendar.id } : undefined;
 
   return {
     viewName: viewName(mode, visibleIds.size),
     dateTitle: new Intl.DateTimeFormat('ko-KR', { month: 'long', weekday: 'short' }).format(now),
+    weekdayTitle: new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(now),
     dayNumber: `${now.getDate()}`,
-    monthTitle: new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(month),
+    monthTitle: currentMonthPage.title,
+    monthShortTitle: currentMonthPage.shortTitle,
+    monthKey: currentMonthPage.key,
+    selectedMonthKey: currentMonthPage.key,
+    todayMonthKey: toDateKey(startOfMonth(now)).slice(0, 7),
+    adjacentMonthPages,
     weekdayLabels: [...weekdayLabels(weekStart)],
     monthWeeks,
     events: eventItems,
+    upcomingEventCount: upcomingVisibleEvents.length,
     memos: memoItems,
     calendarUrl: deepLink('/'),
     quickEventUrl: deepLink('/quick-event', {
@@ -224,7 +307,22 @@ function emptyProps(theme: AppTheme, preferredScheme: SchemePreference): TimeFlo
     weekStart: 'sunday',
     theme,
     preferredScheme,
+    availableMonths: [startOfMonth(now)],
   });
+}
+
+function subscribeToPrivacyPreferences(onChange: () => void) {
+  const unsubscribe = [
+    useWidgetPreference.persist.onHydrate(onChange),
+    useWidgetPreference.persist.onFinishHydration(onChange),
+    useCalendarFilter.persist.onHydrate(onChange),
+    useCalendarFilter.persist.onFinishHydration(onChange),
+  ];
+  return () => unsubscribe.forEach((stop) => stop());
+}
+
+function privacyPreferencesHydrated() {
+  return useWidgetPreference.persist.hasHydrated() && useCalendarFilter.persist.hasHydrated();
 }
 
 /** 앱이 알고 있는 RLS 적용 결과만 WidgetKit 공유 저장소에 복사한다. 세션 키는 넘기지 않는다. */
@@ -240,7 +338,13 @@ export function WidgetSync() {
   const theme = useThemePreference((state) => state.theme);
   const preferredScheme = useThemePreference((state) => state.schemePreference);
   const [monthAnchor, setMonthAnchor] = useState(() => startOfMonth(new Date()));
-  const lastWidgetUserId = useRef<string | null | undefined>(undefined);
+  const privacyReady = useSyncExternalStore(subscribeToPrivacyPreferences, privacyPreferencesHydrated, () => false);
+  const lastClearedScope = useRef<string | null>(null);
+  const clearAttempts = useRef({ scope: '', count: 0 });
+  const publishAttempts = useRef(0);
+  const [clearRetry, setClearRetry] = useState(0);
+  const previousMonth = useMemo(() => addMonths(monthAnchor, -1), [monthAnchor]);
+  const previousEvents = useMonthEvents(previousMonth, weekStart);
   const currentEvents = useMonthEvents(monthAnchor, weekStart);
   const nextMonth = useMemo(() => addMonths(monthAnchor, 1), [monthAnchor]);
   // 홈의 현재 달 요청과 같은 캐시를 먼저 채운 뒤 다음 달을 받는다. 위젯은 화면에
@@ -249,30 +353,72 @@ export function WidgetSync() {
   const memos = useMemos();
 
   useEffect(() => {
+    let timer: ReturnType<typeof setTimeout>;
+    const refresh = () => {
+      const now = new Date();
+      setMonthAnchor(startOfMonth(now));
+      clearTimeout(timer);
+      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+      timer = setTimeout(refresh, midnight.getTime() - now.getTime() + 100);
+    };
+    // Keep the query month current even when the app stays open across midnight.
+    const now = new Date();
+    timer = setTimeout(refresh, +new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - +now + 100);
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') setMonthAnchor(startOfMonth(new Date()));
+      if (state === 'active') refresh();
     });
-    return () => subscription.remove();
+    return () => { clearTimeout(timer); subscription.remove(); };
   }, []);
 
   useEffect(() => {
     const userId = user?.id ?? null;
-    if (lastWidgetUserId.current !== userId) {
-      lastWidgetUserId.current = userId;
+    // 쿼리가 로딩/실패 중이어도 표시 범위가 바뀌면 이전 스냅샷부터 지운다.
+    // AsyncStorage 복원이 끝나기 전 기본값(app/hidden=[])으로 개인 내용을 쓰지 않는다.
+    const scope = JSON.stringify({
+      userId, privacyReady, mode,
+      selected: [...selectedCalendarIds].sort(),
+      hidden: [...hiddenCalendarIds].sort(),
+      accessible: calendars.data?.map((calendar) => calendar.id).sort() ?? null,
+      quickAddCalendarId,
+    });
+    if (lastClearedScope.current !== scope) {
+      publishAttempts.current = 0;
+      if (clearAttempts.current.scope !== scope) clearAttempts.current = { scope, count: 0 };
       const cleared = emptyProps(theme, preferredScheme);
-      CalendarWidget.updateSnapshot(cleared);
-      QuickMemoWidget.updateSnapshot(cleared);
-      return;
+      let clearSucceeded = true;
+      // 한 위젯의 실패가 다른 위젯의 개인정보 삭제를 막지 않는다.
+      for (const widget of [CalendarWidget, QuickMemoWidget]) {
+        try { widget.updateSnapshot(cleared); }
+        catch (error) { clearSucceeded = false; Sentry.captureException(error); }
+      }
+      if (!clearSucceeded) {
+        clearAttempts.current.count += 1;
+        if (clearAttempts.current.count < 3) {
+          const timer = setTimeout(() => setClearRetry((value) => value + 1), clearAttempts.current.count * 1000);
+          return () => clearTimeout(timer);
+        }
+        return;
+      }
+      lastClearedScope.current = scope;
     }
-    if (!user) return;
-    if (!calendars.data || !currentEvents.data || !nextEvents.data || !memos.data) return;
+    if (!user || !privacyReady) return;
+    if (!calendars.data || !currentEvents.data) return;
 
     const now = new Date();
-    const allEvents = [...currentEvents.data, ...nextEvents.data];
+    const allEvents = [
+      ...(previousEvents.data ?? []),
+      ...currentEvents.data,
+      ...(nextEvents.data ?? []),
+    ];
+    const availableMonths = [
+      ...(previousEvents.data ? [previousMonth] : []),
+      monthAnchor,
+      ...(nextEvents.data ? [nextMonth] : []),
+    ];
     const shared = {
       calendars: calendars.data,
       events: allEvents,
-      memos: memos.data,
+      memos: memos.data ?? [],
       mode,
       selectedCalendarIds,
       hiddenCalendarIds,
@@ -281,33 +427,47 @@ export function WidgetSync() {
       weekStart,
       theme,
       preferredScheme,
+      availableMonths,
     };
-    const horizon = new Date(now);
-    horizon.setDate(horizon.getDate() + 7);
-    horizon.setHours(0, 0, 0, 0);
-    const timelineDates = new Map<number, Date>([[now.getTime(), now]]);
-    for (let day = 1; day <= 7; day += 1) {
-      const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + day);
-      timelineDates.set(midnight.getTime(), midnight);
-    }
-    for (const event of allEvents) {
-      const end = eventEnd(event);
-      if (end > now.getTime() && end <= horizon.getTime()) timelineDates.set(end, new Date(end));
-    }
-    timelineDates.set(nextMonth.getTime(), nextMonth);
-
-    const calendarTimeline = [...timelineDates.values()]
-      .sort((a, b) => a.getTime() - b.getTime())
+    const timelineCalendarIds = visibleCalendarIds(
+      calendars.data,
+      mode,
+      selectedCalendarIds,
+      hiddenCalendarIds,
+    );
+    const { dates, expiresAt } = widgetTimelineDates(
+      now,
+      nextEvents.data ? addMonths(nextMonth, 1) : nextMonth,
+      allEvents.filter((event) => timelineCalendarIds.has(event.calendar_id)).map(eventEnd),
+    );
+    const calendarTimeline = dates
       .map((date) => ({
         date,
         props: makeProps({ ...shared, now: date, month: startOfMonth(date) }),
       }));
     const currentProps = calendarTimeline[0].props;
+    // No network in the widget extension: never label missing future data as "no events".
+    calendarTimeline.push({ date: expiresAt, props: { ...emptyProps(theme, preferredScheme), expired: true } });
 
-    CalendarWidget.updateTimeline(calendarTimeline);
-    QuickMemoWidget.updateTimeline([{ date: now, props: currentProps }]);
+    let publishSucceeded = true;
+    try { CalendarWidget.updateTimeline(calendarTimeline); }
+    catch (error) { publishSucceeded = false; Sentry.captureException(error); }
+    if (memos.data) try { QuickMemoWidget.updateTimeline([
+        { date: now, props: currentProps },
+        { date: expiresAt, props: { ...emptyProps(theme, preferredScheme), expired: true } },
+      ]); }
+    catch (error) { publishSucceeded = false; Sentry.captureException(error); }
+    if (publishSucceeded) publishAttempts.current = 0;
+    else {
+      publishAttempts.current += 1;
+      if (publishAttempts.current < 3) {
+        const timer = setTimeout(() => setClearRetry((value) => value + 1), publishAttempts.current * 1000);
+        return () => clearTimeout(timer);
+      }
+    }
   }, [
     calendars.data,
+    clearRetry,
     currentEvents.data,
     hiddenCalendarIds,
     memos.data,
@@ -315,7 +475,10 @@ export function WidgetSync() {
     monthAnchor,
     nextEvents.data,
     nextMonth,
+    previousEvents.data,
+    previousMonth,
     preferredScheme,
+    privacyReady,
     quickAddCalendarId,
     selectedCalendarIds,
     showQuickActions,

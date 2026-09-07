@@ -231,13 +231,27 @@ export type NotificationOutbox = {
 export type NotificationDelivery = {
   outbox_id: number;
   expo_token: string;
-  status: 'PENDING' | 'TICKETED' | 'DELIVERED' | 'FAILED';
+  status: 'PENDING' | 'SENDING' | 'TICKETED' | 'DELIVERED' | 'FAILED';
+  sending_at: string | null;
   attempts: number;
   ticket_id: string | null;
   last_error: string | null;
   ticketed_at: string | null;
   receipt_checked_at: string | null;
   created_at: string;
+};
+
+export type StorageCleanupJob = {
+  id: number;
+  bucket_id: string;
+  storage_path: string;
+  status: 'PENDING' | 'PROCESSING' | 'DONE';
+  attempts: number;
+  next_attempt_at: string;
+  claimed_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  last_error: string | null;
 };
 
 // ---------------------------------------------------------------------------
@@ -345,9 +359,13 @@ export type Database = {
           | 'last_error'
           | 'ticketed_at'
           | 'receipt_checked_at'
+          | 'sending_at'
           | 'created_at'
         >
       >;
+      storage_cleanup_jobs: Table<StorageCleanupJob,
+        Optional<StorageCleanupJob, 'id' | 'status' | 'attempts' | 'next_attempt_at' |
+          'claimed_at' | 'completed_at' | 'created_at' | 'last_error'>>;
     };
     Views: Record<never, never>;
     Functions: {
@@ -363,10 +381,19 @@ export type Database = {
       delete_my_account: { Args: Record<string, never>; Returns: undefined };
       prepare_guest_data_transfer: { Args: Record<string, never>; Returns: string };
       claim_guest_data_transfer: { Args: { p_token: string }; Returns: Json };
+      claim_device_token: {
+        Args: { p_expo_token: string; p_platform: 'ios' | 'android' };
+        Returns: undefined;
+      };
       claim_notification_outbox: {
         Args: { p_limit?: number };
         Returns: NotificationOutbox[];
       };
+      begin_notification_delivery: {
+        Args: { p_outbox_id: number; p_expo_token: string };
+        Returns: boolean;
+      };
+      claim_storage_cleanup: { Args: { p_limit?: number }; Returns: StorageCleanupJob[] };
       reminder_scan_candidates: {
         Args: { p_from: string; p_to: string };
         Returns: Json[];

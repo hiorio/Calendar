@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { NanumGothic_400Regular } from '@expo-google-fonts/nanum-gothic/400Regular';
 import { NanumGothic_700Bold } from '@expo-google-fonts/nanum-gothic/700Bold';
 import { NanumMyeongjo_400Regular } from '@expo-google-fonts/nanum-myeongjo/400Regular';
@@ -8,7 +8,6 @@ import { DarkTheme, DefaultTheme, Stack, ThemeProvider } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, type PropsWithChildren } from 'react';
-import { AppState, Platform } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
@@ -16,6 +15,7 @@ import { Typography } from '@/constants/theme';
 import { AuthProvider, useAuth } from '@/features/auth/auth-provider';
 import { useNotificationNavigation } from '@/features/notifications/navigation';
 import { configureNotificationHandler } from '@/features/notifications/push';
+import { QuerySyncStatus } from '@/features/sync/query-sync';
 import { WidgetSyncGate } from '@/features/widgets/widget-capability';
 import { useTheme } from '@/hooks/use-theme';
 import { Sentry } from '@/lib/observability';
@@ -25,25 +25,12 @@ SplashScreen.preventAutoHideAsync();
 // 앱이 떠 있는 동안 알림이 오면 어떻게 보일지. 등록보다 먼저 정해져 있어야 한다.
 configureNotificationHandler();
 
-/**
- * react-query 의 `refetchOnWindowFocus` 는 브라우저 이벤트를 본다. 네이티브에는
- * 그런 게 없어서 설정만 켜면 아무 일도 일어나지 않는다. AppState 를 연결해 줘야
- * 앱으로 돌아왔을 때 남이 고친 내용을 다시 받아 온다.
- */
-if (Platform.OS !== 'web') {
-  AppState.addEventListener('change', (state) => {
-    focusManager.setFocused(state === 'active');
-  });
-}
-
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30_000,
       retry: 1,
-      // 함께 쓰는 캘린더라 남이 고친 내용이 들어와야 한다. 내 기기의 mutation만
-      // invalidate 하면 화면을 켜 둔 채로는 영영 갱신되지 않는다.
-      // 앱으로 돌아왔을 때 다시 받아 오는 것이 가장 값싼 갱신 경로다.
+      // 전경 주기 갱신과 네이티브 연결·포커스 이벤트는 QuerySyncStatus에서 연결한다.
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
     },
@@ -101,6 +88,7 @@ function RootLayout() {
           <WidgetSyncGate />
           <SplashGate fontsReady={fontsReady}>
             <ThemeProvider value={navigationTheme}>
+              <QuerySyncStatus />
               <Stack
                 screenOptions={{
                   headerShown: false,

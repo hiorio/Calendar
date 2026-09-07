@@ -1,6 +1,6 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { useRef, useState } from 'react';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -16,8 +16,10 @@ import {
   useDeleteMemo,
   useMemos,
   useToggleMemo,
+  type MemoWithCalendar,
 } from '@/features/memos/queries';
 import { useTheme } from '@/hooks/use-theme';
+import { confirm, notify } from '@/lib/confirm';
 
 export default function MemosScreen() {
   const { colors, scheme } = useTheme();
@@ -28,15 +30,42 @@ export default function MemosScreen() {
   const deleteMemo = useDeleteMemo();
   const [calendarId, setCalendarId] = useState('');
   const [content, setContent] = useState('');
+  const submitting = useRef(false);
+  const pendingIds = useRef(new Set<string>());
+  const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+  const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
   const selectedCalendarId = calendarId || calendars.data?.[0]?.id || '';
 
   async function submit() {
-    if (!selectedCalendarId || !content.trim()) return;
+    if (submitting.current || !selectedCalendarId || !content.trim()) return;
+    submitting.current = true;
     try {
       await createMemo.mutateAsync({ calendarId: selectedCalendarId, content });
       setContent('');
     } catch (error) {
-      Alert.alert('메모 저장 실패', error instanceof Error ? error.message : String(error));
+      notify('메모 저장 실패', error instanceof Error ? error.message : String(error));
+    } finally {
+      submitting.current = false;
+    }
+  }
+
+  async function changeMemo(memo: MemoWithCalendar, remove: boolean) {
+    if (pendingIds.current.has(memo.id)) return;
+    pendingIds.current.add(memo.id);
+    setBusyIds(new Set(pendingIds.current));
+    setActionErrors((previous) => ({ ...previous, [memo.id]: '' }));
+    try {
+      if (remove) {
+        if (!(await confirm({ title: '메모를 삭제할까요?', message: memo.content, confirmLabel: '삭제', destructive: true }))) return;
+        await deleteMemo.mutateAsync(memo.id);
+      } else {
+        await toggleMemo.mutateAsync({ id: memo.id, done: !memo.done });
+      }
+    } catch (error) {
+      setActionErrors((previous) => ({ ...previous, [memo.id]: error instanceof Error ? error.message : String(error) }));
+    } finally {
+      pendingIds.current.delete(memo.id);
+      setBusyIds(new Set(pendingIds.current));
     }
   }
 
@@ -123,9 +152,10 @@ export default function MemosScreen() {
                   <View style={styles.memoRow}>
                     <Pressable
                       accessibilityRole="checkbox"
-                      accessibilityState={{ checked: memo.done }}
+                      accessibilityState={{ checked: memo.done, disabled: busyIds.has(memo.id), busy: busyIds.has(memo.id) }}
                       accessibilityLabel={`${memo.content} 완료 표시`}
-                      onPress={() => toggleMemo.mutate({ id: memo.id, done: !memo.done })}
+                      disabled={busyIds.has(memo.id)}
+                      onPress={() => void changeMemo(memo, false)}
                       style={styles.check}>
                       <Ionicons
                         name={memo.done ? 'checkmark-circle' : 'ellipse-outline'}
@@ -141,6 +171,7 @@ export default function MemosScreen() {
                         {memo.content}
                       </Txt>
                       <View style={styles.meta}>
+                        {busyIds.has(memo.id) ? <ActivityIndicator size="small" color={colors.accent} /> : null}
                         <View
                           style={[
                             styles.dot,
@@ -156,20 +187,18 @@ export default function MemosScreen() {
                           {memo.calendarName}
                         </Txt>
                       </View>
+                      {actionErrors[memo.id] ? (
+                        <Txt variant="caption" tone="danger" accessibilityLiveRegion="polite">
+                          {actionErrors[memo.id]} 같은 버튼을 눌러 다시 시도할 수 있습니다.
+                        </Txt>
+                      ) : null}
                     </View>
                     <Pressable
                       accessibilityRole="button"
                       accessibilityLabel={`${memo.content} 삭제`}
-                      onPress={() =>
-                        Alert.alert('메모를 삭제할까요?', memo.content, [
-                          { text: '취소', style: 'cancel' },
-                          {
-                            text: '삭제',
-                            style: 'destructive',
-                            onPress: () => deleteMemo.mutate(memo.id),
-                          },
-                        ])
-                      }
+                      disabled={busyIds.has(memo.id)}
+                      accessibilityState={{ disabled: busyIds.has(memo.id) }}
+                      onPress={() => void changeMemo(memo, true)}
                       style={styles.deleteButton}>
                       <Ionicons name="trash-outline" size={18} color={colors.textTertiary} />
                     </Pressable>

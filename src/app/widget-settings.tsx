@@ -102,9 +102,9 @@ export default function WidgetSettingsScreen() {
                   title="함께 쓰는 캘린더"
                   onToggle={toggleCalendar}
                 />
-                {selectedCalendarIds.length === 0 ? (
+                {!calendars.data.some((calendar) => selectedCalendarIds.includes(calendar.id)) ? (
                   <Notice title="아직 고른 캘린더가 없어요">
-                    선택하기 전까지 위젯에는 모든 캘린더를 표시합니다.
+                    캘린더를 선택하기 전까지 위젯에 일정과 메모를 표시하지 않습니다.
                   </Notice>
                 ) : null}
               </View>

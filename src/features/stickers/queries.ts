@@ -104,15 +104,29 @@ export function useRemoveDaySticker(date: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (calendarId: string) => {
-      const { error } = await supabase
+    mutationFn: async (sticker: DaySticker) => {
+      const { data, error } = await supabase
         .from('calendar_stickers')
         .delete()
-        .eq('calendar_id', calendarId)
-        .eq('sticker_date', date);
+        .eq('id', sticker.id)
+        .eq('calendar_id', sticker.calendarId)
+        .eq('sticker_date', date)
+        .eq('sticker_key', sticker.stickerKey)
+        .select('id')
+        .maybeSingle();
 
       if (error) throw error;
+      if (!data) {
+        throw new Error('스티커가 바뀌었거나 제거 권한이 없습니다. 새로고침한 뒤 다시 확인해 주세요.');
+      }
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
+    onSuccess: async (_data, sticker) => {
+      // 서버에서 삭제한 행만 즉시 반영한다. 진행 중이던 이전 조회가 되살리지 않도록 취소한다.
+      await queryClient.cancelQueries({ queryKey: stickerKeys.all });
+      queryClient.setQueriesData<DaySticker[]>({ queryKey: stickerKeys.all }, (current) =>
+        current?.filter((item) => item.id !== sticker.id),
+      );
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: stickerKeys.all }),
   });
 }

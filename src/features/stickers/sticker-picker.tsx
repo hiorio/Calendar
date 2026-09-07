@@ -3,7 +3,6 @@ import { Image } from 'expo-image';
 import { useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Modal,
   Pressable,
   ScrollView,
@@ -18,12 +17,10 @@ import { Elevation, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { calendarColorForScheme } from '@/features/calendars/colors';
 import type { MyCalendar } from '@/features/calendars/queries';
 import { STICKERS, type StickerKey } from '@/features/stickers/catalog';
-import {
-  useRemoveDaySticker,
-  useSetDaySticker,
-  type DaySticker,
-} from '@/features/stickers/queries';
+import { useSetDaySticker, type DaySticker } from '@/features/stickers/queries';
+import { useStickerRemoval } from '@/features/stickers/use-sticker-removal';
 import { useTheme } from '@/hooks/use-theme';
+import { notify } from '@/lib/confirm';
 
 type StickerPickerProps = {
   visible: boolean;
@@ -50,10 +47,15 @@ export function StickerPicker({
   const [step, setStep] = useState<'calendar' | 'sticker'>('calendar');
   const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
   const setSticker = useSetDaySticker(date);
-  const removeSticker = useRemoveDaySticker(date);
+  const removeSticker = useStickerRemoval(date);
   const pending = setSticker.isPending || removeSticker.isPending;
 
   function closePicker() {
+    if (pending) return;
+    resetPicker();
+  }
+
+  function resetPicker() {
     setStep('calendar');
     setSelectedCalendarId(null);
     onClose();
@@ -72,13 +74,13 @@ export function StickerPicker({
   }
 
   async function applySticker(stickerKey: StickerKey) {
-    if (!selectedCalendarId) return;
+    if (!selectedCalendarId || pending) return;
     try {
       await setSticker.mutateAsync({ calendarId: selectedCalendarId, stickerKey });
       onApplied(selectedCalendarId);
-      closePicker();
+      resetPicker();
     } catch (error) {
-      Alert.alert(
+      notify(
         '스티커를 적용하지 못했습니다',
         error instanceof Error ? error.message : String(error),
       );
@@ -86,16 +88,10 @@ export function StickerPicker({
   }
 
   async function removeCurrentSticker() {
-    if (!selectedCalendarId) return;
-    try {
-      await removeSticker.mutateAsync(selectedCalendarId);
+    if (!selectedCalendarId || !currentSticker || pending) return;
+    if (await removeSticker.requestRemoval(currentSticker)) {
       onApplied(selectedCalendarId);
-      closePicker();
-    } catch (error) {
-      Alert.alert(
-        '스티커를 제거하지 못했습니다',
-        error instanceof Error ? error.message : String(error),
-      );
+      resetPicker();
     }
   }
 
@@ -109,6 +105,7 @@ export function StickerPicker({
       <View style={styles.modal}>
         <Pressable
           accessibilityLabel="스티커 선택 닫기"
+          disabled={pending}
           onPress={closePicker}
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.shadow, opacity: 0.42 }]}
         />
@@ -285,7 +282,7 @@ export function StickerPicker({
                     loading={removeSticker.isPending}
                     onPress={() => void removeCurrentSticker()}
                     size="md"
-                    variant="ghost"
+                    variant="danger"
                   />
                 </View>
               ) : null}

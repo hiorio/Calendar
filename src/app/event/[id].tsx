@@ -14,7 +14,7 @@ import { eventKeys, useEvent, useOccurrenceException } from '@/features/events/q
 import { REMINDER_CHOICES, useMyReminders } from '@/features/events/reminders';
 import { useProfileById } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
-import { formatDate, formatTime, parseDateKey } from '@/lib/event-time';
+import { formatDate, formatTime, occurrenceTime, parseDateKey } from '@/lib/event-time';
 
 export default function EventDetailScreen() {
   const { colors } = useTheme();
@@ -305,62 +305,6 @@ function formatFullDate(date: Date) {
 function formatActivityDate(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : formatFullDate(date);
-}
-
-/**
- * 반복 일정 마스터의 시간 컬럼을 사용자가 누른 회차의 시각으로 바꾼다.
- * 이 회차만 수정한 예외가 있으면 그 값이 가장 우선한다.
- */
-function occurrenceTime<T extends TimeShape>(
-  master: T,
-  occ: string | undefined,
-  patch?: { [K in keyof TimeShape]?: TimeShape[K] | null } | null,
-): T {
-  if (patch) {
-    const allDay = patch.is_all_day ?? master.is_all_day;
-    if (allDay && patch.start_date) {
-      return {
-        ...master,
-        is_all_day: true,
-        start_at: null,
-        end_at: null,
-        start_date: patch.start_date,
-        end_date: patch.end_date ?? patch.start_date,
-      };
-    }
-    if (!allDay && patch.start_at) {
-      return {
-        ...master,
-        is_all_day: false,
-        start_date: null,
-        end_date: null,
-        start_at: patch.start_at,
-        end_at: patch.end_at ?? patch.start_at,
-      };
-    }
-  }
-
-  if (!occ) return master;
-
-  const start = new Date(occ);
-  if (Number.isNaN(start.getTime())) return master;
-
-  if (master.is_all_day) {
-    const days =
-      (new Date(master.end_date!).getTime() - new Date(master.start_date!).getTime()) / 86_400_000;
-    const end = new Date(start);
-    end.setDate(end.getDate() + days);
-    const key = (date: Date) =>
-      `${date.getFullYear()}-${`${date.getMonth() + 1}`.padStart(2, '0')}-${`${date.getDate()}`.padStart(2, '0')}`;
-    return { ...master, start_date: key(start), end_date: key(end) };
-  }
-
-  const span = new Date(master.end_at!).getTime() - new Date(master.start_at!).getTime();
-  return {
-    ...master,
-    start_at: start.toISOString(),
-    end_at: new Date(start.getTime() + span).toISOString(),
-  };
 }
 
 const styles = StyleSheet.create({

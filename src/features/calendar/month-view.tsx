@@ -113,7 +113,7 @@ export function MonthView({
           { borderTopColor: colors.border },
           fillAvailableSpace && styles.gridFill,
         ]}>
-        {weeks.map((week) => {
+        {weeks.map((week, weekIndex) => {
           const weekKeys = week.map(toDateKey);
           const placements = layoutWeekMarks(weekKeys, marksByDate);
           const hiddenByColumn = weekKeys.map((_, column) =>
@@ -130,7 +130,10 @@ export function MonthView({
               key={toDateKey(week[0])}
               style={[
                 styles.week,
-                { borderBottomColor: colors.border },
+                weekIndex < weeks.length - 1 && {
+                  borderBottomColor: colors.border,
+                  borderBottomWidth: StyleSheet.hairlineWidth,
+                },
                 fillAvailableSpace && styles.weekFill,
               ]}>
               {showWeekNumbers ? (
@@ -172,7 +175,7 @@ export function MonthView({
                     style={({ pressed }) => [
                       styles.dayCell,
                       { minHeight: fillAvailableSpace ? 0 : dayCellMinHeight },
-                      isSelected && { backgroundColor: colors.accentSoft },
+                      isSelected && { backgroundColor: colors.surfaceMuted },
                       pressed && !isSelected && { backgroundColor: colors.surfaceMuted },
                     ]}>
                     <View
@@ -299,7 +302,7 @@ export function MonthView({
 }
 
 const styles = StyleSheet.create({
-  wrap: { gap: Spacing.md },
+  wrap: { gap: Spacing.sm },
   fill: { flex: 1, minHeight: 0 },
   weekdayRow: { flexDirection: 'row' },
   weekdayCell: { flex: 1, alignItems: 'center', paddingBottom: Spacing.xs },
@@ -311,16 +314,15 @@ const styles = StyleSheet.create({
   },
   grid: { borderTopWidth: StyleSheet.hairlineWidth },
   gridFill: { flex: 1, minHeight: 0 },
-  week: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
+  week: { flexDirection: 'row' },
   weekFill: { flex: 1, minHeight: 0 },
   weekDays: { flex: 1, flexDirection: 'row', position: 'relative' },
   dayCell: {
     flex: 1,
-    paddingTop: 5,
+    paddingTop: 0,
     paddingBottom: 4,
     paddingHorizontal: 2,
     gap: 3,
-    borderRadius: Radius.sm,
   },
   dayNumber: {
     alignSelf: 'center',

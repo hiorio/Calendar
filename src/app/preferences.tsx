@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Card, Divider } from '@/components/ui/card';
 import { ListRow } from '@/components/ui/list-row';
@@ -11,6 +11,7 @@ import { Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme
 import { useAuth } from '@/features/auth/auth-provider';
 import { deviceWidgetsSupported } from '@/features/widgets/widget-capability';
 import { useTheme } from '@/hooks/use-theme';
+import { notify } from '@/lib/confirm';
 import { useCalendarPreference } from '@/stores/calendar-preference';
 import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
 import {
@@ -76,7 +77,7 @@ export default function PreferencesScreen() {
       await signOut();
       router.replace('/');
     } catch (error) {
-      Alert.alert('로그아웃 실패', error instanceof Error ? error.message : String(error));
+      notify('로그아웃 실패', error instanceof Error ? error.message : String(error));
     } finally {
       setSigningOut(false);
     }

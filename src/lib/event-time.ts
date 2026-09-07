@@ -63,10 +63,15 @@ function deviceAllDayDateKey(value: string | Date, timezone: string): string {
 }
 
 /** 날짜 키 연산은 UTC 정오에서 해서 서머타임 전환의 영향을 받지 않게 한다. */
-function shiftDateKey(key: string, amount: number): string {
+export function shiftDateKey(key: string, amount: number): string {
   const [year, month, day] = key.split('-').map(Number);
   const shifted = new Date(Date.UTC(year, month - 1, day + amount, 12));
   return `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`;
+}
+
+/** 종일 일정의 길이는 실제 경과 시간이 아닌 달력 날짜 차이다. */
+export function dateKeyDistance(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000);
 }
 
 function pad2(value: number): string {
@@ -125,6 +130,51 @@ export function fromTimeColumns(event: EventTimeColumns): EventTimeForm {
   };
 }
 
+/** 회차 ID는 순간이지만 종일 날짜는 일정의 타임존에서 복원한다. */
+export function occurrenceTime<T extends EventTimeColumns>(
+  master: T,
+  originalStart?: string | null,
+  patch?: Partial<{ [K in keyof EventTimeColumns]: EventTimeColumns[K] | null }> | null,
+): T {
+  let base = master;
+  if (originalStart && !Number.isNaN(Date.parse(originalStart))) {
+    if (master.is_all_day) {
+      const wall = toWallClock(new Date(originalStart), master.timezone);
+      const startDate = `${wall.year}-${pad2(wall.month)}-${pad2(wall.day)}`;
+      base = { ...master, start_date: startDate,
+        end_date: shiftDateKey(startDate, dateKeyDistance(master.start_date!, master.end_date!)) };
+    } else {
+      const start = Date.parse(originalStart);
+      const span = Date.parse(master.end_at!) - Date.parse(master.start_at!);
+      base = { ...master, start_at: new Date(start).toISOString(), end_at: new Date(start + span).toISOString() };
+    }
+  }
+  if (!patch) return base;
+  const allDay = patch.is_all_day ?? base.is_all_day;
+  return allDay
+    ? { ...base, is_all_day: true, start_at: null, end_at: null,
+        start_date: patch.start_date ?? base.start_date,
+        end_date: patch.end_date ?? base.end_date }
+    : { ...base, is_all_day: false, start_date: null, end_date: null,
+        start_at: patch.start_at ?? base.start_at, end_at: patch.end_at ?? base.end_at };
+}
+
+/** 종일은 기기 달력 날짜, 시간 지정은 순간으로 조회 구간과 비교한다. */
+export function eventOverlapsRange(event: EventTimeColumns, from: Date, to: Date, allDayTimezone?: string): boolean {
+  if (event.is_all_day) {
+    const last = calendarDateKey(new Date(to.getTime() - 1), allDayTimezone);
+    return Boolean(event.start_date && event.end_date && event.start_date <= last && event.end_date >= calendarDateKey(from, allDayTimezone));
+  }
+  return Date.parse(event.start_at!) < to.getTime() && Date.parse(event.end_at!) > from.getTime();
+}
+
+/** 화면은 기기 날짜를, 리마인더 워커는 일정 타임존의 날짜를 조회한다. */
+export function calendarDateKey(date: Date, timezone?: string): string {
+  if (!timezone) return toDateKey(date);
+  const wall = toWallClock(date, timezone);
+  return `${wall.year}-${pad2(wall.month)}-${pad2(wall.day)}`;
+}
+
 /**
  * 종일 ↔ 시간 지정 전환.
  *
@@ -152,6 +202,10 @@ export function switchAllDay(form: EventTimeForm, isAllDay: boolean): EventTimeF
  * 사용자에게 보여 주고 에러로 막느니, 애초에 그 상태를 만들지 않는다.
  */
 export function moveStart(form: EventTimeForm, start: Date): EventTimeForm {
+  if (form.isAllDay) {
+    const days = dateKeyDistance(toDateKey(form.start), toDateKey(form.end));
+    return { ...form, start, end: parseDateKey(shiftDateKey(toDateKey(start), days)) };
+  }
   const shift = start.getTime() - form.start.getTime();
   return { ...form, start, end: new Date(form.end.getTime() + shift) };
 }

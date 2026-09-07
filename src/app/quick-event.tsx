@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -30,6 +30,12 @@ export default function QuickEventScreen() {
   const { date, calendarId } = useLocalSearchParams<{ date?: string; calendarId?: string }>();
   const calendars = useMyCalendars();
   const create = useCreateEvent();
+  const submitting = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const [title, setTitle] = useState('');
   const [chosenCalendarId, setChosenCalendarId] = useState(calendarId ?? '');
   const [timeMode, setTimeMode] = useState<QuickTimeMode>('timed');
@@ -44,7 +50,8 @@ export default function QuickEventScreen() {
       : '';
 
   async function submit() {
-    if (!title.trim() || !selectedCalendarId) return;
+    if (submitting.current || !title.trim() || !selectedCalendarId) return;
+    submitting.current = true;
 
     const allDay = startOfDay(baseDate);
     try {
@@ -60,9 +67,11 @@ export default function QuickEventScreen() {
             : timed,
         ),
       });
-      router.back();
+      if (mounted.current) router.back();
     } catch {
       // mutation 상태의 오류 문구를 화면 안에 유지한다.
+    } finally {
+      submitting.current = false;
     }
   }
 

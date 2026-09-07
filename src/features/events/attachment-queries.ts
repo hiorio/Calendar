@@ -76,16 +76,16 @@ export function useDeleteEventAttachment(eventId: string) {
 
   return useMutation({
     mutationFn: async (attachment: EventAttachment) => {
-      const { error: rowError } = await supabase
+      const { data, error: rowError } = await supabase
         .from('attachments')
         .delete()
-        .eq('id', attachment.id);
+        .eq('id', attachment.id)
+        .eq('event_id', eventId)
+        .select('id');
       if (rowError) throw rowError;
-
-      const { error: storageError } = await supabase.storage
-        .from(BUCKET)
-        .remove([attachment.storage_path]);
-      if (storageError) throw storageError;
+      if (!data?.length) throw new Error('첨부 파일을 제거하지 못했습니다. 새로고침 후 다시 시도해 주세요.');
+      // The same DB transaction retains the path in storage_cleanup_jobs. The
+      // scheduled worker retries Storage failures after the visible row is gone.
     },
     onSuccess: () =>
       queryClient.invalidateQueries({ queryKey: attachmentKeys.event(eventId) }),

@@ -1,5 +1,5 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,12 @@ export default function QuickMemoScreen() {
   const { calendarId } = useLocalSearchParams<{ calendarId?: string }>();
   const calendars = useMyCalendars();
   const create = useCreateMemo();
+  const submitting = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const [content, setContent] = useState('');
   const [chosenCalendarId, setChosenCalendarId] = useState(calendarId ?? '');
   const selectedCalendarId = calendars.data?.some((calendar) => calendar.id === chosenCalendarId)
@@ -28,12 +34,15 @@ export default function QuickMemoScreen() {
       : '';
 
   async function submit() {
-    if (!content.trim() || !selectedCalendarId) return;
+    if (submitting.current || !content.trim() || !selectedCalendarId) return;
+    submitting.current = true;
     try {
       await create.mutateAsync({ calendarId: selectedCalendarId, content });
-      router.back();
+      if (mounted.current) router.back();
     } catch {
       // mutation 상태의 오류 문구를 화면 안에 유지한다.
+    } finally {
+      submitting.current = false;
     }
   }
 

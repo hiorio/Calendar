@@ -51,7 +51,7 @@ npm run db:smoke
 ```
 
 앱이 실제로 쓰는 경로(GoTrue + PostgREST + anon key)로 RLS와 트리거를 확인합니다.
-**162개 전부 통과해야 정상입니다.**
+**164개 전부 통과해야 정상입니다.**
 
 ```bash
 npm run test:unit
@@ -88,6 +88,10 @@ npm run web
 | `npm run lint` | ESLint (expo lint) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:unit` | 순수 함수 검사 (DB·화면 없이) |
+| `npm run test:regression` | 일정·계정·알림·메모·위젯의 실제 소스 실행 회귀 검사 (외부 API 모의) |
+| `npm run db:regression` | 로컬 Postgres의 추가 SQL 회귀 검사 (트랜잭션 전체 rollback) |
+| `npm run test:sql-embedded` | Docker 없이 임베디드 PostgreSQL로 SQL 보조 검사 (Supabase 통합 검사 아님) |
+| `npm run typecheck:worker` | Deno 런타임 기준 알림 워커 타입 검사 |
 | `npm run db:start` / `db:stop` | 로컬 Supabase 켜기/끄기 |
 | `npm run db:reset` | 마이그레이션 재적용 (**로컬 데이터 전부 삭제**) |
 | `npm run db:smoke` | RLS·트리거 스모크 테스트 |
@@ -125,7 +129,7 @@ npm run web
 | 바꾼 것 | 돌릴 것 |
 |---|---|
 | 아무거나 | `npm run lint` · `npm run typecheck` |
-| `supabase/migrations/` · RLS · 정책 | `npm run db:reset && npm run db:smoke` |
+| `supabase/migrations/` · RLS · 정책 | `npm run db:reset && npm run db:smoke && npm run db:regression` |
 | `src/lib/` 의 계산 로직 (반복·타임존·시간·조사) | `npm run test:unit` |
 | 화면 | 웹 미리보기에서 실제로 눌러 보기 |
 | iOS·위젯·네이티브 설정 | 원격 작업 브랜치에서 Mac mini `iOS` workflow |

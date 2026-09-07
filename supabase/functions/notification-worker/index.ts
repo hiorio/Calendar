@@ -1,8 +1,9 @@
-import { createClient } from 'npm:@supabase/supabase-js@2.110.8';
+import { createClient, type SupabaseClient } from 'npm:@supabase/supabase-js@2.110.8';
+import type { Database, NotificationDelivery } from '../../../src/types/database.ts';
 
 import {
-  applyExceptions,
-  expandEvent,
+  computeRruleUntil,
+  expandEventWithExceptions,
   type EventException,
   type Occurrence,
 } from '../../../src/lib/recurrence.ts';
@@ -21,11 +22,11 @@ const EXPO_RECEIPTS_URL = 'https://exp.host/--/api/v2/push/getReceipts';
 const RECEIPT_DELAY_MS = 15 * 60 * 1000;
 const RECEIPT_EXPIRY_MS = 24 * 60 * 60 * 1000;
 
-type AdminClient = ReturnType<typeof createClient>;
+type AdminClient = SupabaseClient<Database>;
 type Delivery = {
   outbox_id: number;
   expo_token: string;
-  status: 'PENDING' | 'TICKETED' | 'DELIVERED' | 'FAILED';
+  status: 'PENDING' | 'SENDING' | 'TICKETED' | 'DELIVERED' | 'FAILED';
   attempts: number;
   ticket_id: string | null;
   ticketed_at: string | null;
@@ -85,11 +86,59 @@ function expoHeaders() {
 }
 
 async function disableToken(admin: AdminClient, userId: string, expoToken: string) {
-  await admin
+  await checked(admin
     .from('device_tokens')
     .update({ disabled_at: new Date().toISOString() })
     .eq('user_id', userId)
-    .eq('expo_token', expoToken);
+    .eq('expo_token', expoToken));
+}
+
+async function checked<T>(operation: PromiseLike<{ data: T; error: unknown }>): Promise<T> {
+  const { data, error } = await operation;
+  if (error) throw error;
+  return data;
+}
+
+type CleanupJob = { id: number; bucket_id: string; storage_path: string; attempts: number };
+
+export async function cleanStorage(admin: AdminClient) {
+  const jobs = (await checked(admin.rpc('claim_storage_cleanup', { p_limit: 100 })) ?? []) as CleanupJob[];
+  let removed = 0;
+  let retrying = 0;
+  for (const job of jobs) {
+    const { error } = await admin.storage.from(job.bucket_id).remove([job.storage_path]);
+    if (error) {
+      await checked(admin.from('storage_cleanup_jobs').update({
+        status: 'PENDING', claimed_at: null,
+        next_attempt_at: new Date(Date.now() + Math.min(3600, retryDelaySeconds(job.attempts)) * 1000).toISOString(),
+        last_error: error.message,
+      }).eq('id', job.id));
+      retrying++;
+    } else {
+      await checked(admin.from('storage_cleanup_jobs').update({
+        status: 'DONE', claimed_at: null, completed_at: new Date().toISOString(), last_error: null,
+      }).eq('id', job.id));
+      removed++;
+    }
+  }
+  return { claimed: jobs.length, removed, retrying };
+}
+
+async function repairRecurrenceBounds(admin: AdminClient) {
+  const rows = await checked(admin.from('events')
+    .select('id,is_all_day,start_at,end_at,start_date,end_date,timezone,rrule,updated_at')
+    .is('rrule_until', null).not('rrule', 'is', null)
+    .or('rrule.ilike.%COUNT=%,rrule.ilike.%UNTIL=%').order('id').limit(100));
+  let repaired = 0;
+  for (const row of rows ?? []) {
+    // Oversized/unsupported finite rules remain conservatively unbounded. The
+    // infinity sentinel also prevents one such rule starving the repair batch.
+    const rruleUntil = computeRruleUntil(row) ?? 'infinity';
+    const changed = await checked(admin.from('events').update({ rrule_until: rruleUntil })
+      .eq('id', row.id).eq('updated_at', row.updated_at).is('rrule_until', null).select('id'));
+    repaired += changed?.length ?? 0;
+  }
+  return repaired;
 }
 
 function occurrenceStart(occurrence: Occurrence) {
@@ -106,24 +155,27 @@ async function scanReminders(admin: AdminClient) {
   // 1분 스케줄이 잠깐 밀려도 놓치지 않도록 뒤 90초, 앞 30초를 함께 본다.
   const triggerFrom = new Date(Date.now() - 90_000);
   const triggerTo = new Date(Date.now() + 30_000);
-  const { data, error } = await admin.rpc('reminder_scan_candidates', {
-    p_from: triggerFrom.toISOString(),
-    p_to: triggerTo.toISOString(),
-  });
-  if (error) throw error;
-
-  const candidates = (data ?? []) as ReminderCandidate[];
+  const candidates: ReminderCandidate[] = [];
+  for (let offset = 0; ; offset += 500) {
+    const page = (await checked(admin.rpc('reminder_scan_candidates', {
+      p_from: triggerFrom.toISOString(), p_to: triggerTo.toISOString(),
+    }).range(offset, offset + 499)) ?? []) as ReminderCandidate[];
+    candidates.push(...page);
+    if (page.length < 500) break;
+  }
   if (!candidates.length) return { candidates: 0, queued: 0 };
 
   const eventIds = [...new Set(candidates.map((candidate) => candidate.event.id))];
-  const { data: exceptionData, error: exceptionError } = await admin
-    .from('event_exceptions')
-    .select(
-      'event_id,original_start,type,title,description,location,is_all_day,start_at,end_at,start_date,end_date',
-    )
-    .in('event_id', eventIds);
-  if (exceptionError) throw exceptionError;
-  const exceptions = (exceptionData ?? []) as EventException[];
+  const exceptions: EventException[] = [];
+  for (const ids of chunks(eventIds, 100)) {
+    for (let offset = 0; ; offset += 500) {
+      const page = (await checked(admin.from('event_exceptions')
+        .select('event_id,original_start,type,title,description,location,is_all_day,start_at,end_at,start_date,end_date')
+        .in('event_id', ids).order('event_id').order('original_start').range(offset, offset + 499)) ?? []) as EventException[];
+      exceptions.push(...page);
+      if (page.length < 500) break;
+    }
+  }
 
   const rows = [];
   for (const candidate of candidates) {
@@ -136,8 +188,7 @@ async function scanReminders(admin: AdminClient) {
     const eventExceptions = exceptions.filter(
       (exception) => exception.event_id === candidate.event.id,
     );
-    const expanded = expandEvent(candidate.event, occurrenceFrom, occurrenceTo);
-    const occurrences = applyExceptions(expanded, eventExceptions);
+    const occurrences = expandEventWithExceptions(candidate.event, occurrenceFrom, occurrenceTo, eventExceptions, candidate.event.timezone);
 
     for (const occurrence of occurrences) {
       const startsAt = occurrenceStart(occurrence);
@@ -181,7 +232,7 @@ async function scanReminders(admin: AdminClient) {
   return { candidates: candidates.length, queued: rows.length };
 }
 
-async function checkReceipts(admin: AdminClient) {
+export async function checkReceipts(admin: AdminClient) {
   const cutoff = new Date(Date.now() - RECEIPT_DELAY_MS).toISOString();
   const { data, error } = await admin
     .from('notification_deliveries')
@@ -231,7 +282,7 @@ async function checkReceipts(admin: AdminClient) {
         Date.now() - new Date(delivery.ticketed_at).getTime() >= RECEIPT_EXPIRY_MS;
       if (!expired) continue;
 
-      await admin
+      await checked(admin
         .from('notification_deliveries')
         .update({
           status: 'FAILED',
@@ -239,23 +290,23 @@ async function checkReceipts(admin: AdminClient) {
           receipt_checked_at: now,
         })
         .eq('outbox_id', delivery.outbox_id)
-        .eq('expo_token', delivery.expo_token);
+        .eq('expo_token', delivery.expo_token));
       failed++;
       continue;
     }
 
     if (receipt.status === 'ok') {
-      await admin
+      await checked(admin
         .from('notification_deliveries')
         .update({ status: 'DELIVERED', last_error: null, receipt_checked_at: now })
         .eq('outbox_id', delivery.outbox_id)
-        .eq('expo_token', delivery.expo_token);
+        .eq('expo_token', delivery.expo_token));
       delivered++;
       continue;
     }
 
     const code = expoErrorCode(receipt);
-    await admin
+    await checked(admin
       .from('notification_deliveries')
       .update({
         status: 'FAILED',
@@ -263,7 +314,7 @@ async function checkReceipts(admin: AdminClient) {
         receipt_checked_at: now,
       })
       .eq('outbox_id', delivery.outbox_id)
-      .eq('expo_token', delivery.expo_token);
+      .eq('expo_token', delivery.expo_token));
 
     if (code === 'DeviceNotRegistered') {
       const userId = userByOutbox.get(delivery.outbox_id);
@@ -275,12 +326,36 @@ async function checkReceipts(admin: AdminClient) {
   return { checked: deliveries.length, delivered, failed };
 }
 
-async function sendBatch(
+export async function sendBatch(
   admin: AdminClient,
   jobsById: Map<number, OutboxJob>,
   deliveries: Delivery[],
 ) {
-  const messages = deliveries.map((delivery) => {
+  const ready: Delivery[] = [];
+  try {
+    for (const delivery of deliveries) {
+      const job = jobsById.get(delivery.outbox_id);
+      if (!job) throw new Error(`Outbox ${delivery.outbox_id} was not claimed`);
+      if (job.type === 'REMINDER' && !(await isCurrentReminder(admin, job))) {
+        await checked(admin.from('notification_deliveries').update({
+          status: 'FAILED', last_error: 'Reminder occurrence was cancelled or rescheduled',
+        }).eq('outbox_id', delivery.outbox_id).eq('expo_token', delivery.expo_token).eq('status', 'PENDING'));
+        continue;
+      }
+      const valid = await checked(admin.rpc('begin_notification_delivery', {
+        p_outbox_id: delivery.outbox_id, p_expo_token: delivery.expo_token,
+      }));
+      if (valid) ready.push(delivery);
+    }
+  } catch (error) {
+    // No request has left this process: these preflight markers are safe to retry.
+    for (const delivery of ready) await checked(admin.from('notification_deliveries')
+      .update({ status: 'PENDING', sending_at: null, last_error: 'Send preparation failed' })
+      .eq('outbox_id', delivery.outbox_id).eq('expo_token', delivery.expo_token).eq('status', 'SENDING'));
+    throw error;
+  }
+  if (!ready.length) return 0;
+  const messages = ready.map((delivery) => {
     const job = jobsById.get(delivery.outbox_id);
     if (!job) throw new Error(`Outbox ${delivery.outbox_id} was not claimed`);
     return buildPushMessage(job, delivery.expo_token);
@@ -290,8 +365,17 @@ async function sendBatch(
     method: 'POST',
     headers: expoHeaders(),
     body: JSON.stringify(messages satisfies ExpoPushMessage[]),
+    signal: AbortSignal.timeout(30_000),
   });
-  if (!response.ok) throw new Error(`Expo push HTTP ${response.status}: ${await response.text()}`);
+  if (!response.ok) {
+    const retryable = response.status === 429 || response.status >= 500;
+    for (const delivery of ready) await checked(admin.from('notification_deliveries')
+      .update({
+        status: retryable && delivery.attempts + 1 < 3 ? 'PENDING' : 'FAILED',
+        sending_at: null, last_error: `Expo push HTTP ${response.status}`,
+      }).eq('outbox_id', delivery.outbox_id).eq('expo_token', delivery.expo_token).eq('status', 'SENDING'));
+    return 0;
+  }
 
   const result = (await response.json()) as {
     data?: Array<{
@@ -301,53 +385,83 @@ async function sendBatch(
       details?: { error?: string };
     }>;
   };
-  if (!Array.isArray(result.data) || result.data.length !== deliveries.length) {
+  if (!Array.isArray(result.data) || result.data.length !== ready.length) {
     throw new Error('Expo push response length did not match the request');
   }
 
   const now = new Date().toISOString();
 
-  for (let index = 0; index < deliveries.length; index++) {
-    const delivery = deliveries[index];
+  const persistenceErrors: unknown[] = [];
+  let accepted = 0;
+  for (let index = 0; index < ready.length; index++) {
+    const delivery = ready[index];
     const ticket = result.data[index];
     const attempts = delivery.attempts + 1;
 
-    if (ticket.status === 'ok' && ticket.id) {
-      await admin
-        .from('notification_deliveries')
-        .update({
-          status: 'TICKETED',
-          attempts,
-          ticket_id: ticket.id,
-          ticketed_at: now,
-          last_error: null,
-        })
-        .eq('outbox_id', delivery.outbox_id)
-        .eq('expo_token', delivery.expo_token);
-      continue;
-    }
-
     const code = expoErrorCode(ticket);
-    await admin
-      .from('notification_deliveries')
-      .update({
-        status: 'FAILED',
-        attempts,
-        last_error: `${code ?? 'ExpoTicketError'}: ${ticket.message ?? 'unknown error'}`,
-      })
-      .eq('outbox_id', delivery.outbox_id)
-      .eq('expo_token', delivery.expo_token);
-
-    if (code === 'DeviceNotRegistered') {
-      const userId = jobsById.get(delivery.outbox_id)?.user_id;
-      if (userId) await disableToken(admin, userId, delivery.expo_token);
+    const ticketed = ticket.status === 'ok' && Boolean(ticket.id);
+    const retryable = code === 'MessageRateExceeded' || code === 'InternalServerError';
+    const patch: Partial<NotificationDelivery> = ticketed ? {
+      status: 'TICKETED', attempts, ticket_id: ticket.id, ticketed_at: now, last_error: null,
+    } : {
+      status: retryable && attempts < 3 ? 'PENDING' : 'FAILED', attempts, sending_at: null,
+      last_error: `${code ?? 'ExpoTicketError'}: ${ticket.message ?? 'unknown error'}`,
+    };
+    // Retry recording the SAME known ticket, never resend its push request. A
+    // permanent DB failure leaves SENDING so recovery reports an uncertain send.
+    let saved = false;
+    let saveError: unknown;
+    for (let retry = 0; retry < 3 && !saved; retry++) {
+      try {
+        await checked(admin.from('notification_deliveries').update(patch)
+          .eq('outbox_id', delivery.outbox_id).eq('expo_token', delivery.expo_token));
+        saved = true;
+      } catch (error) { saveError = error; }
+    }
+    if (!saved) { persistenceErrors.push(saveError); continue; }
+    if (ticketed) accepted++;
+    try {
+      if (code === 'DeviceNotRegistered') {
+        const userId = jobsById.get(delivery.outbox_id)?.user_id;
+        if (userId) await disableToken(admin, userId, delivery.expo_token);
+      }
+    } catch (error) {
+      persistenceErrors.push(error);
     }
   }
-
-  return deliveries.length;
+  if (persistenceErrors.length) throw new AggregateError(persistenceErrors, 'Expo result persistence failed');
+  return accepted;
 }
 
-async function settleOutbox(admin: AdminClient, job: OutboxJob) {
+export async function isCurrentReminder(admin: AdminClient, job: OutboxJob) {
+  const eventId = job.payload.event_id;
+  const originalStart = job.payload.original_start;
+  if (typeof eventId !== 'string' || typeof originalStart !== 'string') return false;
+  const event = await checked(admin.from('events')
+    .select('id,calendar_id,title,description,location,is_all_day,start_at,end_at,start_date,end_date,timezone,rrule')
+    .eq('id', eventId).is('deleted_at', null).maybeSingle());
+  if (!event) return false;
+  const exceptions = await checked(admin.from('event_exceptions')
+    .select('event_id,original_start,type,title,description,location,is_all_day,start_at,end_at,start_date,end_date')
+    .eq('event_id', eventId).eq('original_start', originalStart));
+  const startAt = job.payload.start_at;
+  const startDate = job.payload.start_date;
+  const zone = typeof job.payload.timezone === 'string' ? job.payload.timezone : event.timezone;
+  let expectedStart: Date;
+  if (job.payload.is_all_day === true && typeof startDate === 'string') {
+    const [year, month, day] = startDate.split('-').map(Number);
+    expectedStart = fromWallClock({ year, month, day, hour: 0, minute: 0 }, zone);
+  } else if (typeof startAt === 'string') expectedStart = new Date(startAt);
+  else return false;
+  if (!Number.isFinite(expectedStart.getTime())) return false;
+  const occurrences = expandEventWithExceptions(event, expectedStart,
+    new Date(expectedStart.getTime() + 1), exceptions ?? [], event.timezone);
+  return occurrences.some((occurrence) =>
+    new Date(occurrence.originalStart).getTime() === new Date(originalStart).getTime()
+    && occurrenceStart(occurrence).getTime() === expectedStart.getTime());
+}
+
+export async function settleOutbox(admin: AdminClient, job: OutboxJob) {
   const { data, error } = await admin
     .from('notification_deliveries')
     .select('status')
@@ -359,47 +473,49 @@ async function settleOutbox(admin: AdminClient, job: OutboxJob) {
   const retryable = statuses.some((status) => status === 'PENDING');
   const now = new Date();
 
+  // An HTTP request with an unknown outcome must not be automatically repeated.
+  if (statuses.includes('SENDING')) return 'uncertain';
+
+  if (retryable && job.attempts < 3) {
+    now.setSeconds(now.getSeconds() + retryDelaySeconds(job.attempts));
+    await checked(admin.from('notification_outbox').update({
+      status: 'PENDING', claimed_at: null, next_attempt_at: now.toISOString(),
+      last_error: 'Unfinished devices will be retried',
+    }).eq('id', job.id));
+    return 'retry';
+  }
+
+  if (retryable) await checked(admin.from('notification_deliveries').update({
+    status: 'FAILED', last_error: 'Retry limit reached',
+  }).eq('outbox_id', job.id).eq('status', 'PENDING'));
+
   if (!statuses.length || accepted) {
-    await admin
+    await checked(admin
       .from('notification_outbox')
       .update({
         status: 'SENT',
         sent_at: now.toISOString(),
         claimed_at: null,
-        last_error: statuses.some((status) => status === 'FAILED')
+        last_error: retryable || statuses.some((status) => status === 'FAILED')
           ? 'Some devices rejected the notification'
           : null,
       })
-      .eq('id', job.id);
+      .eq('id', job.id));
     return accepted ? 'sent' : 'no-device';
   }
 
-  if (retryable && job.attempts < 3) {
-    now.setSeconds(now.getSeconds() + retryDelaySeconds(job.attempts));
-    await admin
-      .from('notification_outbox')
-      .update({
-        status: 'PENDING',
-        claimed_at: null,
-        next_attempt_at: now.toISOString(),
-        last_error: 'Expo push request will be retried',
-      })
-      .eq('id', job.id);
-    return 'retry';
-  }
-
-  await admin
+  await checked(admin
     .from('notification_outbox')
     .update({
       status: 'FAILED',
       claimed_at: null,
       last_error: 'No device accepted the notification',
     })
-    .eq('id', job.id);
+    .eq('id', job.id));
   return 'failed';
 }
 
-Deno.serve(async (request) => {
+if (typeof Deno !== 'undefined') Deno.serve(async (request) => {
   if (request.method !== 'POST') return json({ error: 'method not allowed' }, 405);
 
   const workerSecret = requiredEnv('WORKER_SECRET');
@@ -408,32 +524,42 @@ Deno.serve(async (request) => {
   }
 
   try {
-    const admin = createClient(requiredEnv('SUPABASE_URL'), secretKey(), {
+    const admin = createClient<Database>(requiredEnv('SUPABASE_URL'), secretKey(), {
       auth: { persistSession: false, autoRefreshToken: false },
     });
 
+    const failures: string[] = [];
+    let cleanup = { claimed: 0, removed: 0, retrying: 0 };
+    try { cleanup = await cleanStorage(admin); }
+    catch (error) { failures.push(`Storage cleanup: ${String(error)}`); }
+    const boundsRepaired = await repairRecurrenceBounds(admin);
     const reminders = await scanReminders(admin);
+    await checked(admin.from('notification_deliveries').update({
+      status: 'FAILED', last_error: 'Send outcome is unknown after worker interruption; not resent to avoid duplicates',
+    }).eq('status', 'SENDING').lt('sending_at', new Date(Date.now() - 300_000).toISOString()));
     let receipts = { checked: 0, delivered: 0, failed: 0 };
     try {
       receipts = await checkReceipts(admin);
     } catch (error) {
       console.error('receipt check failed', error);
+      failures.push(`Receipt check: ${String(error)}`);
     }
 
     const { data, error } = await admin.rpc('claim_notification_outbox', { p_limit: 100 });
     if (error) throw error;
 
     const jobs = (data ?? []) as OutboxJob[];
-    if (!jobs.length) return json({ claimed: 0, sent: 0, reminders, receipts });
+    if (!jobs.length) return json({ claimed: 0, sent: 0, reminders, receipts, cleanup, boundsRepaired, failures }, failures.length ? 500 : 200);
 
     const jobsById = new Map(jobs.map((job) => [job.id, job]));
     const userIds = [...new Set(jobs.map((job) => job.user_id))];
-    const { data: tokens, error: tokenError } = await admin
-      .from('device_tokens')
-      .select('user_id,expo_token')
-      .in('user_id', userIds)
-      .is('disabled_at', null);
-    if (tokenError) throw tokenError;
+    const tokens: { user_id: string; expo_token: string }[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await checked(admin.from('device_tokens').select('user_id,expo_token')
+        .in('user_id', userIds).is('disabled_at', null).order('expo_token').range(offset, offset + 499));
+      tokens.push(...(page ?? []));
+      if (!page || page.length < 500) break;
+    }
 
     const deliveriesToCreate = jobs.flatMap((job) =>
       (tokens ?? [])
@@ -452,26 +578,23 @@ Deno.serve(async (request) => {
     }
 
     const jobIds = jobs.map((job) => job.id);
-    const { data: pendingData, error: pendingError } = await admin
-      .from('notification_deliveries')
-      .select('outbox_id,expo_token,status,attempts,ticket_id,ticketed_at')
-      .in('outbox_id', jobIds)
-      .eq('status', 'PENDING');
-    if (pendingError) throw pendingError;
+    const pendingData: Delivery[] = [];
+    for (let offset = 0; ; offset += 500) {
+      const page = await checked(admin.from('notification_deliveries')
+        .select('outbox_id,expo_token,status,attempts,ticket_id,ticketed_at')
+        .in('outbox_id', jobIds).eq('status', 'PENDING').order('outbox_id').order('expo_token')
+        .range(offset, offset + 499));
+      pendingData.push(...((page ?? []) as Delivery[]));
+      if (!page || page.length < 500) break;
+    }
 
     let sent = 0;
     for (const batch of chunks((pendingData ?? []) as Delivery[], 100)) {
       try {
         sent += await sendBatch(admin, jobsById, batch);
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        for (const delivery of batch) {
-          await admin
-            .from('notification_deliveries')
-            .update({ attempts: delivery.attempts + 1, last_error: message })
-            .eq('outbox_id', delivery.outbox_id)
-            .eq('expo_token', delivery.expo_token);
-        }
+        // Never turn a ticketed/uncertain send back into PENDING here.
+        failures.push(error instanceof Error ? error.message : String(error));
       }
     }
 
@@ -481,7 +604,7 @@ Deno.serve(async (request) => {
       outcomes[outcome] = (outcomes[outcome] ?? 0) + 1;
     }
 
-    return json({ claimed: jobs.length, sent, outcomes, reminders, receipts });
+    return json({ claimed: jobs.length, sent, outcomes, reminders, receipts, cleanup, boundsRepaired, failures }, failures.length ? 500 : 200);
   } catch (error) {
     console.error(error);
     return json({ error: error instanceof Error ? error.message : String(error) }, 500);
