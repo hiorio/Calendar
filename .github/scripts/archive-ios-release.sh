@@ -3,6 +3,7 @@ set -euo pipefail
 
 required=(
   APPLE_TEAM_ID
+  APPLE_SIGNING_IDENTITY
   APPLE_APP_PROFILE_NAME
   APPLE_APP_PROFILE_UUID
   APPLE_WIDGET_PROFILE_NAME
@@ -107,7 +108,7 @@ const options = {
     [process.env.APP_IOS_BUNDLE_IDENTIFIER]: process.env.APPLE_APP_PROFILE_NAME,
     [`${process.env.APP_IOS_BUNDLE_IDENTIFIER}.ExpoWidgetsTarget`]: process.env.APPLE_WIDGET_PROFILE_NAME,
   },
-  signingCertificate: 'Apple Distribution',
+  signingCertificate: process.env.APPLE_SIGNING_IDENTITY,
   signingStyle: 'manual',
   stripSwiftSymbols: true,
   teamID: process.env.APPLE_TEAM_ID,

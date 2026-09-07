@@ -169,7 +169,17 @@ jobs:
             echo '::warning::macOS could not update the imported key partition list; validating the -A import directly.'
           fi
           security list-keychains -d user -s "$keychain" "${keychains[@]}"
-          security find-identity -v -p codesigning "$keychain" | grep 'Apple Distribution'
+          identities="$(security find-identity -v -p codesigning "$keychain")"
+          printf '%s\n' "$identities"
+          if grep -q '"Apple Distribution:' <<< "$identities"; then
+            signing_identity='Apple Distribution'
+          elif grep -q '"iPhone Distribution:' <<< "$identities"; then
+            signing_identity='iPhone Distribution'
+          else
+            echo 'No Apple distribution signing identity was imported.' >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
 
           app_plist="$RUNNER_TEMP/timeflower-app-profile.plist"
           widget_plist="$RUNNER_TEMP/timeflower-widget-profile.plist"

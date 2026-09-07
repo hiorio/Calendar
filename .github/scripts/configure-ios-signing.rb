@@ -4,6 +4,7 @@ require 'xcodeproj'
 
 project_path = ARGV.fetch(0)
 team_id = ENV.fetch('APPLE_TEAM_ID')
+signing_identity = ENV.fetch('APPLE_SIGNING_IDENTITY')
 
 profiles = {
   'TimeFlower' => {
@@ -33,8 +34,8 @@ profiles.each do |target_name, profile|
   settings = release.build_settings
   settings['DEVELOPMENT_TEAM'] = team_id
   settings['CODE_SIGN_STYLE'] = 'Manual'
-  settings['CODE_SIGN_IDENTITY'] = 'Apple Distribution'
-  settings['CODE_SIGN_IDENTITY[sdk=iphoneos*]'] = 'Apple Distribution'
+  settings['CODE_SIGN_IDENTITY'] = signing_identity
+  settings['CODE_SIGN_IDENTITY[sdk=iphoneos*]'] = signing_identity
   settings['PROVISIONING_PROFILE'] = profile.fetch(:uuid)
   settings['PROVISIONING_PROFILE[sdk=iphoneos*]'] = profile.fetch(:uuid)
   settings['PROVISIONING_PROFILE_SPECIFIER'] = profile.fetch(:name)
