@@ -86,11 +86,15 @@ set -e
 
 if [[ "$verification_status" -ne 0 ]]; then
   xcrun simctl io "$udid" screenshot "$evidence_directory/failure-simctl.png" || true
-  xcrun simctl spawn "$udid" log show \
-    --style compact \
-    --last 15m \
-    --predicate 'process == "SpringBoard" OR process CONTAINS "ExpoWidgetsTarget"' \
-    > "$evidence_directory/widgetkit-system.log" 2>&1 || true
 fi
+
+# Keep the native extension log with both successful and failed screenshots. In
+# particular, this exposes App Group entitlement failures that otherwise look like
+# a featureless white widget in SpringBoard.
+xcrun simctl spawn "$udid" log show \
+  --style compact \
+  --last 15m \
+  --predicate 'process == "SpringBoard" OR process CONTAINS "ExpoWidgetsTarget"' \
+  > "$evidence_directory/widgetkit-system.log" 2>&1 || true
 
 exit "$verification_status"

@@ -134,7 +134,6 @@ jobs:
             -derivedDataPath "$RUNNER_TEMP/TimeFlowerDerivedData" \
             ARCHS=arm64 \
             ONLY_ACTIVE_ARCH=YES \
-            CODE_SIGNING_ALLOWED=NO \
             build
 
       - name: Verify compiled app embeds the widget
@@ -160,6 +159,25 @@ jobs:
             echo "Unexpected widget bundle identifier: $widget_bundle_id" >&2
             exit 1
           fi
+
+          assert_app_group_entitlement() {
+            local bundle="$1"
+            if ! codesign --verify "$bundle"; then
+              echo "Simulator bundle is not code signed: $bundle" >&2
+              exit 1
+            fi
+            if ! codesign -d --entitlements :- "$bundle" 2>/dev/null \
+              | grep -q '<string>group.com.hiorio.timeline</string>'; then
+              echo "The signed simulator bundle is missing the production App Group entitlement: $bundle" >&2
+              exit 1
+            fi
+          }
+
+          # The app and widget exchange serialized layouts through an App Group. An
+          # unsigned Simulator build silently loses that entitlement and renders a
+          # blank widget even though the source and extension compile successfully.
+          assert_app_group_entitlement "$app"
+          assert_app_group_entitlement "$widget"
 
           echo "Compiled app: $app_bundle_id"
           echo "Embedded widget: $widget_bundle_id"
