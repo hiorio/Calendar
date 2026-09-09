@@ -47,9 +47,10 @@ function findNode(snapshot, patterns, roles = []) {
 }
 
 function pinnedRef(node, snapshot) {
+  const ref = node.ref.startsWith('@') ? node.ref : `@${node.ref}`;
   return snapshot.refsGeneration == null
-    ? node.ref
-    : `${node.ref}~s${snapshot.refsGeneration}`;
+    ? ref
+    : `${ref}~s${snapshot.refsGeneration}`;
 }
 
 async function snapshot(name, options = {}) {
@@ -111,6 +112,8 @@ function pagePosition(currentSnapshot) {
     const text = nodeText(node);
     const english = /page\s+(\d+)\s+of\s+(\d+)/i.exec(text);
     if (english) return { current: Number(english[1]), total: Number(english[2]), text };
+    const korean = /총\s*(\d+)\s*페이지\s*중\s*(\d+)\s*페이지/.exec(text);
+    if (korean) return { current: Number(korean[2]), total: Number(korean[1]), text };
     const fraction = /(?:페이지\s*)?(\d+)\s*\/\s*(\d+)/i.exec(text);
     if (fraction) return { current: Number(fraction[1]), total: Number(fraction[2]), text };
   }
