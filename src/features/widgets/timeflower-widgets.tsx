@@ -39,6 +39,7 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
 
     const firstStoredWeek = props.monthWeeks?.[0];
     const hasCalendarPayload =
+      props.layoutRevision === 2 &&
       !!props.palettes?.light &&
       !!props.palettes?.dark &&
       Array.isArray(props.events) &&
@@ -57,7 +58,7 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
       const now = environment.date ?? new Date();
       const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
       const gridStart = 1 - monthStart.getDay();
-      const large = !props.expired && (environment.widgetFamily === 'systemLarge' || environment.widgetFamily === 'systemExtraLarge');
+      const large = environment.widgetFamily === 'systemLarge' || environment.widgetFamily === 'systemExtraLarge';
       return (
         <VStack spacing={large ? 8 : 2} modifiers={[containerBackground('clear', 'widget')]}>
           <Text modifiers={[font({ size: 18, weight: 'bold' })]}>

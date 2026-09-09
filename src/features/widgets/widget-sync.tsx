@@ -260,6 +260,7 @@ function makeProps({
   const quickQuery = quickCalendar ? { calendarId: quickCalendar.id } : undefined;
 
   return {
+    layoutRevision: 2,
     viewName: viewName(mode, visibleIds.size),
     dateTitle: new Intl.DateTimeFormat('ko-KR', { month: 'long', weekday: 'short' }).format(now),
     weekdayTitle: new Intl.DateTimeFormat('ko-KR', { weekday: 'long' }).format(now),
@@ -338,6 +339,7 @@ export function WidgetSync() {
   const theme = useThemePreference((state) => state.theme);
   const preferredScheme = useThemePreference((state) => state.schemePreference);
   const [monthAnchor, setMonthAnchor] = useState(() => startOfMonth(new Date()));
+  const [foregroundRevision, setForegroundRevision] = useState(0);
   const privacyReady = useSyncExternalStore(subscribeToPrivacyPreferences, privacyPreferencesHydrated, () => false);
   const lastClearedScope = useRef<string | null>(null);
   const clearAttempts = useRef({ scope: '', count: 0 });
@@ -354,13 +356,26 @@ export function WidgetSync() {
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
+    const reloadStoredLayouts = () => {
+      // expo-widgets stores the serialized layout in the App Group. An app update can
+      // otherwise leave WidgetKit displaying the previous layout until data changes.
+      for (const widget of [CalendarWidget, QuickMemoWidget]) {
+        try { widget.reload(); }
+        catch (error) { Sentry.captureException(error); }
+      }
+    };
     const refresh = () => {
       const now = new Date();
       setMonthAnchor(startOfMonth(now));
+      setForegroundRevision((value) => value + 1);
+      reloadStoredLayouts();
       clearTimeout(timer);
       const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
       timer = setTimeout(refresh, midnight.getTime() - now.getTime() + 100);
     };
+    // createWidget has just replaced the stored layout. Reload immediately, even when
+    // auth/query hydration has not changed, so an old large-widget snapshot cannot linger.
+    reloadStoredLayouts();
     // Keep the query month current even when the app stays open across midnight.
     const now = new Date();
     timer = setTimeout(refresh, +new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1) - +now + 100);
@@ -469,6 +484,7 @@ export function WidgetSync() {
     calendars.data,
     clearRetry,
     currentEvents.data,
+    foregroundRevision,
     hiddenCalendarIds,
     memos.data,
     mode,

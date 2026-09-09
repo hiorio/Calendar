@@ -103,6 +103,7 @@ function propsFor(month, weekStart = 'sunday') {
   const previous = pageFor(new Date(month.getFullYear(), month.getMonth() - 1, 1), weekStart);
   const next = pageFor(new Date(month.getFullYear(), month.getMonth() + 1, 1), weekStart);
   return {
+    layoutRevision: 2,
     palettes: { light: colors, dark: colors }, preferredScheme: 'system',
     dateTitle: '8월 토', weekdayTitle: '토요일', dayNumber: '1', monthTitle: current.title, monthShortTitle: current.shortTitle,
     monthKey: current.key, selectedMonthKey: current.key, todayMonthKey: current.key,
@@ -189,8 +190,23 @@ check('missing and expired large payloads show a calendar and refresh guidance, 
     const tree = layouts.CalendarWidget(props, env);
     validate(tree);
     const text = nodes(tree).filter((node) => node.type === 'TextView');
-    assert.equal(text.length, props.expired ? 2 : 51); // expired is neutral; never present an old date as today
+    assert.equal(text.length, 51);
     assert(text.some((node) => node.props.children === '앱을 열어 일정을 불러오세요'));
   }
+});
+check('a pre-month-grid payload is rejected and replaced by the 42-cell calendar fallback', () => {
+  const legacy = propsFor(new Date(2026, 7, 1));
+  delete legacy.layoutRevision;
+  legacy.viewName = '앱과 같은 캘린더';
+  legacy.events = [{
+    id: 'legacy', title: '예전 일정 목록', timeLabel: '오전 7:00', calendarName: '예전',
+    colors: { light: 'label', dark: 'label' }, url: '/event/legacy', sortAt: 1, endAt: 2,
+  }];
+  const tree = layouts.CalendarWidget(legacy, env);
+  validate(tree);
+  const text = nodes(tree).filter((node) => node.type === 'TextView');
+  assert.equal(text.length, 51);
+  assert(!text.some((node) => node.props.children === legacy.viewName));
+  assert(!text.some((node) => node.props.children === legacy.events[0].title));
 });
 console.log(`\nWidget regressions: ${passed} passed`);

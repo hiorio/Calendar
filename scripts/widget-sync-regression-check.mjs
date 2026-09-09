@@ -20,8 +20,10 @@ const timers = new Map();
 let timerId = 0;
 let failCalendarClear = false;
 let failCalendarPublish = false;
+const reloads = [];
 function widget(name) {
   return {
+    reload() { reloads.push(name); },
     updateSnapshot(props) {
       entries.push({ name, method: 'snapshot', props });
       if (name === 'calendar' && failCalendarClear) { failCalendarClear = false; throw new Error('native temporarily unavailable'); }
@@ -86,7 +88,10 @@ const react = {
 const palette = { background: 'background', text: 'text', accent: 'accent' };
 const mocks = {
   react,
-  'react-native': { AppState: { addEventListener: () => ({ remove() {} }) } },
+  'react-native': { AppState: { addEventListener: (_event, listener) => {
+    mocks.appStateListener = listener;
+    return { remove() {} };
+  } } },
   'expo-linking': { createURL: (path, options) => `app://${path}${options ? `?${JSON.stringify(options.queryParams)}` : ''}` },
   '@/constants/theme': { ThemePalettes: { apricot: { light: palette, dark: palette } } },
   '@/features/auth/auth-provider': { useAuth: () => ({ user }) },
@@ -125,6 +130,7 @@ function lastTimeline(name = 'calendar') { return entries.findLast((entry) => en
 
 check('unhydrated custom/filter settings never publish query data', () => {
   render();
+  assert.deepEqual(reloads, ['calendar', 'memo']);
   assert.deepEqual(entries.map((entry) => entry.method), ['snapshot', 'snapshot']);
   assert.ok(entries.every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
 });
@@ -150,6 +156,13 @@ check('hydrated custom selection publishes only allowed events and memos across 
     .find((item) => item.key === day);
   assert.equal(today.hiddenEventCount, 2);
   assert.equal(timeline.at(-1).props.expired, true);
+});
+check('returning to the foreground reloads layouts and republishes an unchanged timeline', () => {
+  entries.length = 0;
+  mocks.appStateListener('active');
+  render();
+  assert.deepEqual(reloads.slice(-2), ['calendar', 'memo']);
+  assert.ok(lastTimeline());
 });
 check('privacy scope reduction clears both widgets while the event query is unavailable', () => {
   stores.widgets.selectedCalendarIds = [];

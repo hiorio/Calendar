@@ -78,6 +78,8 @@ export type WidgetMonthPage = {
 };
 
 export type TimeFlowerWidgetProps = {
+  /** Stored with the timeline so a new binary/layout can reject legacy widget payloads. */
+  layoutRevision: number;
   expired?: boolean;
   viewName: string;
   dateTitle: string;
