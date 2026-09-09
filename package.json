@@ -58,6 +58,7 @@
   "devDependencies": {
     "@expo/image-utils": "^0.11.4",
     "@types/react": "~19.2.2",
+    "agent-device": "0.21.0",
     "eslint": "^9.0.0",
     "eslint-config-expo": "~57.0.2",
     "supabase": "^2.109.1",

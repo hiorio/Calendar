@@ -43,9 +43,9 @@ jobs:
   build:
     name: App and widgets on local Mac mini
     runs-on: [self-hosted, macOS, ARM64, calendar-macmini, xcode-26]
-    timeout-minutes: 45
+    timeout-minutes: 75
     env:
-      APP_VARIANT: development
+      APP_VARIANT: production
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       LANG: en_US.UTF-8
@@ -111,7 +111,7 @@ jobs:
           pbxproj="$project/project.pbxproj"
           grep -q 'ExpoWidgetsTarget' "$pbxproj"
 
-          entitlement_count="$(grep -R -l 'group.com.hiorio.timeline.dev' ios --include='*.entitlements' | wc -l | tr -d ' ')"
+          entitlement_count="$(grep -R -l '<string>group.com.hiorio.timeline</string>' ios --include='*.entitlements' | wc -l | tr -d ' ')"
           if [[ "$entitlement_count" -lt 2 ]]; then
             echo 'The app and widget App Group entitlements were not both generated.' >&2
             exit 1
@@ -121,14 +121,14 @@ jobs:
           echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
           echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
 
-      - name: Compile app and widgets without signing
+      - name: Compile launchable production app and widgets for Simulator
         shell: bash
         run: |
           set -o pipefail
           xcodebuild \
             -workspace "$IOS_WORKSPACE" \
             -scheme "$IOS_SCHEME" \
-            -configuration Debug \
+            -configuration Release \
             -sdk iphonesimulator \
             -destination 'generic/platform=iOS Simulator' \
             -derivedDataPath "$RUNNER_TEMP/TimeFlowerDerivedData" \
@@ -142,7 +142,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          app="$(find "$RUNNER_TEMP/TimeFlowerDerivedData/Build/Products/Debug-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          app="$(find "$RUNNER_TEMP/TimeFlowerDerivedData/Build/Products/Release-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
           if [[ -z "$app" ]]; then
             echo 'Compiled app bundle was not found.' >&2
             exit 1
@@ -163,6 +163,25 @@ jobs:
 
           echo "Compiled app: $app_bundle_id"
           echo "Embedded widget: $widget_bundle_id"
+          echo "IOS_APP_PATH=$app" >> "$GITHUB_ENV"
+          echo "IOS_APP_BUNDLE_ID=$app_bundle_id" >> "$GITHUB_ENV"
+
+      - name: Add and verify the large widget in iOS Simulator
+        shell: bash
+        run: |
+          bash .github/scripts/capture-ios-large-widget.sh \
+            "$IOS_APP_PATH" \
+            "$IOS_APP_BUNDLE_ID" \
+            "$RUNNER_TEMP/timeflower-widget-evidence"
+
+      - name: Upload iOS Simulator widget evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: timeflower-system-large-widget-${{ github.run_id }}
+          path: ${{ runner.temp }}/timeflower-widget-evidence
+          if-no-files-found: error
+          retention-days: 14
 
   release:
     if: inputs.release && inputs.confirmation == 'SUBMIT'
