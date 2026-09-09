@@ -29,7 +29,7 @@ on:
       build_number:
         description: App Store build number (must be unused)
         required: false
-        default: '27'
+        default: '28'
         type: string
 
 permissions:
@@ -114,6 +114,17 @@ jobs:
           entitlement_count="$(grep -R -l '<string>group.com.hiorio.timeline</string>' ios --include='*.entitlements' | wc -l | tr -d ' ')"
           if [[ "$entitlement_count" -lt 2 ]]; then
             echo 'The app and widget App Group entitlements were not both generated.' >&2
+            exit 1
+          fi
+
+          expo_plist="$(find ios -type f -name 'Expo.plist' -print -quit)"
+          if [[ -z "$expo_plist" ]]; then
+            echo 'Generated Expo.plist was not found.' >&2
+            exit 1
+          fi
+          update_channel="$(plutil -extract EXUpdatesRequestHeaders.expo-channel-name raw -o - "$expo_plist")"
+          if [[ "$update_channel" != 'production' ]]; then
+            echo "Production update channel is missing from Expo.plist: $update_channel" >&2
             exit 1
           fi
 

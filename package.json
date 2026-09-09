@@ -79,7 +79,7 @@
     "db:env": "node scripts/write-env.mjs",
     "db:smoke": "node scripts/smoke-local.mjs",
     "test:unit": "node scripts/unit-check.mjs",
-    "test:regression": "node scripts/event-regression-check.mjs && node scripts/client-regression-check.mjs && node scripts/notification-regression-check.mjs && node scripts/widget-regression-check.mjs && node scripts/widget-sync-regression-check.mjs && node scripts/sticker-regression-check.mjs",
+    "test:regression": "node scripts/event-regression-check.mjs && node scripts/client-regression-check.mjs && node scripts/notification-regression-check.mjs && node scripts/widget-regression-check.mjs && node scripts/widget-sync-regression-check.mjs && node scripts/app-config-regression-check.mjs && node scripts/sticker-regression-check.mjs",
     "db:regression": "node scripts/backend-db-regression.mjs",
     "test:sql-embedded": "npx --yes deno@2.9.6 run --no-lock --node-modules-dir=none --allow-read --allow-env scripts/backend-embedded-check.mjs",
     "typecheck:worker": "npx --yes deno@2.9.6 check --no-lock --config supabase/functions/deno.json supabase/functions/notification-worker/index.ts",

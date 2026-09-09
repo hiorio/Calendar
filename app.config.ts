@@ -44,6 +44,7 @@ function googleIosUrlScheme(clientId: string | undefined) {
 export default ({ config }: ConfigContext): ExpoConfig => {
   const variant = appVariant();
   const isProduction = variant === 'production';
+  const updateChannel = variant === 'development' ? null : variant;
   const iosBuildNumber = releaseBuildNumber();
   const suffix = variant === 'development' ? '.dev' : variant === 'preview' ? '.preview' : '';
   const displaySuffix = variant === 'development' ? ' Dev' : variant === 'preview' ? ' Preview' : '';
@@ -84,6 +85,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     updates: {
       ...config.updates,
       ...(easProjectId ? { url: `https://u.expo.dev/${easProjectId}` } : {}),
+      ...(updateChannel
+        ? {
+            // The App Store archive is built directly with Xcode, not EAS Build.
+            // EAS therefore cannot inject eas.json's channel into Expo.plist for us.
+            requestHeaders: {
+              ...config.updates?.requestHeaders,
+              'expo-channel-name': updateChannel,
+            },
+          }
+        : {}),
     },
     plugins: [
       ...(config.plugins ?? []),

@@ -40,6 +40,17 @@ fi
 npm run deploy:check
 npx expo prebuild --platform ios --no-install
 
+expo_plist="$(find ios -type f -name 'Expo.plist' -print -quit)"
+if [[ -z "$expo_plist" ]]; then
+  echo 'Generated Expo.plist was not found.' >&2
+  exit 1
+fi
+update_channel="$(plutil -extract EXUpdatesRequestHeaders.expo-channel-name raw -o - "$expo_plist")"
+if [[ "$update_channel" != 'production' ]]; then
+  echo "Production update channel is missing from Expo.plist: $update_channel" >&2
+  exit 1
+fi
+
 (
   cd ios
   pod install

@@ -10,7 +10,7 @@ on:
       build_number:
         description: App Store build number (must be unused)
         required: true
-        default: '27'
+        default: '28'
         type: string
   workflow_call:
     inputs:
@@ -46,7 +46,7 @@ jobs:
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
       RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
-      RELEASE_VERSION: 1.4.0
+      RELEASE_VERSION: 1.4.1
       SENTRY_DISABLE_AUTO_UPLOAD: 'true'
 
     steps:

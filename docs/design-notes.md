@@ -1291,6 +1291,22 @@ RLS에서 쓰는 `is_guest`와 Storage 경로 파서는 로그인 사용자·워
 달력임을 유지합니다. 이 변경은 위젯 family나 App Group을 바꾸지 않아 1.4.0에 OTA로 전달할
 수 있습니다.
 
+## 69. 대형 위젯은 실제 SpringBoard 렌더와 배포 채널까지 검증한다
+
+JS 직렬화 검사와 Xcode 컴파일만으로는 App Group 권한이나 SpringBoard 렌더 실패를 찾을 수
+없었습니다. Mac mini workflow가 production Release 앱을 `Sign to Run Locally`로 빌드하고,
+새 iPhone 시뮬레이터의 위젯 갤러리에서 TimeFlower 대형 크기를 직접 선택해 홈 화면을
+캡처합니다. Vision OCR로 1~31 날짜와 요일을 확인하고 옛 `앱과 같은 캘린더` 일정 목록이
+보이면 실패시킵니다. 서명을 끈 Simulator 빌드는 App Group 접근 권한이 사라져 빈 위젯이
+되므로 검증용 앱과 extension 모두 코드 서명을 유지합니다.
+
+1.4.0 App Store 바이너리는 새 월간 레이아웃을 포함했지만, 이전 설치의 App Group 저장값을
+강제 교체하는 후속 보강과 production OTA 채널이 빠져 있었습니다. 특히 EAS Build가 아닌
+직접 Xcode archive에서는 `eas.json`의 `channel`이 `Expo.plist`에 자동 주입되지 않습니다.
+1.4.1은 앱 시작·전경 복귀 시 레이아웃과 timeline을 다시 게시하고, app config에
+`expo-channel-name: production`을 명시합니다. portable 회귀 검사와 Simulator/서명 archive
+모두 생성된 채널을 검사해 같은 누락이 다시 제출되지 않게 합니다.
+
 ## 아직 결정하지 않은 것
 
 - `following` 분할 시 새 마스터의 `created_by`를 원 작성자로 둘지, 분할한 사람으로 둘지

@@ -237,7 +237,9 @@ gh run watch <run-id> --exit-status
 ```
 
 `.github/workflows/ios.yml`은 `expo prebuild → pod install → xcodebuild`로 앱과 위젯을
-서명 없이 Simulator용으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. 내부
+Simulator용 로컬 서명으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. App
+Group을 사용하는 위젯은 서명 없는 Simulator 빌드에서도 빈 화면이 되므로 실제 홈 화면에
+추가해 6주 월간 격자를 캡처합니다. 내부
 설치용 개발 빌드와 production archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple
 인증서와 프로파일을 연결한 별도 보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로
 요청했을 때만 실행합니다.
@@ -267,14 +269,16 @@ EXPO_TOKEN
 ```powershell
 gh workflow run app-store.yml --ref codex/timeline-release `
   -f confirmation=SUBMIT `
-  -f build_number=27
+  -f build_number=28
 ```
 
 ## 5. EAS Update와 재빌드 기준
 
 `app.config.ts`는 EAS project ID로 `updates.url`을 만들고
-`runtimeVersion: { policy: "appVersion" }`을 사용합니다. `eas.json`의 preview와
-production 빌드는 각각 같은 이름의 OTA 채널을 구독합니다.
+`runtimeVersion: { policy: "appVersion" }`을 사용합니다. 이 프로젝트는 EAS Build가 아닌
+직접 Xcode 빌드이므로 `eas.json`만으로는 채널이 네이티브 파일에 주입되지 않습니다.
+따라서 app config의 `updates.requestHeaders`에도 preview/production의
+`expo-channel-name`을 명시하고, workflow가 생성된 `Expo.plist` 값을 검사합니다.
 
 OTA 배포 예:
 
