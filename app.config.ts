@@ -59,10 +59,20 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   const existingEas = config.extra?.eas as { projectId?: string } | undefined;
   const easProjectId =
     process.env.EAS_PROJECT_ID ?? existingEas?.projectId;
+  const publicRuntimeConfig = {
+    supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL?.trim() || undefined,
+    supabaseAnonKey: process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim() || undefined,
+    universalLinkBaseUrl:
+      process.env.EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL?.trim() || undefined,
+    pushEnabled: process.env.EXPO_PUBLIC_PUSH_ENABLED === 'true',
+    sentryDsn: process.env.EXPO_PUBLIC_SENTRY_DSN?.trim() || undefined,
+    googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || undefined,
+  };
 
   const extra: ExpoConfig['extra'] = {
     ...config.extra,
     appVariant: variant,
+    publicRuntimeConfig,
     ...(easProjectId ? { eas: { ...existingEas, projectId: easProjectId } } : {}),
   };
 

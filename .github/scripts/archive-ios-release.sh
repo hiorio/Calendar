@@ -37,7 +37,18 @@ if [[ "$configured_version" != "$RELEASE_VERSION" ]]; then
   exit 1
 fi
 
+runtime_env_path="$PWD/.env.production.local"
+if [[ -e "$runtime_env_path" ]]; then
+  echo "Refusing to overwrite an existing runtime environment file: $runtime_env_path" >&2
+  exit 1
+fi
+cleanup_runtime_env() {
+  rm -f -- "$runtime_env_path"
+}
+trap cleanup_runtime_env EXIT
+
 npm run deploy:check
+node .github/scripts/write-ios-public-env.mjs "$runtime_env_path"
 npx expo prebuild --platform ios --no-install
 
 expo_plist="$(find ios -type f -name 'Expo.plist' -print -quit)"
@@ -108,6 +119,7 @@ widget_build="$(plutil -extract CFBundleVersion raw -o - "$widget/Info.plist")"
 
 codesign --verify --deep --strict "$app"
 codesign --verify --strict "$widget"
+node .github/scripts/verify-ios-runtime-config.mjs "$app"
 
 EXPORT_OPTIONS_PATH="$export_options" node <<'NODE'
 const fs = require('node:fs');

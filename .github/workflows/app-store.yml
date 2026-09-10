@@ -10,7 +10,7 @@ on:
       build_number:
         description: App Store build number (must be unused)
         required: true
-        default: '28'
+        default: '29'
         type: string
   workflow_call:
     inputs:

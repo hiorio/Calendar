@@ -29,7 +29,7 @@ on:
       build_number:
         description: App Store build number (must be unused)
         required: false
-        default: '28'
+        default: '29'
         type: string
 
 permissions:
@@ -46,7 +46,15 @@ jobs:
     timeout-minutes: 75
     env:
       APP_VARIANT: production
+      APP_IOS_BUNDLE_IDENTIFIER: com.hiorio.timeline
+      APPLE_TEAM_ID: W297Z9DQ9U
       CI: '1'
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+      EXPO_PUBLIC_PUSH_ENABLED: ${{ vars.EXPO_PUBLIC_PUSH_ENABLED }}
+      EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL: ${{ vars.EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL }}
       EXPO_NO_TELEMETRY: '1'
       LANG: en_US.UTF-8
       LC_ALL: en_US.UTF-8
@@ -87,6 +95,13 @@ jobs:
           npm run typecheck
           npm run test:unit
           npm run test:regression
+
+      - name: Materialize and validate production runtime settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run deploy:check
+          node .github/scripts/write-ios-public-env.mjs .env.production.local
 
       - name: Generate the iOS project
         run: npx expo prebuild --platform ios --no-install
@@ -186,6 +201,7 @@ jobs:
           # so codesign's device-entitlement dump is not an accurate assertion here.
           assert_code_signed "$app"
           assert_code_signed "$widget"
+          node .github/scripts/verify-ios-runtime-config.mjs "$app"
 
           echo "Compiled app: $app_bundle_id"
           echo "Embedded widget: $widget_bundle_id"
@@ -208,6 +224,11 @@ jobs:
           path: ${{ runner.temp }}/timeflower-widget-evidence
           if-no-files-found: error
           retention-days: 14
+
+      - name: Remove generated production runtime settings
+        if: always()
+        shell: bash
+        run: rm -f -- "$GITHUB_WORKSPACE/.env.production.local"
 
   release:
     if: inputs.release && inputs.confirmation == 'SUBMIT'

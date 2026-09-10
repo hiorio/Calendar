@@ -210,6 +210,7 @@ EAS_PROJECT_ID
 APP_IOS_BUNDLE_IDENTIFIER
 EXPO_PUBLIC_SUPABASE_URL
 EXPO_PUBLIC_SUPABASE_ANON_KEY
+EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID
 EXPO_PUBLIC_PUSH_ENABLED
 EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL
 EXPO_PUBLIC_SENTRY_DSN
@@ -226,6 +227,17 @@ Mac mini의 저장소 밖 권한 제한 파일에만 둡니다. 저장소나 로
 npx eas-cli env:exec --environment preview "npm run deploy:check"
 ```
 
+Mac mini의 Simulator 검증은 EAS 명령 밖에서 먼저 실행되므로 production의 공개 클라이언트
+설정을 GitHub Actions에도 동기화합니다. Supabase anon key는 바이너리에 포함되는 공개 키지만
+로그에서 마스킹되도록 GitHub secret으로 저장하고, 나머지는 repository variable로 둡니다.
+다음 명령은 값을 출력하지 않습니다.
+
+```bash
+npx eas-cli@23.2.0 env:exec production \
+  "node .github/scripts/sync-ios-runtime-env-to-github.mjs" \
+  --non-interactive
+```
+
 네이티브 앱과 Widget Extension 검증은 로컬 Mac mini의 self-hosted runner에서 수행합니다.
 EAS Build와 `eas build --local`은 사용하지 않습니다. 원격 작업 브랜치에 커밋이 있을 때:
 
@@ -236,10 +248,13 @@ gh run list --workflow=ios.yml --branch $branch --limit 5
 gh run watch <run-id> --exit-status
 ```
 
-`.github/workflows/ios.yml`은 `expo prebuild → pod install → xcodebuild`로 앱과 위젯을
-Simulator용 로컬 서명으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. App
-Group을 사용하는 위젯은 서명 없는 Simulator 빌드에서도 빈 화면이 되므로 실제 홈 화면에
-추가해 6주 월간 격자를 캡처합니다. 내부
+`.github/workflows/ios.yml`은 production 공개 설정을 임시 `.env.production.local`로 만든 뒤
+`expo prebuild → pod install → xcodebuild`로 앱과 위젯을 Simulator용 로컬 서명으로 함께
+컴파일합니다. 완성된 JS bundle에 Supabase URL과 anon key가 실제 포함됐는지 검사하고, 새
+Simulator에서 앱을 처음 열어 익명 세션 생성 후 월간 캘린더에 도달해야만 통과합니다.
+`Supabase 설정이 필요합니다`, `게스트로 시작할 수 없습니다`, 계정 만들기 화면 중 하나라도
+보이면 즉시 실패합니다. App Group을 사용하는 위젯은 서명 없는 Simulator 빌드에서도 빈
+화면이 되므로 이어서 실제 홈 화면에 추가해 6주 월간 격자를 캡처합니다. 내부
 설치용 개발 빌드와 production archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple
 인증서와 프로파일을 연결한 별도 보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로
 요청했을 때만 실행합니다.
@@ -269,7 +284,7 @@ EXPO_TOKEN
 ```powershell
 gh workflow run app-store.yml --ref codex/timeline-release `
   -f confirmation=SUBMIT `
-  -f build_number=28
+  -f build_number=29
 ```
 
 ## 5. EAS Update와 재빌드 기준

@@ -1307,6 +1307,24 @@ JS 직렬화 검사와 Xcode 컴파일만으로는 App Group 권한이나 Spring
 `expo-channel-name: production`을 명시합니다. portable 회귀 검사와 Simulator/서명 archive
 모두 생성된 채널을 검사해 같은 누락이 다시 제출되지 않게 합니다.
 
+## 70. 배포 성공은 앱 첫 실행에서 월간 캘린더까지 도달해야 한다
+
+TestFlight 1.4.0(27)은 EAS production 환경에 Supabase 값이 있어도 직접 Xcode archive의
+JavaScript bundle에는 값이 들어가지 않았습니다. 기존 Mac mini 검증도 Supabase 설정 없이
+앱을 만들고 SpringBoard 위젯만 확인했기 때문에, 앱이 계정 화면으로 잘못 이동한 상태에서도
+통과했습니다. archive 업로드 성공과 위젯 렌더 성공만으로 앱 사용 가능성을 판단하지 않습니다.
+
+production의 공개 클라이언트 설정을 Expo 표준 env 파일로 명시해 prebuild부터 Xcode bundle
+단계까지 유지하고, 같은 값을 app config에도 내장해 직접 archive의 프로세스 경계를
+보강합니다. 런타임은 정적 `process.env.EXPO_PUBLIC_*` 치환을 우선하고 내장 설정을
+fallback으로 사용합니다. Supabase service role 등 서버 비밀은 이 경로에 넣지 않습니다.
+
+Mac mini 검증은 완성된 bundle 안의 Supabase URL·anon key를 먼저 검사합니다. 그 뒤 데이터가
+없는 새 Simulator에 앱을 설치해 익명 로그인이 완료되고 월간 캘린더 접근성 노드가 나타날
+때까지 확인한 후에만 위젯 검증으로 넘어갑니다. 계정 만들기나 설정 오류 화면은 실패 산출물로
+캡처합니다. App Store archive에도 같은 bundle 검사를 적용하며, 생성한 env 파일은 작업 종료
+시 삭제합니다.
+
 ## 아직 결정하지 않은 것
 
 - `following` 분할 시 새 마스터의 `created_by`를 원 작성자로 둘지, 분할한 사람으로 둘지

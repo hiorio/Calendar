@@ -96,6 +96,58 @@ function ocr(screenshotResult, name) {
   return lines;
 }
 
+const initialScreenFailures = [
+  /Supabase 설정이 필요합니다/,
+  /게스트로 시작할 수 없습니다/,
+  /캘린더를 불러오지 못했습니다/,
+  /계정 만들기/,
+];
+
+async function waitForInitialCalendar(timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastText = '';
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      const current = await client.capture.snapshot({
+        ...device,
+        interactiveOnly: false,
+      });
+      lastText = current.nodes.map(nodeText).filter(Boolean).join(' ');
+      const failure = initialScreenFailures.find((pattern) => pattern.test(lastText));
+      if (failure) {
+        saveJson('01-app-invalid.json', current);
+        throw new Error(`production app opened on an invalid first screen (${failure})`);
+      }
+
+      const calendar = current.nodes.find((node) =>
+        /\d{4}년\s*\d{1,2}월\s*월간 캘린더/.test(nodeText(node)),
+      );
+      if (calendar) {
+        saveJson('01-app-ready.json', current);
+        record('production first-launch calendar verified', {
+          appBundleId: current.appBundleId,
+          calendar: nodeText(calendar),
+          nodeCount: current.nodes.length,
+        });
+        return current;
+      }
+      lastError = null;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('invalid first screen')) throw error;
+      lastError = error;
+    }
+    await new Promise((complete) => setTimeout(complete, 1_500));
+  }
+
+  throw new Error(
+    `production app did not reach its monthly calendar within ${timeoutMs}ms; ` +
+      `last snapshot text=${JSON.stringify(lastText.slice(0, 1_000))}; ` +
+      `last capture error=${lastError instanceof Error ? lastError.message : String(lastError ?? 'none')}`,
+  );
+}
+
 async function pressNode(node, currentSnapshot, label) {
   if (!node) throw new Error(`could not find ${label} in the latest SpringBoard snapshot`);
   record(`press: ${label}`, { ref: node.ref, text: nodeText(node), role: node.role ?? node.type });
@@ -166,8 +218,9 @@ try {
     timeoutMs: 120_000,
   });
   saveJson('01-app-open.json', appOpen);
-  await new Promise((complete) => setTimeout(complete, 8_000));
-  await screenshot('01-app-open', 2);
+  await waitForInitialCalendar();
+  const appReadyCapture = await screenshot('01-app-ready', 3);
+  ocr(appReadyCapture, '01-app-ready');
 
   const springboardOpen = await client.apps.open({
     ...device,

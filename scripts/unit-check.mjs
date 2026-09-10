@@ -37,6 +37,7 @@ const { buildPushMessage, chunks, retryDelaySeconds, expoErrorCode } =
 const { parseOAuthCallback } = await import('../src/features/auth/oauth-callback.ts');
 const { parseSocialProviderAvailability } =
   await import('../src/features/auth/provider-settings-parser.ts');
+const { resolvePublicRuntimeConfig } = await import('../src/lib/runtime-config.ts');
 const {
   applyTimePickerParts,
   composeMinute,
@@ -599,6 +600,40 @@ console.log('\n11. 소셜 로그인 callback 검증');
     '형식이 잘못된 설정은 모두 비활성으로 본다',
     parseSocialProviderAvailability({ external: null }),
     { google: false, apple: false },
+  );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n12. 배포 런타임 설정');
+{
+  const embedded = {
+    supabaseUrl: 'https://embedded.supabase.co',
+    supabaseAnonKey: 'embedded-anon-key',
+    pushEnabled: true,
+  };
+  eq(
+    '직접 빌드에서 process.env가 비어도 내장 설정을 사용한다',
+    resolvePublicRuntimeConfig({}, embedded),
+    embedded,
+  );
+  eq(
+    '번들 시점 환경값이 있으면 내장 설정보다 우선한다',
+    resolvePublicRuntimeConfig(
+      {
+        EXPO_PUBLIC_SUPABASE_URL: 'https://bundle.supabase.co',
+        EXPO_PUBLIC_SUPABASE_ANON_KEY: 'bundle-anon-key',
+        EXPO_PUBLIC_PUSH_ENABLED: 'false',
+      },
+      embedded,
+    ),
+    {
+      supabaseUrl: 'https://bundle.supabase.co',
+      supabaseAnonKey: 'bundle-anon-key',
+      pushEnabled: false,
+      universalLinkBaseUrl: undefined,
+      sentryDsn: undefined,
+      googleIosClientId: undefined,
+    },
   );
 }
 
