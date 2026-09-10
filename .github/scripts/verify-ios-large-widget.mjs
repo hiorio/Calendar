@@ -172,6 +172,81 @@ function pagePosition(currentSnapshot) {
   return null;
 }
 
+async function advanceWidgetPickerPage(currentPage, logicalWidth, logicalHeight) {
+  const targetPage = currentPage + 1;
+  const attempts = [
+    {
+      name: 'AX-free horizontal scroll',
+      run: () => client.interactions.scroll({
+        ...device,
+        // agent-device scroll directions describe content movement. Moving the
+        // picker to the next card requires the content to scroll right (a
+        // right-to-left finger gesture).
+        direction: 'right',
+        pixels: Math.round(logicalWidth * 0.64),
+        durationMs: 450,
+        settle: false,
+      }),
+    },
+    {
+      name: 'synthesized left swipe',
+      run: () => client.interactions.swipeGesture({
+        ...device,
+        preset: 'left',
+      }),
+    },
+    {
+      name: 'coordinate left swipe',
+      run: () => client.interactions.swipe({
+        ...device,
+        from: { x: logicalWidth * 0.82, y: logicalHeight * 0.50 },
+        to: { x: logicalWidth * 0.18, y: logicalHeight * 0.50 },
+      }),
+    },
+  ];
+  const errors = [];
+
+  for (const [index, attempt] of attempts.entries()) {
+    record(`advance widget picker page ${currentPage} -> ${targetPage}: ${attempt.name}`);
+    try {
+      await attempt.run();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${attempt.name}: ${message}`);
+      // XCTest can report a main-thread timeout after SpringBoard has already
+      // accepted the gesture. Observe the page before deciding to retry.
+      record('widget picker gesture warning', { attempt: attempt.name, message });
+    }
+
+    await new Promise((complete) => setTimeout(complete, 1_500));
+    try {
+      const current = await snapshot(
+        `07-widget-size-page-${targetPage}-attempt-${index + 1}`,
+        { interactiveOnly: false },
+      );
+      const position = pagePosition(current);
+      record('widget size picker position after gesture', {
+        attempt: attempt.name,
+        expectedAfter: currentPage,
+        position,
+      });
+      if (position?.current > currentPage) return { current, position };
+      if (!position) errors.push(`${attempt.name}: page indicator was unavailable after gesture`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`${attempt.name} observation: ${message}`);
+      record('widget picker observation warning', { attempt: attempt.name, message });
+    }
+
+    await new Promise((complete) => setTimeout(complete, 1_000));
+  }
+
+  throw new Error(
+    `widget size picker did not advance from page ${currentPage} after ${attempts.length} strategies: ` +
+      errors.join(' | '),
+  );
+}
+
 function pickSearchResult(lines, capture) {
   const density = capture.pixelDensity ?? 1;
   const logicalHeight = capture.logicalHeight ?? (capture.height ?? 0) / density;
@@ -353,18 +428,10 @@ try {
   }
 
   while (currentPage < desiredPage) {
-    await client.interactions.swipe({
-      ...device,
-      from: { x: logicalWidth * 0.82, y: logicalHeight * 0.45 },
-      to: { x: logicalWidth * 0.18, y: logicalHeight * 0.45 },
-    });
-    await new Promise((complete) => setTimeout(complete, 800));
-    current = await snapshot(`07-widget-size-page-${currentPage + 1}`, { interactiveOnly: false });
-    position = pagePosition(current);
-    if (position && position.current <= currentPage) {
-      throw new Error(`widget size picker did not advance from page ${currentPage}`);
-    }
-    currentPage = position?.current ?? currentPage + 1;
+    const advanced = await advanceWidgetPickerPage(currentPage, logicalWidth, logicalHeight);
+    current = advanced.current;
+    position = advanced.position;
+    currentPage = position.current;
   }
 
   const pickerCapture = await screenshot('08-system-large-picker', 3);
