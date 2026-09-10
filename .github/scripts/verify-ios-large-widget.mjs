@@ -166,6 +166,10 @@ function pagePosition(currentSnapshot) {
     if (english) return { current: Number(english[1]), total: Number(english[2]), text };
     const korean = /총\s*(\d+)\s*페이지\s*중\s*(\d+)\s*페이지/.exec(text);
     if (korean) return { current: Number(korean[2]), total: Number(korean[1]), text };
+    const ios26Korean = /(\d+)\s*페이지\s*\(\s*총\s*(\d+)\s*페이지\s*\)/.exec(text);
+    if (ios26Korean) {
+      return { current: Number(ios26Korean[1]), total: Number(ios26Korean[2]), text };
+    }
     const fraction = /(?:페이지\s*)?(\d+)\s*\/\s*(\d+)/i.exec(text);
     if (fraction) return { current: Number(fraction[1]), total: Number(fraction[2]), text };
   }
@@ -175,19 +179,6 @@ function pagePosition(currentSnapshot) {
 async function advanceWidgetPickerPage(currentPage, logicalWidth, logicalHeight) {
   const targetPage = currentPage + 1;
   const attempts = [
-    {
-      name: 'AX-free horizontal scroll',
-      run: () => client.interactions.scroll({
-        ...device,
-        // agent-device scroll directions describe content movement. Moving the
-        // picker to the next card requires the content to scroll right (a
-        // right-to-left finger gesture).
-        direction: 'right',
-        pixels: Math.round(logicalWidth * 0.64),
-        durationMs: 450,
-        settle: false,
-      }),
-    },
     {
       name: 'synthesized left swipe',
       run: () => client.interactions.swipeGesture({
@@ -201,6 +192,19 @@ async function advanceWidgetPickerPage(currentPage, logicalWidth, logicalHeight)
         ...device,
         from: { x: logicalWidth * 0.82, y: logicalHeight * 0.50 },
         to: { x: logicalWidth * 0.18, y: logicalHeight * 0.50 },
+      }),
+    },
+    {
+      name: 'AX-free horizontal scroll',
+      run: () => client.interactions.scroll({
+        ...device,
+        // agent-device scroll directions describe content movement. Moving the
+        // picker to the next card requires the content to scroll right (a
+        // right-to-left finger gesture).
+        direction: 'right',
+        pixels: Math.round(logicalWidth * 0.64),
+        durationMs: 450,
+        settle: false,
       }),
     },
   ];
