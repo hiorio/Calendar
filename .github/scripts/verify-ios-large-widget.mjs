@@ -205,6 +205,55 @@ function countCalendarEvidence(lines) {
   };
 }
 
+async function waitForLargeCalendarWidget(timeoutMs = 45_000) {
+  const deadline = Date.now() + timeoutMs;
+  let attempt = 0;
+  let lastVerification = null;
+
+  while (Date.now() < deadline) {
+    attempt += 1;
+    const finalCapture = await screenshot('10-system-large-calendar-proof', 3);
+    const finalSnapshot = await snapshot('10-system-large-calendar-proof', {
+      interactiveOnly: false,
+    });
+    const finalOcr = ocr(finalCapture, '10-system-large-calendar-proof');
+    const verification = {
+      ...countCalendarEvidence(finalOcr),
+      attempt,
+      screenshot: finalCapture.path,
+      widgetNodes: finalSnapshot.nodes
+        .filter((node) => /time\s*flower|calendar|캘린더/i.test(nodeText(node)))
+        .map((node) => ({
+          ref: node.ref,
+          role: node.role ?? node.type,
+          text: nodeText(node),
+          rect: node.rect,
+        })),
+    };
+    saveJson('verification.json', verification);
+    record('calendar visual verification', verification);
+    lastVerification = verification;
+
+    if (verification.legacyAgendaSubtitleVisible) {
+      throw new Error('legacy agenda-only large widget is still visible in the simulator');
+    }
+    if (verification.uniqueDateCount >= 10 && verification.weekdayCount >= 4) {
+      return verification;
+    }
+
+    // WidgetKit may briefly render its redacted placeholder immediately after a
+    // brand-new widget is added. Keep the final evidence filename stable and
+    // retry until the app-published timeline replaces that placeholder.
+    await new Promise((complete) => setTimeout(complete, 3_000));
+  }
+
+  throw new Error(
+    `systemLarge calendar did not replace its placeholder within ${timeoutMs}ms: ` +
+      `${lastVerification?.uniqueDateCount ?? 0} dates, ` +
+      `${lastVerification?.weekdayCount ?? 0} weekday labels`,
+  );
+}
+
 let finalError;
 try {
   record('prepare simulator automation', { udid, bundleId, session });
@@ -221,6 +270,10 @@ try {
   await waitForInitialCalendar();
   const appReadyCapture = await screenshot('01-app-ready', 3);
   ocr(appReadyCapture, '01-app-ready');
+  // The calendar screen appears before the first guest's calendar/event queries
+  // necessarily finish. Keep the app active long enough for WidgetSync to publish
+  // its initial App Group timeline before moving to SpringBoard.
+  await new Promise((complete) => setTimeout(complete, 8_000));
 
   const springboardOpen = await client.apps.open({
     ...device,
@@ -327,27 +380,7 @@ try {
   if (done) await pressNode(done, current, 'Done');
   await new Promise((complete) => setTimeout(complete, 1_500));
 
-  const finalCapture = await screenshot('10-system-large-calendar-proof', 3);
-  const finalSnapshot = await snapshot('10-system-large-calendar-proof', { interactiveOnly: false });
-  const finalOcr = ocr(finalCapture, '10-system-large-calendar-proof');
-  const verification = {
-    ...countCalendarEvidence(finalOcr),
-    screenshot: finalCapture.path,
-    widgetNodes: finalSnapshot.nodes
-      .filter((node) => /time\s*flower|calendar|캘린더/i.test(nodeText(node)))
-      .map((node) => ({ ref: node.ref, role: node.role ?? node.type, text: nodeText(node), rect: node.rect })),
-  };
-  saveJson('verification.json', verification);
-  record('calendar visual verification', verification);
-
-  if (verification.legacyAgendaSubtitleVisible) {
-    throw new Error('legacy agenda-only large widget is still visible in the simulator');
-  }
-  if (verification.uniqueDateCount < 10 || verification.weekdayCount < 4) {
-    throw new Error(
-      `systemLarge calendar evidence was insufficient: ${verification.uniqueDateCount} dates, ${verification.weekdayCount} weekday labels`,
-    );
-  }
+  await waitForLargeCalendarWidget();
 } catch (error) {
   finalError = error;
   record('verification failed', { message: error instanceof Error ? error.stack : String(error) });
