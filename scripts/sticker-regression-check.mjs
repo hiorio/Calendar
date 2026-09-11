@@ -12,6 +12,11 @@ const date = '2026-09-05';
 const target = { id: 'sticker-a', calendarId: 'calendar-a', calendarName: '가족', calendarColor: 'test-color', date, stickerKey: 'garden-sprout' };
 const otherCalendar = { ...target, id: 'sticker-b', calendarId: 'calendar-b', calendarName: '친구' };
 const otherDay = { ...target, id: 'sticker-next', date: '2026-09-06' };
+const dayScreenSource = readFileSync(new URL('../src/app/day.tsx', import.meta.url), 'utf8');
+const stickerPickerSource = readFileSync(
+  new URL('../src/features/stickers/sticker-picker.tsx', import.meta.url),
+  'utf8',
+);
 
 function load(relative, modules, fallback) {
   const source = ts.transpileModule(readFileSync(new URL(relative, import.meta.url), 'utf8'), {
@@ -27,6 +32,41 @@ function load(relative, modules, fallback) {
 }
 const catalog = load('../src/features/stickers/catalog.ts', {}, (path) => {
   assert.match(path, /assets\/stickers\/.*\.(jpg|png)$/); return path;
+});
+
+await check('날짜 상세는 위험한 제거를 직접 노출하지 않고 해당 캘린더의 관리 선택창을 연다', () => {
+  assert.doesNotMatch(dayScreenSource, /\blabel\s*=\s*["']제거["']/);
+  assert.doesNotMatch(dayScreenSource, /stickerRemoval\.requestRemoval\s*\(/);
+  assert.match(dayScreenSource, /name\s*=\s*["']ellipsis-horizontal["']/);
+  assert.match(
+    dayScreenSource,
+    /onPress\s*=\s*\{\(\)\s*=>\s*onOpenSticker\?\.\(sticker\.calendarId\)\}/,
+  );
+  assert.match(
+    dayScreenSource,
+    /key\s*=\s*\{`sticker-picker:\$\{stickerPickerCalendarId\s*\?\?\s*["']calendar["']\}`\}/,
+  );
+  assert.match(
+    dayScreenSource,
+    /<StickerPicker[\s\S]{0,800}?initialCalendarId\s*=\s*\{stickerPickerCalendarId\}/,
+  );
+});
+
+await check('관리 선택창은 initialCalendarId로 스티커 단계에 들어가고 안쪽 제거를 유지한다', () => {
+  assert.match(
+    stickerPickerSource,
+    /const\s+\[step,\s*setStep\]\s*=\s*useState[\s\S]{0,120}?\(\s*initialCalendarId\s*\?\s*["']sticker["']\s*:\s*["']calendar["']\s*,?\s*\)/,
+  );
+  assert.match(
+    stickerPickerSource,
+    /const\s+\[selectedCalendarId,\s*setSelectedCalendarId\]\s*=\s*useState[\s\S]{0,120}?\(\s*initialCalendarId\s*,?\s*\)/,
+  );
+  assert.match(stickerPickerSource, /removeSticker\.requestRemoval\s*\(\s*currentSticker\s*\)/);
+  assert.match(stickerPickerSource, /label\s*=\s*["']이 캘린더의 스티커 제거["']/);
+  assert.match(
+    stickerPickerSource,
+    /onPress\s*=\s*\{\(\)\s*=>\s*void\s+removeCurrentSticker\(\)\}/,
+  );
 });
 
 function fakeDatabase() {

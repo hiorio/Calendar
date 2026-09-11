@@ -42,7 +42,6 @@ import type { EventOccurrence } from '@/features/events/queries';
 import { stickerByKey } from '@/features/stickers/catalog';
 import { StickerPicker } from '@/features/stickers/sticker-picker';
 import { useDayStickers } from '@/features/stickers/queries';
-import { useStickerRemoval } from '@/features/stickers/use-sticker-removal';
 import { useTheme } from '@/hooks/use-theme';
 import { confirm, notify } from '@/lib/confirm';
 import { formatDayTitle, formatLunarDate, startOfMonth, toDateKey } from '@/lib/date';
@@ -56,6 +55,7 @@ export default function DayScreen() {
   const { width: windowWidth } = useWindowDimensions();
   const { hidden } = useCalendarFilter();
   const [stickerPickerOpen, setStickerPickerOpen] = useState(false);
+  const [stickerPickerCalendarId, setStickerPickerCalendarId] = useState<string | null>(null);
   const [featuredCalendarId, setFeaturedCalendarId] = useState<string | null>(null);
   const [pagerScrollEnabled, setPagerScrollEnabled] = useState(true);
   const dateKey = validDateKey(dateParam) ? dateParam : toDateKey(new Date());
@@ -71,6 +71,16 @@ export default function DayScreen() {
     () => (calendars.data ?? []).filter((calendar) => !hidden.includes(calendar.id)),
     [calendars.data, hidden],
   );
+
+  const openStickerPicker = useCallback((calendarId?: string) => {
+    setStickerPickerCalendarId(calendarId ?? null);
+    setStickerPickerOpen(true);
+  }, []);
+
+  const closeStickerPicker = useCallback(() => {
+    setStickerPickerOpen(false);
+    setStickerPickerCalendarId(null);
+  }, []);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -127,7 +137,7 @@ export default function DayScreen() {
               date={page.value}
               featuredCalendarId={page.key === 'current' ? featuredCalendarId : null}
               onOpenSticker={
-                page.key === 'current' ? () => setStickerPickerOpen(true) : undefined
+                page.key === 'current' ? openStickerPicker : undefined
               }
               onEventSwipeStart={
                 page.key === 'current' ? () => setPagerScrollEnabled(false) : undefined
@@ -141,13 +151,15 @@ export default function DayScreen() {
       </ScrollView>
 
       <StickerPicker
+        key={`sticker-picker:${stickerPickerCalendarId ?? 'calendar'}`}
         calendars={visibleCalendars}
         calendarsPending={calendars.isPending}
         date={dateKey}
         dateLabel={formatDayTitle(date)}
         dayStickers={stickers.data ?? []}
+        initialCalendarId={stickerPickerCalendarId}
         onApplied={setFeaturedCalendarId}
-        onClose={() => setStickerPickerOpen(false)}
+        onClose={closeStickerPicker}
         visible={stickerPickerOpen}
       />
     </>
@@ -163,7 +175,7 @@ function DayPage({
 }: {
   date: Date;
   featuredCalendarId: string | null;
-  onOpenSticker?: () => void;
+  onOpenSticker?: (calendarId?: string) => void;
   onEventSwipeStart?: () => void;
   onEventSwipeSettled?: () => void;
 }) {
@@ -175,7 +187,6 @@ function DayPage({
   const lunarDate = formatLunarDate(date);
   const stickers = useDayStickers(dateKey);
   const events = useMonthEvents(startOfMonth(date), weekStart);
-  const stickerRemoval = useStickerRemoval(dateKey);
   const deviceRange = monthGridRange(startOfMonth(date), weekStart);
   const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end);
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
@@ -304,9 +315,9 @@ function DayPage({
                 accessibilityRole="button"
                 accessibilityLabel={`${formatDayTitle(date)} 스티커 꾸미기`}
                 accessibilityHint="대상 캘린더와 스티커를 선택합니다"
-                disabled={!user || !onOpenSticker || stickerRemoval.isPending}
+                disabled={!user || !onOpenSticker}
                 hitSlop={8}
-                onPress={onOpenSticker}
+                onPress={() => onOpenSticker?.()}
                 style={({ pressed }) => [
                   styles.roundButton,
                   {
@@ -400,16 +411,25 @@ function DayPage({
                       {definition?.label ?? '스티커'}
                     </Txt>
                   </View>
-                  <Button
-                    accessibilityLabel={`${sticker.calendarName} 캘린더의 ${definition?.label ?? ''} 스티커 제거`}
-                    block={false}
-                    disabled={!onOpenSticker || stickerRemoval.isPending}
-                    label="제거"
-                    loading={stickerRemoval.removingId === sticker.id}
-                    onPress={() => void stickerRemoval.requestRemoval(sticker)}
-                    size="md"
-                    variant="danger"
-                  />
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`${sticker.calendarName} 캘린더의 ${definition?.label ?? ''} 스티커 관리`}
+                    accessibilityHint="스티커 변경과 제거 메뉴를 엽니다"
+                    disabled={!user || !onOpenSticker}
+                    hitSlop={8}
+                    onPress={() => onOpenSticker?.(sticker.calendarId)}
+                    style={({ pressed }) => [
+                      styles.stickerMenuButton,
+                      {
+                        backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted,
+                      },
+                    ]}>
+                    <Ionicons
+                      name="ellipsis-horizontal"
+                      size={20}
+                      color={colors.textSecondary}
+                    />
+                  </Pressable>
                 </View>
               );
             })}
@@ -869,6 +889,13 @@ const styles = StyleSheet.create({
   },
   stickerThumbnail: { width: 42, height: 42 },
   stickerText: { flex: 1, gap: Spacing.xs },
+  stickerMenuButton: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: Radius.pill,
+  },
   loading: { marginHorizontal: Spacing.xl, paddingVertical: Spacing.xxxl },
   feedback: { marginHorizontal: Spacing.xl, marginTop: Spacing.xl },
   empty: {

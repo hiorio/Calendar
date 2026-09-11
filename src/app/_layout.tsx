@@ -20,6 +20,12 @@ import { WidgetSyncGate } from '@/features/widgets/widget-capability';
 import { useTheme } from '@/hooks/use-theme';
 import { Sentry } from '@/lib/observability';
 
+// 위젯 딥링크로 모달부터 열어도 캘린더를 뒤에 유지해 iOS의 아래 스와이프 닫기가
+// 돌아갈 화면을 갖게 한다.
+export const unstable_settings = {
+  anchor: '(app)',
+};
+
 SplashScreen.preventAutoHideAsync();
 
 // 앱이 떠 있는 동안 알림이 오면 어떻게 보일지. 등록보다 먼저 정해져 있어야 한다.

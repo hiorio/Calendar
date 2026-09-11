@@ -14,6 +14,69 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 let passed = 0;
 function check(name, run) { run(); passed++; console.log(`  PASS  ${name}`); }
 
+check('widget deep links keep the calendar behind dismissible day and event modals', () => {
+  const sourceText = read('src/app/_layout.tsx');
+  const sourceFile = ts.createSourceFile(
+    'src/app/_layout.tsx',
+    sourceText,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+
+  const settingsDeclaration = sourceFile.statements
+    .filter(ts.isVariableStatement)
+    .filter((statement) => statement.modifiers?.some(
+      (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
+    ))
+    .flatMap((statement) => [...statement.declarationList.declarations])
+    .find((declaration) => declaration.name.getText(sourceFile) === 'unstable_settings');
+  assert.ok(
+    settingsDeclaration && ts.isObjectLiteralExpression(settingsDeclaration.initializer),
+    'root layout must export an unstable_settings object for cold widget deep links',
+  );
+
+  const anchorProperty = settingsDeclaration.initializer.properties.find(
+    (property) => ts.isPropertyAssignment(property) && property.name.getText(sourceFile) === 'anchor',
+  );
+  assert.ok(anchorProperty && ts.isPropertyAssignment(anchorProperty));
+  assert.ok(ts.isStringLiteralLike(anchorProperty.initializer));
+  assert.equal(anchorProperty.initializer.text, '(app)');
+
+  const modalRoutes = new Set();
+  const attribute = (element, name) => element.attributes.properties.find(
+    (property) => ts.isJsxAttribute(property) && property.name.getText(sourceFile) === name,
+  );
+  const visit = (node) => {
+    if (ts.isJsxSelfClosingElement(node) && node.tagName.getText(sourceFile) === 'Stack.Screen') {
+      const nameAttribute = attribute(node, 'name');
+      const optionsAttribute = attribute(node, 'options');
+      const routeName = nameAttribute?.initializer;
+      const options = optionsAttribute?.initializer;
+      if (
+        routeName && ts.isStringLiteral(routeName) &&
+        options && ts.isJsxExpression(options) && ts.isObjectLiteralExpression(options.expression)
+      ) {
+        const presentation = options.expression.properties.find(
+          (property) => ts.isPropertyAssignment(property) &&
+            property.name.getText(sourceFile) === 'presentation',
+        );
+        if (
+          presentation && ts.isPropertyAssignment(presentation) &&
+          ts.isStringLiteralLike(presentation.initializer) && presentation.initializer.text === 'modal'
+        ) {
+          modalRoutes.add(routeName.text);
+        }
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  assert(modalRoutes.has('day'), 'the widget day route must remain a modal');
+  assert(modalRoutes.has('event/[id]'), 'the widget event route must remain a modal');
+});
+
 check('empty and unavailable custom calendars never fall back to all', () => {
   const calendars = [{ id: 'private' }, { id: 'shared' }];
   assert.deepEqual([...visibleCalendarIds(calendars, 'custom', [], [])], []);

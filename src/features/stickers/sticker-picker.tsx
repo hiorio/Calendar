@@ -29,6 +29,7 @@ type StickerPickerProps = {
   calendars: MyCalendar[];
   dayStickers: DaySticker[];
   calendarsPending: boolean;
+  initialCalendarId?: string | null;
   onClose: () => void;
   onApplied: (calendarId: string) => void;
 };
@@ -40,12 +41,17 @@ export function StickerPicker({
   calendars,
   dayStickers,
   calendarsPending,
+  initialCalendarId = null,
   onClose,
   onApplied,
 }: StickerPickerProps) {
   const { colors, scheme } = useTheme();
-  const [step, setStep] = useState<'calendar' | 'sticker'>('calendar');
-  const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(null);
+  const [step, setStep] = useState<'calendar' | 'sticker'>(
+    initialCalendarId ? 'sticker' : 'calendar',
+  );
+  const [selectedCalendarId, setSelectedCalendarId] = useState<string | null>(
+    initialCalendarId,
+  );
   const setSticker = useSetDaySticker(date);
   const removeSticker = useStickerRemoval(date);
   const pending = setSticker.isPending || removeSticker.isPending;
