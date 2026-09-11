@@ -112,6 +112,36 @@ function authContinuityFingerprint(dataContainer) {
   const pending = [dataContainer];
   let scannedFiles = 0;
 
+  function collectContinuity(value) {
+    if (Array.isArray(value)) {
+      value.forEach(collectContinuity);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+
+    for (const [key, storedValue] of Object.entries(value)) {
+      if (key === 'timeflower-auth-continuity-v1') {
+        let continuity = storedValue;
+        if (typeof continuity === 'string') {
+          try {
+            continuity = JSON.parse(continuity);
+          } catch {
+            continuity = null;
+          }
+        }
+
+        const userId = continuity?.userId;
+        if (typeof userId === 'string' && /^[0-9a-f-]{36}$/i.test(userId)) {
+          userIds.add(userId.toLowerCase());
+        }
+      }
+
+      // AsyncStorage의 manifest 값은 JSON 문자열로 한 번 더 감싸지므로, 먼저
+      // 바깥 manifest를 파싱한 뒤 정확한 연속성 키만 따라간다.
+      collectContinuity(storedValue);
+    }
+  }
+
   while (pending.length) {
     const directory = pending.pop();
     for (const entry of readdirSync(directory, { withFileTypes: true })) {
@@ -126,8 +156,10 @@ function authContinuityFingerprint(dataContainer) {
       if (size === 0 || size > 32 * 1024 * 1024) continue;
       scannedFiles += 1;
       const text = readFileSync(path).toString('utf8');
-      for (const match of text.matchAll(/"userId"\s*:\s*"([0-9a-f-]{36})"/gi)) {
-        userIds.add(match[1].toLowerCase());
+      try {
+        collectContinuity(JSON.parse(text.replace(/^\uFEFF/, '')));
+      } catch {
+        // 세션 토큰·SQLite 등 JSON이 아닌 앱 파일은 대상이 아니다.
       }
     }
   }
@@ -141,6 +173,22 @@ function authContinuityFingerprint(dataContainer) {
     candidateCount: userIds.size,
     scannedFiles,
   };
+}
+
+async function waitForAuthContinuityFingerprint(dataContainer, timeoutMs = 60_000) {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = null;
+
+  while (Date.now() < deadline) {
+    try {
+      return authContinuityFingerprint(dataContainer);
+    } catch (error) {
+      lastError = error;
+      await new Promise((complete) => setTimeout(complete, 1_000));
+    }
+  }
+
+  throw lastError ?? new Error('the app data container has no saved auth continuity user');
 }
 
 const initialScreenFailures = [
@@ -409,7 +457,7 @@ try {
     ['simctl', 'get_app_container', udid, bundleId, 'data'],
     { encoding: 'utf8' },
   ).trim();
-  const beforeUpdate = authContinuityFingerprint(dataContainer);
+  const beforeUpdate = await waitForAuthContinuityFingerprint(dataContainer);
   execFileSync('xcrun', ['simctl', 'install', udid, appPath], {
     encoding: 'utf8',
     maxBuffer: 8 * 1024 * 1024,
@@ -429,7 +477,7 @@ try {
     ['simctl', 'get_app_container', udid, bundleId, 'data'],
     { encoding: 'utf8' },
   ).trim();
-  const afterUpdate = authContinuityFingerprint(updatedDataContainer);
+  const afterUpdate = await waitForAuthContinuityFingerprint(updatedDataContainer, 30_000);
   if (beforeUpdate.digest !== afterUpdate.digest) {
     throw new Error('the authenticated user changed after installing an app update');
   }
