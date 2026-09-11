@@ -191,11 +191,17 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
       const largeLaneHeight = 9;
       const largeVisibleLaneCount = 2;
       const largeOverflowHeight = 8;
+      const headerHorizontalInset = 10;
+      const headerControlSize = 28;
+      const headerControlRadius = headerControlSize / 2;
       const largeWeekHeight =
         largeDayHeaderHeight + largeLaneHeight * largeVisibleLaneCount + largeOverflowHeight;
       return (
         <VStack alignment="leading" spacing={4} modifiers={[...rootModifiers, fullWidth, frame({ maxHeight: 1000 })]}>
-          <HStack alignment="center" spacing={6} modifiers={[fullWidth]}>
+          <HStack
+            alignment="center"
+            spacing={5}
+            modifiers={[padding({ horizontal: headerHorizontalInset }), fullWidth]}>
             <Text modifiers={[font({ size: 18, weight: 'bold' }), lineLimit(1)]}>{selectedMonthPage.title}</Text>
             <Spacer />
             {responsive ? (
@@ -208,12 +214,24 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
                   modifiers={[
                     buttonStyle('plain'),
                     labelStyle('iconOnly'),
-                    foregroundStyle(colors.textSecondary),
-                    frame({ width: 18, height: 18 }),
+                    font({ size: 12, weight: 'bold' }),
+                    foregroundStyle(colors.accent),
+                    frame({ width: headerControlSize, height: headerControlSize }),
+                    background(colors.accentSoft),
+                    cornerRadius(headerControlRadius),
                   ]}
                 />
               ) : (
-                <Image systemName="chevron.left" size={10} color={colors.textTertiary} />
+                <Image
+                  systemName="chevron.left"
+                  size={12}
+                  color={colors.textTertiary}
+                  modifiers={[
+                    frame({ width: headerControlSize, height: headerControlSize }),
+                    background(colors.accentSoft),
+                    cornerRadius(headerControlRadius),
+                  ]}
+                />
               )
             ) : null}
             {responsive && todayMonthPage ? (
@@ -223,9 +241,11 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
                 onPress={() => ({ selectedMonthKey: todayMonthPage.key })}
                 modifiers={[
                   buttonStyle('plain'),
-                  font({ size: 9, weight: 'semibold' }),
-                  foregroundStyle(selectedMonthPage.key === todayMonthPage.key ? colors.accent : colors.textSecondary),
-                  frame({ height: 18 }),
+                  font({ size: 10, weight: 'bold' }),
+                  foregroundStyle(colors.accent),
+                  frame({ width: 44, height: headerControlSize }),
+                  background(colors.accentSoft),
+                  cornerRadius(headerControlRadius),
                 ]}
               />
             ) : null}
@@ -239,17 +259,38 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
                   modifiers={[
                     buttonStyle('plain'),
                     labelStyle('iconOnly'),
-                    foregroundStyle(colors.textSecondary),
-                    frame({ width: 18, height: 18 }),
+                    font({ size: 12, weight: 'bold' }),
+                    foregroundStyle(colors.accent),
+                    frame({ width: headerControlSize, height: headerControlSize }),
+                    background(colors.accentSoft),
+                    cornerRadius(headerControlRadius),
                   ]}
                 />
               ) : (
-                <Image systemName="chevron.right" size={10} color={colors.textTertiary} />
+                <Image
+                  systemName="chevron.right"
+                  size={12}
+                  color={colors.textTertiary}
+                  modifiers={[
+                    frame({ width: headerControlSize, height: headerControlSize }),
+                    background(colors.accentSoft),
+                    cornerRadius(headerControlRadius),
+                  ]}
+                />
               )
             ) : null}
             {props.showQuickActions ? (
               <Link destination={props.quickEventUrl}>
-                <Image systemName="plus" size={17} color={colors.accent} />
+                <Image
+                  systemName="plus"
+                  size={15}
+                  color={colors.onAccent}
+                  modifiers={[
+                    frame({ width: headerControlSize, height: headerControlSize }),
+                    background(colors.accent),
+                    cornerRadius(headerControlRadius),
+                  ]}
+                />
               </Link>
             ) : null}
           </HStack>

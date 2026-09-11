@@ -193,6 +193,21 @@ for (const weekStart of ['sunday', 'monday']) check(`large calendar renders all 
   assert(links.some((node) => node.props.destination.endsWith('2026-08-31')));
   assert(nodes(tree).some((node) => node.props.children === '2026년 8월'));
   assert(nodes(tree).some((node) => node.props.modifiers?.some((modifier) => modifier.name === 'containerRelativeFrame')));
+  const header = nodes(tree).find((node) => node.type === 'HStackView' &&
+    nodes(node).some((child) => child.props?.children === '2026년 8월'));
+  assert.equal(header.props.modifiers.find((modifier) => modifier.name === 'padding').args[0].horizontal, 10);
+  for (const target of ['calendar.previous-month', 'calendar.today', 'calendar.next-month']) {
+    const control = nodes(tree).find((node) => node.type === 'Button' && node.props.target === target);
+    assert(control.props.modifiers.some((modifier) => modifier.name === 'frame' && modifier.args[0].height === 28));
+    assert(control.props.modifiers.some((modifier) => modifier.name === 'background' && modifier.args[0] === colors.accentSoft));
+    assert(control.props.modifiers.some((modifier) => modifier.name === 'cornerRadius' && modifier.args[0] === 14));
+  }
+  const quickAdd = nodes(tree).find((node) => node.type === 'LinkView' && node.props.destination === '/quick-event');
+  const quickAddIcon = nodes(quickAdd).find((node) => node.type === 'ImageView' && node.props.systemName === 'plus');
+  assert.equal(quickAddIcon.props.color, colors.onAccent);
+  assert(quickAddIcon.props.modifiers.some((modifier) => modifier.name === 'frame' &&
+    modifier.args[0].width === 28 && modifier.args[0].height === 28));
+  assert(quickAddIcon.props.modifiers.some((modifier) => modifier.name === 'background' && modifier.args[0] === colors.accent));
 });
 check('multi-day and overlapping events retain titles, links and column spans', () => {
   const props = propsFor(new Date(2026, 7, 1));
