@@ -1,7 +1,8 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Redirect, Tabs, router, type Href } from 'expo-router';
+import { Tabs, router, type Href } from 'expo-router';
 import { Platform, StyleSheet } from 'react-native';
 
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Typography } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useTheme } from '@/hooks/use-theme';
@@ -32,18 +33,16 @@ const TABS: Tab[] = [
     opens: '/event-new',
   },
   { name: 'activity', title: '활동', icon: 'pulse-outline', activeIcon: 'pulse' },
-  { name: 'settings', title: '설정', icon: 'settings-outline', activeIcon: 'settings' },
+  { name: 'settings', title: '더보기', icon: 'grid-outline', activeIcon: 'grid' },
 ];
 
 export default function AppLayout() {
   const { session, isLoading } = useAuth();
   const { colors } = useTheme();
+  const preferredLabelStyle = usePreferredTextStyle(styles.label);
 
   // 스플래시가 아직 떠 있는 상태. 라우팅을 결정하지 않는다.
   if (isLoading) return null;
-  // 정상 경로에서는 게스트 세션이 항상 있다. 여기 오는 건 익명 로그인이
-  // 꺼져 있는 프로젝트뿐이라, 그때만 계정 화면으로 보낸다.
-  if (!session) return <Redirect href="/account" />;
 
   return (
     <Tabs
@@ -51,10 +50,10 @@ export default function AppLayout() {
         headerShown: false,
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.textTertiary,
-        tabBarLabelStyle: styles.label,
+        tabBarLabelStyle: [styles.label, preferredLabelStyle],
         tabBarStyle: [
           styles.bar,
-          { backgroundColor: colors.surface, borderTopColor: colors.border },
+          { backgroundColor: colors.chrome, borderTopColor: colors.chromeBorder },
         ],
       }}>
       {TABS.map(({ name, title, icon, activeIcon, opens }) => (
@@ -73,6 +72,13 @@ export default function AppLayout() {
               ? {
                   tabPress: (event) => {
                     event.preventDefault();
+                    if (!session) {
+                      router.push({
+                        pathname: '/account',
+                        params: { reason: '연결을 복구한 뒤 일정을 추가할 수 있어요.' },
+                      });
+                      return;
+                    }
                     router.push(opens);
                   },
                 }

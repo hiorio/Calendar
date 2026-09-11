@@ -11,16 +11,23 @@
  *   ③ 각 회차를 events.timezone의 벽시계로 읽어 실제 순간으로 되돌린다.
  */
 
-import { RRule, type Options } from 'rrule';
+import * as RRuleModule from 'rrule';
+import type { Options, RRule as RRuleInstance } from 'rrule';
 
-import { toDateKey } from './date';
-import { addMinutes, parseDateKey, type EventTimeColumns } from './event-time';
+import { toDateKey } from './date.ts';
+import { addMinutes, calendarDateKey, dateKeyDistance, eventOverlapsRange, occurrenceTime, parseDateKey, shiftDateKey, type EventTimeColumns } from './event-time.ts';
 import {
   floatingToWallClock,
   fromWallClock,
   toWallClock,
   wallClockToFloating,
-} from './timezone';
+} from './timezone.ts';
+
+// rrule 2.x는 Node/Metro에서는 named export, Deno의 npm 호환층에서는 CommonJS
+// default로 보인다. 두 런타임이 같은 계산 모듈을 쓰도록 한 번만 정규화한다.
+const RRule =
+  (RRuleModule as typeof RRuleModule & { default?: typeof RRuleModule }).RRule ??
+  (RRuleModule as typeof RRuleModule & { default?: typeof RRuleModule }).default!.RRule;
 
 export type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
 
@@ -115,9 +122,7 @@ export type Occurrence = EventTimeColumns & {
 /** 한 일정이 도는 길이 (종료 - 시작). 회차마다 그대로 유지된다. */
 function durationMs(event: EventTimeColumns): number {
   if (event.is_all_day) {
-    const start = parseDateKey(event.start_date!);
-    const end = parseDateKey(event.end_date!);
-    return end.getTime() - start.getTime();
+    return dateKeyDistance(event.start_date!, event.end_date!) * 86_400_000;
   }
   return new Date(event.end_at!).getTime() - new Date(event.start_at!).getTime();
 }
@@ -128,7 +133,7 @@ function durationMs(event: EventTimeColumns): number {
  * 반복이 아니면 자기 자신 한 건. 반복이면 rrule을 전개한다.
  * 예외(취소·수정)는 여기서 다루지 않는다 — `applyExceptions`가 뒤에 붙는다.
  */
-export function expandEvent(event: EventTimeColumns & { rrule: string | null }, from: Date, to: Date): Occurrence[] {
+export function expandEvent(event: EventTimeColumns & { rrule: string | null }, from: Date, to: Date, allDayTimezone?: string): Occurrence[] {
   const timezone = event.timezone || 'Asia/Seoul';
 
   if (!event.rrule) {
@@ -143,7 +148,7 @@ export function expandEvent(event: EventTimeColumns & { rrule: string | null }, 
       })()
     : toWallClock(new Date(event.start_at!), timezone);
 
-  let rule: RRule;
+  let rule: RRuleInstance;
   try {
     rule = new RRule({
       ...RRule.parseString(event.rrule),
@@ -158,8 +163,12 @@ export function expandEvent(event: EventTimeColumns & { rrule: string | null }, 
   // 조회 구간도 벽시계로 옮긴다. 길이가 긴 일정이 걸치는 경우를 놓치지 않도록
   // 앞쪽으로 일정 길이만큼 넉넉히 잡는다.
   const span = durationMs(event);
-  const fromWall = wallClockToFloating(toWallClock(new Date(from.getTime() - span), timezone));
-  const toWall = wallClockToFloating(toWallClock(to, timezone));
+  const fromWall = event.is_all_day
+    ? new Date(`${shiftDateKey(calendarDateKey(from, allDayTimezone), -span / 86_400_000)}T00:00:00Z`)
+    : wallClockToFloating(toWallClock(new Date(from.getTime() - span), timezone));
+  const toWall = event.is_all_day
+    ? new Date(`${calendarDateKey(to, allDayTimezone)}T23:59:59Z`)
+    : wallClockToFloating(toWallClock(to, timezone));
 
   const occurrences = rule.between(fromWall, toWall, true).slice(0, MAX_OCCURRENCES);
 
@@ -169,11 +178,11 @@ export function expandEvent(event: EventTimeColumns & { rrule: string | null }, 
     if (event.is_all_day) {
       // 종일은 타임존 변환 대상이 아니다. 날짜만 옮긴다.
       const startDate = new Date(wall.year, wall.month - 1, wall.day);
-      const endDate = new Date(startDate.getTime() + span);
+      const endDate = shiftDateKey(toDateKey(startDate), span / 86_400_000);
       return {
         ...event,
         start_date: toDateKey(startDate),
-        end_date: toDateKey(endDate),
+        end_date: endDate,
         start_at: null,
         end_at: null,
         originalStart: fromWallClock({ ...wall, hour: 0, minute: 0 }, timezone).toISOString(),
@@ -194,6 +203,8 @@ export function expandEvent(event: EventTimeColumns & { rrule: string | null }, 
 
 /** 한 화면에 몇 백 개가 넘게 필요할 일은 없다. 잘못된 규칙이 무한히 돌지 않게 막는다. */
 const MAX_OCCURRENCES = 400;
+/** 가져온 고빈도/초장기 규칙도 계산이 앱·워커를 점유하지 않게 한다. */
+const MAX_BOUND_OCCURRENCES = 10_000;
 
 /** 반복이 아닌 일정의 회차 식별자 (= 자기 시작 시각) */
 function masterOriginalStart(event: EventTimeColumns, timezone: string): string {
@@ -256,23 +267,50 @@ export function applyExceptions<T extends Occurrence>(
 
     // 종일 여부를 바꾼 회차는 시간 컬럼도 통째로 예외 것을 쓴다. 마스터와 섞으면
     // start_at 과 start_date 가 함께 채워진 모양이 나와 events_time_shape 와 어긋난다.
-    const allDay = exception.is_all_day ?? occurrence.is_all_day;
-    const shapeChanged = exception.is_all_day !== null && exception.is_all_day !== occurrence.is_all_day;
-
     result.push({
-      ...occurrence,
+      ...occurrenceTime(occurrence, null, exception),
       title: exception.title ?? (occurrence as unknown as { title: string }).title,
       description: exception.description ?? (occurrence as unknown as { description: string | null }).description,
       location: exception.location ?? (occurrence as unknown as { location: string | null }).location,
-      is_all_day: allDay,
-      start_at: shapeChanged ? exception.start_at : (exception.start_at ?? occurrence.start_at),
-      end_at: shapeChanged ? exception.end_at : (exception.end_at ?? occurrence.end_at),
-      start_date: shapeChanged ? exception.start_date : (exception.start_date ?? occurrence.start_date),
-      end_date: shapeChanged ? exception.end_date : (exception.end_date ?? occurrence.end_date),
     });
   }
 
   return result;
+}
+
+/** 실제 조회 구간 밖의 원래 회차가 구간 안으로 이동한 경우도 포함한다. */
+export function expandEventWithExceptions<T extends EventTimeColumns & { id: string; rrule: string | null }>(
+  event: T,
+  from: Date,
+  to: Date,
+  exceptions: EventException[],
+  allDayTimezone?: string,
+): (T & Occurrence)[] {
+  const seeds = new Map<number, T & Occurrence>();
+  for (const occurrence of expandEvent(event, from, to, allDayTimezone)) {
+    seeds.set(Date.parse(occurrence.originalStart), { ...event, ...occurrence });
+  }
+  for (const exception of exceptions) {
+    if (exception.event_id !== event.id || exception.type !== 'MODIFIED') continue;
+    const original = new Date(exception.original_start);
+    if (seeds.has(original.getTime()) || !isOriginalOccurrence(event, original)) continue;
+    seeds.set(original.getTime(), { ...occurrenceTime(event, exception.original_start), originalStart: original.toISOString() });
+  }
+  return applyExceptions([...seeds.values()], exceptions).filter((occurrence) => eventOverlapsRange(occurrence, from, to, allDayTimezone));
+}
+
+/** 전체 규칙 변경·이후 삭제로 더는 존재하지 않는 예외를 되살리지 않는다. */
+export function isOriginalOccurrence(event: EventTimeColumns & { rrule: string | null }, original: Date): boolean {
+  if (!event.rrule || Number.isNaN(original.getTime())) return false;
+  const timezone = event.timezone || 'Asia/Seoul';
+  try {
+    const start = new Date(masterOriginalStart(event, timezone));
+    const rule = new RRule({ ...RRule.parseString(event.rrule), dtstart: wallClockToFloating(toWallClock(start, timezone)) });
+    const floating = wallClockToFloating(toWallClock(original, timezone));
+    return rule.between(floating, floating, true).some((date) => date.getTime() === floating.getTime());
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -307,9 +345,19 @@ export function computeRruleUntil(
     : toWallClock(new Date(event.start_at!), timezone);
 
   const rule = new RRule({ ...options, dtstart: wallClockToFloating(startWall) });
-  const all = rule.all((_, index) => index < MAX_OCCURRENCES);
-  const last = all[all.length - 1];
-  if (!last) return null;
+  // 화면 전개 제한을 종료 계산에 적용하면 401번째부터 조회에서 사라진다.
+  // 큰 규칙은 보수적으로 열린 범위(NULL)를 쓴다. 중간 날짜를 종료로 저장하면
+  // 다시 일정이 누락되므로 화면 한도와 별도로 완전한 계산 여부를 확인한다.
+  let last: Date | null = null;
+  let truncated = false;
+  rule.all((date, index) => {
+    if (index >= MAX_BOUND_OCCURRENCES) { truncated = true; return false; }
+    last = date;
+    return true;
+  });
+  if (truncated) return null;
+  // 첫 회차부터 이후 삭제한 빈 시리즈는 무한 범위(NULL)가 아닌 길이 0이다.
+  if (!last) return masterOriginalStart(event, timezone);
 
   const lastWall = floatingToWallClock(last);
   const span = durationMs(event);
@@ -317,8 +365,7 @@ export function computeRruleUntil(
   if (event.is_all_day) {
     // 종일의 끝은 마지막 날 다음 자정(배타적) — sync_event_range와 같은 규칙
     const startDate = new Date(lastWall.year, lastWall.month - 1, lastWall.day);
-    const endDate = new Date(startDate.getTime() + span);
-    endDate.setDate(endDate.getDate() + 1);
+    const endDate = parseDateKey(shiftDateKey(toDateKey(startDate), span / 86_400_000 + 1));
     return fromWallClock(
       { year: endDate.getFullYear(), month: endDate.getMonth() + 1, day: endDate.getDate(), hour: 0, minute: 0 },
       timezone,

@@ -1,0 +1,281 @@
+name: App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type SUBMIT to create and upload the production archive
+        required: true
+        type: string
+      build_number:
+        description: App Store build number (must be unused)
+        required: true
+        default: '29'
+        type: string
+  workflow_call:
+    inputs:
+      confirmation:
+        description: Type SUBMIT to create and upload the production archive
+        required: true
+        type: string
+      build_number:
+        description: App Store build number (must be unused)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-store-production
+  cancel-in-progress: false
+
+jobs:
+  archive-and-upload:
+    if: github.ref == 'refs/heads/codex/timeline-release' && inputs.confirmation == 'SUBMIT'
+    name: Signed archive and TestFlight upload
+    runs-on: [self-hosted, macOS, ARM64, calendar-macmini, xcode-26]
+    environment: app-store-production
+    timeout-minutes: 120
+    env:
+      APP_VARIANT: production
+      APP_IOS_BUNDLE_IDENTIFIER: com.hiorio.timeline
+      APPLE_TEAM_ID: W297Z9DQ9U
+      CI: '1'
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+      EXPO_PUBLIC_PUSH_ENABLED: ${{ vars.EXPO_PUBLIC_PUSH_ENABLED }}
+      EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL: ${{ vars.EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL }}
+      EXPO_NO_TELEMETRY: '1'
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      RELEASE_BUILD_NUMBER: ${{ inputs.build_number }}
+      RELEASE_VERSION: 1.4.1
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+
+    steps:
+      - name: Checkout approved release commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: true
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.2.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Validate release request
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_BUILD_NUMBER" =~ ^[1-9][0-9]*$ ]]
+          [[ "$(node -p "require('./app.json').expo.version")" == "$RELEASE_VERSION" ]]
+
+      - name: Add Homebrew tools to PATH
+        shell: bash
+        run: echo '/opt/homebrew/bin' >> "$GITHUB_PATH"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run lint
+          npm run typecheck
+          npm run test:unit
+          npm run test:regression
+          npm run typecheck:worker
+          npm run test:sql-embedded
+
+      - name: Install temporary Expo authentication
+        shell: bash
+        env:
+          EXPO_AUTH_STATE_JSON: ${{ secrets.EXPO_AUTH_STATE_JSON }}
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          state_path="$HOME/.expo/state.json"
+          state_backup="$RUNNER_TEMP/expo-state.backup"
+          echo "EXPO_STATE_PATH=$state_path" >> "$GITHUB_ENV"
+          echo "EXPO_STATE_BACKUP=$state_backup" >> "$GITHUB_ENV"
+          echo 'EXPO_STATE_INSTALLED=0' >> "$GITHUB_ENV"
+
+          if [[ -z "${EXPO_TOKEN:-}" ]]; then
+            [[ -n "${EXPO_AUTH_STATE_JSON:-}" ]]
+            mkdir -p "$(dirname "$state_path")"
+            if [[ -f "$state_path" ]]; then
+              cp "$state_path" "$state_backup"
+            fi
+            echo 'EXPO_STATE_INSTALLED=1' >> "$GITHUB_ENV"
+            printf '%s' "$EXPO_AUTH_STATE_JSON" > "$state_path"
+            chmod 600 "$state_path"
+          fi
+
+          npx --yes eas-cli@23.2.0 whoami
+
+      - name: Install temporary signing credentials
+        shell: bash
+        env:
+          APP_PROFILE_BASE64: ${{ secrets.APPLE_APP_PROVISIONING_PROFILE_BASE64 }}
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_DISTRIBUTION_CERTIFICATE_PASSWORD }}
+          WIDGET_PROFILE_BASE64: ${{ secrets.APPLE_WIDGET_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          set -euo pipefail
+          for name in APP_PROFILE_BASE64 CERTIFICATE_BASE64 CERTIFICATE_PASSWORD WIDGET_PROFILE_BASE64; do
+            [[ -n "${!name:-}" ]]
+          done
+
+          certificate="$RUNNER_TEMP/timeflower-distribution.p12"
+          app_profile="$RUNNER_TEMP/timeflower-app.mobileprovision"
+          widget_profile="$RUNNER_TEMP/timeflower-widget.mobileprovision"
+          keychain="$RUNNER_TEMP/timeflower-release.keychain-db"
+          original_keychains="$RUNNER_TEMP/original-keychains.txt"
+
+          {
+            echo "RELEASE_KEYCHAIN_PATH=$keychain"
+            echo "ORIGINAL_KEYCHAINS_PATH=$original_keychains"
+          } >> "$GITHUB_ENV"
+
+          printf '%s' "$CERTIFICATE_BASE64" | /usr/bin/base64 -D > "$certificate"
+          printf '%s' "$APP_PROFILE_BASE64" | /usr/bin/base64 -D > "$app_profile"
+          printf '%s' "$WIDGET_PROFILE_BASE64" | /usr/bin/base64 -D > "$widget_profile"
+
+          keychains=()
+          while IFS= read -r item; do
+            keychains+=("$item")
+          done < <(security list-keychains -d user | sed -E 's/^[[:space:]]*"(.*)"$/\1/')
+          printf '%s\n' "${keychains[@]}" > "$original_keychains"
+          keychain_password="$(openssl rand -hex 24)"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$certificate" -k "$keychain" -P "$CERTIFICATE_PASSWORD" -A -t cert -f pkcs12
+          if ! security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$keychain_password" \
+            "$keychain" >/dev/null 2>&1; then
+            echo '::warning::macOS could not update the imported key partition list; validating the -A import directly.'
+          fi
+          security list-keychains -d user -s "$keychain" "${keychains[@]}"
+          identities="$(security find-identity -v -p codesigning "$keychain")"
+          printf '%s\n' "$identities"
+          if grep -q '"Apple Distribution:' <<< "$identities"; then
+            signing_identity='Apple Distribution'
+          elif grep -q '"iPhone Distribution:' <<< "$identities"; then
+            signing_identity='iPhone Distribution'
+          else
+            echo 'No Apple distribution signing identity was imported.' >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
+          app_plist="$RUNNER_TEMP/timeflower-app-profile.plist"
+          widget_plist="$RUNNER_TEMP/timeflower-widget-profile.plist"
+          security cms -D -i "$app_profile" > "$app_plist"
+          security cms -D -i "$widget_profile" > "$widget_plist"
+          app_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$app_plist")"
+          app_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$app_plist")"
+          widget_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$widget_plist")"
+          widget_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$widget_plist")"
+
+          profile_dir="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$profile_dir"
+          app_destination="$profile_dir/$app_uuid.mobileprovision"
+          widget_destination="$profile_dir/$widget_uuid.mobileprovision"
+          {
+            echo "APPLE_APP_PROFILE_DESTINATION=$app_destination"
+            echo "APPLE_WIDGET_PROFILE_DESTINATION=$widget_destination"
+          } >> "$GITHUB_ENV"
+          if [[ -f "$app_destination" ]]; then cp "$app_destination" "$RUNNER_TEMP/app-profile.backup"; fi
+          if [[ -f "$widget_destination" ]]; then cp "$widget_destination" "$RUNNER_TEMP/widget-profile.backup"; fi
+          cp "$app_profile" "$app_destination"
+          cp "$widget_profile" "$widget_destination"
+
+          {
+            echo "APPLE_APP_PROFILE_UUID=$app_uuid"
+            echo "APPLE_APP_PROFILE_NAME=$app_name"
+            echo "APPLE_WIDGET_PROFILE_UUID=$widget_uuid"
+            echo "APPLE_WIDGET_PROFILE_NAME=$widget_name"
+          } >> "$GITHUB_ENV"
+
+      - name: Build signed production archive
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx --yes eas-cli@23.2.0 env:exec production "bash .github/scripts/archive-ios-release.sh" --non-interactive
+
+      - name: Upload to App Store Connect
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          set -euo pipefail
+          npx --yes eas-cli@23.2.0 submit \
+            --platform ios \
+            --profile production \
+            --path "$IPA_PATH" \
+            --wait \
+            --non-interactive
+
+      - name: Report App Store processing status
+        shell: bash
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: npx --yes eas-cli@23.2.0 submit:status --platform ios --non-interactive
+
+      - name: Remove temporary credentials
+        if: always()
+        shell: bash
+        run: |
+          set +e
+
+          if [[ -n "${APPLE_APP_PROFILE_DESTINATION:-}" ]]; then
+            if [[ -f "$RUNNER_TEMP/app-profile.backup" ]]; then
+              cp "$RUNNER_TEMP/app-profile.backup" "$APPLE_APP_PROFILE_DESTINATION"
+            else
+              rm -f "$APPLE_APP_PROFILE_DESTINATION"
+            fi
+          fi
+          if [[ -n "${APPLE_WIDGET_PROFILE_DESTINATION:-}" ]]; then
+            if [[ -f "$RUNNER_TEMP/widget-profile.backup" ]]; then
+              cp "$RUNNER_TEMP/widget-profile.backup" "$APPLE_WIDGET_PROFILE_DESTINATION"
+            else
+              rm -f "$APPLE_WIDGET_PROFILE_DESTINATION"
+            fi
+          fi
+
+          original_keychains="${ORIGINAL_KEYCHAINS_PATH:-$RUNNER_TEMP/original-keychains.txt}"
+          if [[ -f "$original_keychains" ]]; then
+            keychains=()
+            while IFS= read -r item; do
+              keychains+=("$item")
+            done < "$original_keychains"
+            security list-keychains -d user -s "${keychains[@]}"
+          fi
+          release_keychain="${RELEASE_KEYCHAIN_PATH:-$RUNNER_TEMP/timeflower-release.keychain-db}"
+          if [[ -f "$release_keychain" ]]; then
+            security delete-keychain "$release_keychain"
+          fi
+
+          if [[ "${EXPO_STATE_INSTALLED:-0}" == '1' && -n "${EXPO_STATE_PATH:-}" ]]; then
+            if [[ -f "${EXPO_STATE_BACKUP:-}" ]]; then
+              cp "$EXPO_STATE_BACKUP" "$EXPO_STATE_PATH"
+            else
+              rm -f "$EXPO_STATE_PATH"
+            fi
+          fi
+
+          rm -f \
+            "$RUNNER_TEMP/timeflower-distribution.p12" \
+            "$RUNNER_TEMP/timeflower-app.mobileprovision" \
+            "$RUNNER_TEMP/timeflower-widget.mobileprovision" \
+            "$RUNNER_TEMP/timeflower-app-profile.plist" \
+            "$RUNNER_TEMP/timeflower-widget-profile.plist"

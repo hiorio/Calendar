@@ -5,6 +5,8 @@ import { Txt } from '@/components/ui/text';
 import { Radius, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
+import { usePreferredTextStyle } from './preferred-text-style';
+
 export type FieldProps = TextInputProps & {
   label: string;
   hint?: string;
@@ -13,6 +15,7 @@ export type FieldProps = TextInputProps & {
 export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
+  const preferredTextStyle = usePreferredTextStyle([styles.input, style]);
 
   return (
     <View style={styles.wrap}>
@@ -20,6 +23,8 @@ export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldPro
         {label}
       </Txt>
       <TextInput
+        accessibilityLabel={label}
+        accessibilityHint={hint}
         placeholderTextColor={colors.textTertiary}
         onFocus={(e) => {
           setFocused(true);
@@ -37,6 +42,7 @@ export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldPro
             borderColor: focused ? colors.accent : colors.border,
           },
           style,
+          preferredTextStyle,
         ]}
         {...rest}
       />

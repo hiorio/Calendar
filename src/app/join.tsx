@@ -9,6 +9,7 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
 import { useAcceptInvite, useInvitePreview } from '@/features/calendars/invites';
 import { useTheme } from '@/hooks/use-theme';
 import { notify } from '@/lib/confirm';
@@ -22,7 +23,7 @@ const REASON_TEXT: Record<string, string> = {
 
 export default function JoinScreen() {
   const { code } = useLocalSearchParams<{ code?: string }>();
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const { isGuest } = useAuth();
 
   const preview = useInvitePreview(code);
@@ -85,8 +86,23 @@ export default function JoinScreen() {
   return (
     <Wrapper>
       <Card style={styles.inviteCard}>
-        <View style={[styles.badge, { backgroundColor: invite.calendar_color ?? colors.accent }]}>
-          <Txt variant="title" tone="onAccent">
+        <View
+          style={[
+            styles.badge,
+            {
+              backgroundColor: calendarColorForScheme(
+                invite.calendar_color ?? colors.accent,
+                scheme,
+              ),
+            },
+          ]}>
+          <Txt
+            variant="title"
+            style={{
+              color: invite.calendar_color
+                ? onColor(invite.calendar_color, scheme)
+                : colors.onAccent,
+            }}>
             {invite.calendar_name?.slice(0, 1) ?? '·'}
           </Txt>
         </View>

@@ -1,0 +1,240 @@
+name: iOS
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'assets/**'
+      - 'scripts/**'
+      - 'app.config.ts'
+      - 'app.json'
+      - 'metro.config.js'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'tsconfig.json'
+      - '.github/scripts/**'
+      - '.github/workflows/app-store.yml'
+      - '.github/workflows/ios.yml'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Run the protected App Store archive after unsigned validation
+        required: true
+        default: false
+        type: boolean
+      confirmation:
+        description: Type SUBMIT to create and upload the production archive
+        required: false
+        type: string
+      build_number:
+        description: App Store build number (must be unused)
+        required: false
+        default: '29'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: App and widgets on local Mac mini
+    runs-on: [self-hosted, macOS, ARM64, calendar-macmini, xcode-26]
+    timeout-minutes: 75
+    env:
+      APP_VARIANT: production
+      APP_IOS_BUNDLE_IDENTIFIER: com.hiorio.timeline
+      APPLE_TEAM_ID: W297Z9DQ9U
+      CI: '1'
+      EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID: ${{ vars.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID }}
+      EXPO_PUBLIC_PUSH_ENABLED: ${{ vars.EXPO_PUBLIC_PUSH_ENABLED }}
+      EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
+      EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL: ${{ vars.EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL }}
+      EXPO_NO_TELEMETRY: '1'
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+
+    steps:
+      # 이 공개 저장소의 self-hosted runner에서는 PR 코드를 실행하지 않는다.
+      # 외부 action도 변경 불가능한 커밋으로 고정한다.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          clean: true
+          persist-credentials: false
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.2.0
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Add Homebrew tools to PATH
+        run: echo '/opt/homebrew/bin' >> "$GITHUB_PATH"
+
+      - name: Report native toolchain
+        run: |
+          node --version
+          npm --version
+          xcodebuild -version
+          pod --version
+          xcrun simctl list runtimes
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run portable checks
+        run: |
+          npm run lint
+          npm run typecheck
+          npm run test:unit
+          npm run test:regression
+
+      - name: Materialize and validate production runtime settings
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run deploy:check
+          node .github/scripts/write-ios-public-env.mjs .env.production.local
+
+      - name: Generate the iOS project
+        run: npx expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios
+        run: pod install
+
+      - name: Verify generated app and widget targets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          workspace="$(find ios -maxdepth 1 -type d -name '*.xcworkspace' -print -quit)"
+          project="$(find ios -maxdepth 1 -type d -name '*.xcodeproj' -print -quit)"
+          if [[ -z "$workspace" || -z "$project" ]]; then
+            echo 'Generated Xcode workspace or project was not found.' >&2
+            exit 1
+          fi
+
+          scheme="$(basename "$project" .xcodeproj)"
+          pbxproj="$project/project.pbxproj"
+          grep -q 'ExpoWidgetsTarget' "$pbxproj"
+
+          entitlement_count="$(grep -R -l '<string>group.com.hiorio.timeline</string>' ios --include='*.entitlements' | wc -l | tr -d ' ')"
+          if [[ "$entitlement_count" -lt 2 ]]; then
+            echo 'The app and widget App Group entitlements were not both generated.' >&2
+            exit 1
+          fi
+
+          expo_plist="$(find ios -type f -name 'Expo.plist' -print -quit)"
+          if [[ -z "$expo_plist" ]]; then
+            echo 'Generated Expo.plist was not found.' >&2
+            exit 1
+          fi
+          update_channel="$(plutil -extract EXUpdatesRequestHeaders.expo-channel-name raw -o - "$expo_plist")"
+          if [[ "$update_channel" != 'production' ]]; then
+            echo "Production update channel is missing from Expo.plist: $update_channel" >&2
+            exit 1
+          fi
+
+          xcodebuild -list -workspace "$workspace"
+          echo "IOS_WORKSPACE=$workspace" >> "$GITHUB_ENV"
+          echo "IOS_SCHEME=$scheme" >> "$GITHUB_ENV"
+
+      - name: Compile launchable production app and widgets for Simulator
+        shell: bash
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -workspace "$IOS_WORKSPACE" \
+            -scheme "$IOS_SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/TimeFlowerDerivedData" \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
+            build
+
+      - name: Verify compiled app embeds the widget
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          app="$(find "$RUNNER_TEMP/TimeFlowerDerivedData/Build/Products/Release-iphonesimulator" -maxdepth 1 -type d -name '*.app' -print -quit)"
+          if [[ -z "$app" ]]; then
+            echo 'Compiled app bundle was not found.' >&2
+            exit 1
+          fi
+
+          widget="$(find "$app/PlugIns" -maxdepth 1 -type d -name '*.appex' -print -quit)"
+          if [[ -z "$widget" ]]; then
+            echo 'Compiled widget extension was not embedded in the app.' >&2
+            exit 1
+          fi
+
+          app_bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$app/Info.plist")"
+          widget_bundle_id="$(plutil -extract CFBundleIdentifier raw -o - "$widget/Info.plist")"
+          if [[ "$widget_bundle_id" != "$app_bundle_id.ExpoWidgetsTarget" ]]; then
+            echo "Unexpected widget bundle identifier: $widget_bundle_id" >&2
+            exit 1
+          fi
+
+          assert_code_signed() {
+            local bundle="$1"
+            if ! codesign --verify "$bundle"; then
+              echo "Simulator bundle is not code signed: $bundle" >&2
+              exit 1
+            fi
+          }
+
+          # The app and widget exchange serialized layouts through an App Group. An
+          # unsigned Simulator build silently loses that entitlement and renders a
+          # blank widget even though the source and extension compile successfully.
+          # Simulator entitlements are embedded in a Mach-O __entitlements section,
+          # so codesign's device-entitlement dump is not an accurate assertion here.
+          assert_code_signed "$app"
+          assert_code_signed "$widget"
+          node .github/scripts/verify-ios-runtime-config.mjs "$app"
+
+          echo "Compiled app: $app_bundle_id"
+          echo "Embedded widget: $widget_bundle_id"
+          echo "IOS_APP_PATH=$app" >> "$GITHUB_ENV"
+          echo "IOS_APP_BUNDLE_ID=$app_bundle_id" >> "$GITHUB_ENV"
+
+      - name: Add and verify the large widget in iOS Simulator
+        shell: bash
+        run: |
+          bash .github/scripts/capture-ios-large-widget.sh \
+            "$IOS_APP_PATH" \
+            "$IOS_APP_BUNDLE_ID" \
+            "$RUNNER_TEMP/timeflower-widget-evidence"
+
+      - name: Upload iOS Simulator widget evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: timeflower-system-large-widget-${{ github.run_id }}
+          path: ${{ runner.temp }}/timeflower-widget-evidence
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Remove generated production runtime settings
+        if: always()
+        shell: bash
+        run: rm -f -- "$GITHUB_WORKSPACE/.env.production.local"
+
+  release:
+    if: inputs.release && inputs.confirmation == 'SUBMIT'
+    needs: build
+    uses: ./.github/workflows/app-store.yml
+    with:
+      confirmation: ${{ inputs.confirmation }}
+      build_number: ${{ inputs.build_number }}
+    secrets: inherit

@@ -12,6 +12,8 @@ export type DateTimeFieldProps = {
   value: Date;
   mode: 'date' | 'time';
   onChange: (next: Date) => void;
+  /** 날짜와 시각을 한 행에 나란히 둘 때 바깥 라벨을 숨긴다. */
+  hideLabel?: boolean;
 };
 
 /**
@@ -21,17 +23,26 @@ export type DateTimeFieldProps = {
  * 여는 방식이다. 플랫폼 관례를 흉내 내지 않고 각자의 UI를 그대로 쓴다.
  * 웹은 이 라이브러리가 지원하지 않아 `date-time-field.web.tsx`로 갈라져 있다.
  */
-export function DateTimeField({ label, value, mode, onChange }: DateTimeFieldProps) {
+export function DateTimeField({
+  label,
+  value,
+  mode,
+  onChange,
+  hideLabel = false,
+}: DateTimeFieldProps) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
 
   if (Platform.OS === 'ios') {
     return (
-      <View style={styles.row}>
-        <Txt variant="body" tone="secondary">
-          {label}
-        </Txt>
+      <View style={[styles.row, hideLabel && styles.controlOnly]}>
+        {!hideLabel ? (
+          <Txt variant="body" tone="secondary">
+            {label}
+          </Txt>
+        ) : null}
         <DateTimePicker
+          accessibilityLabel={`${label} 선택`}
           value={value}
           mode={mode}
           display="compact"
@@ -42,10 +53,12 @@ export function DateTimeField({ label, value, mode, onChange }: DateTimeFieldPro
   }
 
   return (
-    <View style={styles.row}>
-      <Txt variant="body" tone="secondary">
-        {label}
-      </Txt>
+    <View style={[styles.row, hideLabel && styles.controlOnly]}>
+      {!hideLabel ? (
+        <Txt variant="body" tone="secondary">
+          {label}
+        </Txt>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -82,6 +95,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     minHeight: 44,
   },
+  controlOnly: { minHeight: 0 },
   button: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,

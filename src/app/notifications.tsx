@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
-import { ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Linking, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -11,23 +11,44 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useMyCalendars, useSetMuted } from '@/features/calendars/queries';
 import {
   countRegisteredDevices,
+  getDevicePushState,
   registerForPush,
-  type PushStatus,
+  unregisterPush,
 } from '@/features/notifications/push';
 import { useTheme } from '@/hooks/use-theme';
+import { env } from '@/lib/env';
 
 export default function NotificationsScreen() {
-  const { colors } = useTheme();
+  const { user } = useAuth();
+  return <NotificationSettings key={user?.id ?? 'signed-out'} />;
+}
+
+function NotificationSettings() {
+  const { colors, scheme } = useTheme();
   const { user } = useAuth();
   const calendars = useMyCalendars();
   const setMuted = useSetMuted();
   const queryClient = useQueryClient();
 
-  const [status, setStatus] = useState<PushStatus | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const changing = useRef(false);
+
+  const device = useQuery({
+    queryKey: ['push-device', user?.id],
+    enabled: Boolean(user),
+    queryFn: () => getDevicePushState(user!.id),
+  });
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void queryClient.invalidateQueries({ queryKey: ['push-device'] });
+    });
+    return () => subscription.remove();
+  }, [queryClient]);
 
   // 화면을 닫았다 열어도 상태가 남도록 서버에서 읽는다.
   // 로컬 state 만 쓰면 매번 "등록 안 됨"으로 보인다.
@@ -37,13 +58,27 @@ export default function NotificationsScreen() {
     queryFn: () => countRegisteredDevices(user!.id),
   });
 
-  async function enable() {
-    if (!user) return;
+  async function changeRegistration(enable: boolean) {
+    if (!user || changing.current) return;
+    changing.current = true;
     setChecking(true);
+    setActionError(null);
     try {
-      setStatus(await registerForPush(user.id));
-      await queryClient.invalidateQueries({ queryKey: ['device-tokens', user.id] });
+      if (enable) {
+        const result = await registerForPush(user.id);
+        if (result.state === 'needs-build' || result.state === 'unsupported') setActionError(result.reason);
+        else if (result.state === 'denied') setActionError('기기 설정에서 알림 권한을 허용해 주세요.');
+      } else {
+        await unregisterPush(user.id);
+      }
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['device-tokens', user.id] }),
+        queryClient.invalidateQueries({ queryKey: ['push-device', user.id] }),
+      ]);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : String(error));
     } finally {
+      changing.current = false;
       setChecking(false);
     }
   }
@@ -60,12 +95,11 @@ export default function NotificationsScreen() {
           </Txt>
         </View>
 
-        {/* 발송 워커가 붙기 전까지는 여기서 켜도 실제로 울리지 않는다.
-            받는다고 해 놓고 안 오는 것보다 미리 말해 두는 편이 낫다. */}
-        <Notice tone="info" title="아직 실제로 발송되지는 않습니다">
-          누가 무엇을 바꿨는지는 이미 서버에 쌓이고 있습니다. 보내 주는 부분이 붙으면
-          여기 설정 그대로 동작합니다.
-        </Notice>
+        {!env.pushEnabled ? (
+          <Notice tone="info" title="이 버전에서는 알림 발송이 활성화되지 않았습니다">
+            앱을 최신 버전으로 업데이트해 주세요. 캘린더 변경 내용은 앱에서 확인할 수 있습니다.
+          </Notice>
+        ) : null}
 
         <View style={styles.section}>
           <Txt variant="label" tone="secondary">
@@ -73,23 +107,42 @@ export default function NotificationsScreen() {
           </Txt>
 
           <Card>
-            {status === null ? (
-              <View style={styles.deviceBlock}>
-                <Txt variant="body" tone="secondary">
-                  {devices.data
-                    ? `알림을 받도록 등록된 기기 ${devices.data}대입니다. 이 기기도 켜려면 아래를 눌러 주세요.`
-                    : '아직 알림을 켠 기기가 없습니다.'}
-                </Txt>
-                <Button label="알림 켜기" loading={checking} onPress={enable} />
-              </View>
-            ) : (
-              <View style={styles.deviceBlock}>
-                <StatusLine status={status} />
-                {status.state !== 'registered' ? (
-                  <Button label="다시 시도" variant="secondary" loading={checking} onPress={enable} />
-                ) : null}
-              </View>
-            )}
+            <View style={styles.deviceBlock}>
+              {device.isPending ? <Txt tone="secondary">이 기기의 알림 상태를 확인하고 있습니다…</Txt> : null}
+              {device.isError ? (
+                <>
+                  <Notice tone="danger" title="이 기기의 알림 상태를 확인하지 못했습니다">{device.error.message}</Notice>
+                  <Button label="다시 확인" variant="secondary" loading={device.isFetching} onPress={() => void device.refetch()} />
+                </>
+              ) : device.data?.supported === false ? (
+                <Notice title="이 환경에서는 알림을 받을 수 없습니다">{device.data.reason}</Notice>
+              ) : device.data?.supported ? (
+                <>
+                  <Txt variant="body" tone="secondary">
+                    {device.data.permission === 'denied'
+                      ? '기기 설정에서 이 앱의 알림이 허용되지 않았습니다.'
+                      : device.data.registered && device.data.permission === 'allowed'
+                        ? '이 기기는 알림 수신 등록이 완료됐습니다.'
+                        : '이 기기의 알림이 꺼져 있습니다.'}
+                  </Txt>
+                  {device.data.permission === 'denied' ? (
+                    <Button label="기기 알림 설정 열기" variant="secondary" onPress={() => void Linking.openSettings().catch(() => setActionError('기기 설정을 열지 못했습니다. 설정 앱에서 알림을 확인해 주세요.'))} />
+                  ) : null}
+                  {(!device.data.registered || device.data.permission === 'undetermined') && device.data.permission !== 'denied' ? (
+                    <Button label="알림 켜기" loading={checking} onPress={() => void changeRegistration(true)} />
+                  ) : null}
+                  {device.data.locallyEnabled ? (
+                    <Button label="이 기기 알림 끄기" variant="secondary" loading={checking} onPress={() => void changeRegistration(false)} />
+                  ) : null}
+                </>
+              ) : null}
+              {actionError ? <Notice tone="danger" title="알림 설정을 완료하지 못했습니다">{actionError}</Notice> : null}
+              {devices.isError ? (
+                <Txt variant="caption" tone="danger">등록된 전체 기기 수를 확인하지 못했습니다.</Txt>
+              ) : devices.data !== undefined ? (
+                <Txt variant="caption" tone="tertiary">이 계정에 등록된 전체 기기: {devices.data}대</Txt>
+              ) : null}
+            </View>
           </Card>
         </View>
 
@@ -108,8 +161,14 @@ export default function NotificationsScreen() {
                     subtitle={calendar.muted ? '알림 꺼짐' : '일정 등록·변경, 댓글'}
                     right={
                       <View style={styles.rowRight}>
-                        <View style={[styles.dot, { backgroundColor: calendar.color }]} />
+                        <View
+                          style={[
+                            styles.dot,
+                            { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                          ]}
+                        />
                         <Switch
+                          accessibilityLabel={`${calendar.name} 캘린더 알림`}
                           value={!calendar.muted}
                           disabled={setMuted.isPending}
                           onValueChange={(on) =>
@@ -145,29 +204,6 @@ export default function NotificationsScreen() {
       </Content>
     </ScrollView>
   );
-}
-
-function StatusLine({ status }: { status: PushStatus }) {
-  switch (status.state) {
-    case 'registered':
-      return (
-        <Notice tone="info" title="이 기기로 알림을 받습니다">
-          {status.token}
-        </Notice>
-      );
-    case 'denied':
-      return (
-        <Notice tone="danger" title="알림 권한이 거부되어 있습니다">
-          기기 설정에서 이 앱의 알림을 허용해 주세요.
-        </Notice>
-      );
-    default:
-      return (
-        <Notice tone="info" title="아직 이 환경에서는 받을 수 없습니다">
-          {status.reason}
-        </Notice>
-      );
-  }
 }
 
 const styles = StyleSheet.create({

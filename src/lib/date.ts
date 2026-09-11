@@ -33,10 +33,14 @@ export function isSameMonth(a: Date, b: Date): boolean {
  * 월간 격자. 일요일 시작으로 앞뒤 달을 채워 항상 6주(42칸)를 돌려준다.
  * 주 수가 달마다 바뀌면 달을 넘길 때 격자 높이가 출렁인다.
  */
-export function buildMonthMatrix(month: Date): Date[][] {
+export type WeekStart = 'sunday' | 'monday';
+
+export function buildMonthMatrix(month: Date, weekStart: WeekStart = 'sunday'): Date[][] {
   const first = startOfMonth(month);
   const gridStart = new Date(first);
-  gridStart.setDate(1 - first.getDay());
+  const startDay = weekStart === 'monday' ? 1 : 0;
+  const leadingDays = (first.getDay() - startDay + 7) % 7;
+  gridStart.setDate(1 - leadingDays);
 
   return Array.from({ length: 6 }, (_, week) =>
     Array.from({ length: 7 }, (_, day) => {
@@ -48,6 +52,51 @@ export function buildMonthMatrix(month: Date): Date[][] {
 }
 
 export const WEEKDAY_LABELS = ['일', '월', '화', '수', '목', '금', '토'] as const;
+
+export function weekdayLabels(weekStart: WeekStart): readonly string[] {
+  return weekStart === 'monday'
+    ? [...WEEKDAY_LABELS.slice(1), WEEKDAY_LABELS[0]]
+    : WEEKDAY_LABELS;
+}
+
+/** ISO 8601 주 번호. 월요일 시작이며 그 주의 목요일이 속한 해를 기준으로 센다. */
+export function isoWeekNumber(date: Date): number {
+  const utc = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const day = utc.getUTCDay() || 7;
+  utc.setUTCDate(utc.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
+  return Math.ceil(((utc.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7);
+}
+
+/**
+ * 기기 Intl이 단기(음력) 달력을 지원할 때만 음력 일을 돌려준다.
+ * 지원하지 않는 웹 엔진에서는 빈 값으로 두어 잘못된 날짜를 보여 주지 않는다.
+ */
+export function formatLunarDay(date: Date): string | null {
+  try {
+    const formatter = new Intl.DateTimeFormat('ko-KR-u-ca-dangi', { day: 'numeric' });
+    const day = formatter.formatToParts(date).find((part) => part.type === 'day')?.value;
+    return day ? `음 ${day}` : null;
+  } catch {
+    return null;
+  }
+}
+
+/** 날짜 상세 제목 아래에 쓰는 '음력 5.21'. */
+export function formatLunarDate(date: Date): string | null {
+  try {
+    const formatter = new Intl.DateTimeFormat('ko-KR-u-ca-dangi', {
+      month: 'numeric',
+      day: 'numeric',
+    });
+    const parts = formatter.formatToParts(date);
+    const month = parts.find((part) => part.type === 'month')?.value;
+    const day = parts.find((part) => part.type === 'day')?.value;
+    return month && day ? `음력 ${month}.${day}` : null;
+  } catch {
+    return null;
+  }
+}
 
 export function formatMonthTitle(month: Date): string {
   return `${month.getFullYear()}년 ${month.getMonth() + 1}월`;
