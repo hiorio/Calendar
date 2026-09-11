@@ -52,7 +52,7 @@ import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference
 
 export default function CalendarScreen() {
   const { colors, scheme } = useTheme();
-  const { user } = useAuth();
+  const { bootstrapError, retainedUserId, user } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const calendars = useMyCalendars();
   const { hidden, toggle } = useCalendarFilter();
@@ -81,6 +81,7 @@ export default function CalendarScreen() {
     () => homeMonthSnapshotKey(month, weekStart),
     [month, weekStart],
   );
+  const snapshotUserId = user?.id ?? retainedUserId;
 
   const moveMonth = useCallback((amount: number) => {
     setMonth((current) => addMonths(current, amount));
@@ -119,7 +120,7 @@ export default function CalendarScreen() {
 
   useEffect(() => {
     let active = true;
-    const userId = user?.id;
+    const userId = snapshotUserId;
 
     if (!userId) {
       return () => {
@@ -138,7 +139,7 @@ export default function CalendarScreen() {
     return () => {
       active = false;
     };
-  }, [snapshotKey, user?.id]);
+  }, [snapshotKey, snapshotUserId]);
 
   useEffect(() => {
     if (loadAdjacentMonths || !currentPage.events.isFetched) return;
@@ -171,7 +172,7 @@ export default function CalendarScreen() {
 
   const cachedCurrentMonth =
     cachedMonth !== null &&
-    cachedMonth.userId === user?.id &&
+    cachedMonth.userId === snapshotUserId &&
     cachedMonth.snapshot.key === snapshotKey
       ? cachedMonth.snapshot
       : null;
@@ -215,6 +216,29 @@ export default function CalendarScreen() {
               <Ionicons name="chevron-down" size={17} color={colors.textTertiary} />
             </Pressable>
           </View>
+
+          {!user && bootstrapError ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="로그인 연결 복구 안내. 계정 화면 열기"
+              testID="calendar-first-recovery"
+              onPress={() => router.push('/account')}
+              style={({ pressed }) => [
+                styles.connectionNotice,
+                {
+                  backgroundColor: colors.accentSoft,
+                  opacity: pressed ? 0.76 : 1,
+                },
+              ]}>
+              <Ionicons name="cloud-offline-outline" size={16} color={colors.accent} />
+              <Txt variant="caption" style={[styles.connectionNoticeText, { color: colors.accent }]}>
+                {cachedCurrentMonth
+                  ? '연결 복구 중 · 저장된 일정 표시 중'
+                  : '연결을 복구하지 못했어요 · 계정에서 다시 연결'}
+              </Txt>
+              <Ionicons name="chevron-forward" size={14} color={colors.accent} />
+            </Pressable>
+          ) : null}
 
           <View style={styles.calendarFilterFrame}>
             <ScrollView
@@ -463,6 +487,17 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   calendarFilterFrame: { flexShrink: 0, height: 44, zIndex: 1 },
+  connectionNotice: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginHorizontal: Spacing.md,
+    marginBottom: Spacing.sm,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
+  },
+  connectionNoticeText: { flex: 1 },
   calendarStrip: { flex: 1 },
   chipRow: {
     alignItems: 'center',

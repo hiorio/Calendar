@@ -21,6 +21,12 @@ import { Button } from '@/components/ui/button';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Elevation, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-provider';
+import {
+  homeMonthSnapshotKey,
+  type HomeMonthSnapshot,
+} from '@/features/calendar/home-snapshot-cache';
+import { loadHomeMonthSnapshot } from '@/features/calendar/home-snapshot';
 import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useMyCalendars } from '@/features/calendars/queries';
 import { openDeviceCalendarEvent } from '@/features/external-calendars/device-calendar';
@@ -162,6 +168,7 @@ function DayPage({
   onEventSwipeSettled?: () => void;
 }) {
   const { colors, scheme } = useTheme();
+  const { retainedUserId, user } = useAuth();
   const { hidden } = useCalendarFilter();
   const { weekStart, showTimeZone } = useCalendarPreference();
   const dateKey = toDateKey(date);
@@ -173,6 +180,36 @@ function DayPage({
   const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end);
   const openSwipeableRef = useRef<SwipeableMethods | null>(null);
   const activeSwipeableRef = useRef<SwipeableMethods | null>(null);
+  const [cachedMonth, setCachedMonth] = useState<{
+    userId: string;
+    snapshot: HomeMonthSnapshot;
+  } | null>(null);
+  const snapshotUserId = user?.id ?? retainedUserId;
+  const daySnapshotKey = useMemo(
+    () => homeMonthSnapshotKey(startOfMonth(parseDateKey(dateKey)), weekStart),
+    [dateKey, weekStart],
+  );
+
+  useEffect(() => {
+    let active = true;
+    if (!snapshotUserId) {
+      return () => {
+        active = false;
+      };
+    }
+
+    void loadHomeMonthSnapshot(snapshotUserId, daySnapshotKey)
+      .then((snapshot) => {
+        if (active) setCachedMonth(snapshot ? { userId: snapshotUserId, snapshot } : null);
+      })
+      .catch(() => {
+        if (active) setCachedMonth(null);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [daySnapshotKey, snapshotUserId]);
 
   const dayEvents = useMemo(() => {
     const visible = (events.data ?? []).filter((event) => !hidden.includes(event.calendar_id));
@@ -193,6 +230,11 @@ function DayPage({
     visibleStickers[0] ??
     null;
   const featuredDefinition = stickerByKey(featuredSticker?.stickerKey);
+  const cachedDayEvents =
+    cachedMonth?.userId === snapshotUserId && cachedMonth.snapshot.key === daySnapshotKey
+      ? (cachedMonth.snapshot.marksByDate[dateKey] ?? [])
+      : [];
+  const offlineDeviceEvents = dayEvents.filter(isDeviceEvent);
 
   async function openEvent(event: EventOccurrence | DeviceCalendarEvent) {
     if (isDeviceEvent(event)) {
@@ -262,7 +304,7 @@ function DayPage({
                 accessibilityRole="button"
                 accessibilityLabel={`${formatDayTitle(date)} 스티커 꾸미기`}
                 accessibilityHint="대상 캘린더와 스티커를 선택합니다"
-                disabled={!onOpenSticker || stickerRemoval.isPending}
+                disabled={!user || !onOpenSticker || stickerRemoval.isPending}
                 hitSlop={8}
                 onPress={onOpenSticker}
                 style={({ pressed }) => [
@@ -279,7 +321,7 @@ function DayPage({
                 accessibilityRole="button"
                 accessibilityLabel={`${formatDayTitle(date)} 일정 추가`}
                 accessibilityHint="선택한 날짜의 일정 입력 화면을 엽니다"
-                disabled={!onOpenSticker}
+                disabled={!user || !onOpenSticker}
                 hitSlop={8}
                 onPress={() => router.push({ pathname: '/event-new', params: { date: dateKey } })}
                 style={({ pressed }) => [
@@ -374,7 +416,31 @@ function DayPage({
           </View>
         ) : null}
 
-        {events.isPending || deviceEvents.isLoading ? (
+        {!user && deviceEvents.isLoading ? (
+          <ActivityIndicator color={colors.accent} style={styles.loading} />
+        ) : !user && cachedDayEvents.length + offlineDeviceEvents.length > 0 ? (
+          <View style={styles.eventList}>
+            {cachedDayEvents.map((event, index) => (
+              <CachedDayEventRow key={`${event.id}:${index}`} event={event} index={index} />
+            ))}
+            {offlineDeviceEvents.map((event, index) => (
+              <DayEventRow
+                key={event.key}
+                event={event}
+                index={cachedDayEvents.length + index}
+                showTimeZone={showTimeZone}
+                onPress={() => void openEvent(event)}
+              />
+            ))}
+          </View>
+        ) : !user ? (
+          <View style={styles.empty}>
+            <Ionicons name="cloud-offline-outline" size={28} color={colors.textTertiary} />
+            <Txt variant="body" tone="secondary">
+              이 날짜에 저장된 일정이 없습니다
+            </Txt>
+          </View>
+        ) : events.isPending || deviceEvents.isLoading ? (
           <ActivityIndicator color={colors.accent} style={styles.loading} />
         ) : events.isError || deviceEvents.isError ? (
           <Txt variant="caption" tone="danger" style={styles.feedback}>
@@ -436,6 +502,46 @@ function DayPage({
         )}
       </Content>
     </ScrollView>
+  );
+}
+
+function CachedDayEventRow({
+  event,
+  index,
+}: {
+  event: HomeMonthSnapshot['marksByDate'][string][number];
+  index: number;
+}) {
+  const { colors, scheme } = useTheme();
+
+  return (
+    <View
+      accessibilityLabel={`${event.title} 저장된 일정`}
+      style={[
+        styles.eventRow,
+        index === 0 && styles.firstEventRow,
+        { backgroundColor: colors.background },
+      ]}>
+      <View style={styles.timeColumn}>
+        <Txt variant="label" numberOfLines={1}>
+          {event.isAllDay ? '종일' : '저장됨'}
+        </Txt>
+      </View>
+      <View
+        style={[
+          styles.eventBar,
+          { backgroundColor: calendarColorForScheme(event.color, scheme) },
+        ]}
+      />
+      <View style={styles.eventText}>
+        <Txt variant="subtitle" numberOfLines={1} style={styles.eventTitle}>
+          {event.title}
+        </Txt>
+        <Txt variant="caption" tone="tertiary" numberOfLines={1}>
+          연결되면 상세 정보를 확인할 수 있어요
+        </Txt>
+      </View>
+    </View>
   );
 }
 

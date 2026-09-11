@@ -69,6 +69,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     googleIosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID?.trim() || undefined,
   };
 
+  if (
+    isProduction &&
+    (!publicRuntimeConfig.supabaseUrl || !publicRuntimeConfig.supabaseAnonKey)
+  ) {
+    throw new Error(
+      'Production config requires EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.',
+    );
+  }
+
   const extra: ExpoConfig['extra'] = {
     ...config.extra,
     appVariant: variant,

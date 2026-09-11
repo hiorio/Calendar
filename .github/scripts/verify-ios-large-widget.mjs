@@ -1,15 +1,26 @@
 import { execFileSync } from 'node:child_process';
-import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  appendFileSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { resolve } from 'node:path';
 
 import { createAgentDeviceClient } from 'agent-device';
 
-const [udid, bundleId, evidenceArgument] = process.argv.slice(2);
-if (!udid || !bundleId || !evidenceArgument) {
-  throw new Error('usage: verify-ios-large-widget.mjs <simulator-udid> <bundle-id> <evidence-directory>');
+const [udid, bundleId, evidenceArgument, appPathArgument] = process.argv.slice(2);
+if (!udid || !bundleId || !evidenceArgument || !appPathArgument) {
+  throw new Error(
+    'usage: verify-ios-large-widget.mjs <simulator-udid> <bundle-id> <evidence-directory> <app-path>',
+  );
 }
 
 const evidenceDirectory = resolve(evidenceArgument);
+const appPath = resolve(appPathArgument);
 mkdirSync(evidenceDirectory, { recursive: true });
 const transcriptPath = resolve(evidenceDirectory, 'transcript.log');
 const session = `timeflower-widget-${process.env.GITHUB_RUN_ID ?? process.pid}`;
@@ -94,6 +105,42 @@ function ocr(screenshotResult, name) {
   saveJson(`${name}-ocr.json`, lines);
   record(`ocr: ${name}`, lines);
   return lines;
+}
+
+function authContinuityFingerprint(dataContainer) {
+  const userIds = new Set();
+  const pending = [dataContainer];
+  let scannedFiles = 0;
+
+  while (pending.length) {
+    const directory = pending.pop();
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        pending.push(path);
+        continue;
+      }
+      if (!entry.isFile()) continue;
+
+      const size = statSync(path).size;
+      if (size === 0 || size > 32 * 1024 * 1024) continue;
+      scannedFiles += 1;
+      const text = readFileSync(path).toString('utf8');
+      for (const match of text.matchAll(/"userId"\s*:\s*"([0-9a-f-]{36})"/gi)) {
+        userIds.add(match[1].toLowerCase());
+      }
+    }
+  }
+
+  if (!userIds.size) {
+    throw new Error('the app data container has no saved auth continuity user');
+  }
+
+  return {
+    digest: createHash('sha256').update([...userIds].sort().join('\n')).digest('hex'),
+    candidateCount: userIds.size,
+    scannedFiles,
+  };
 }
 
 const initialScreenFailures = [
@@ -353,6 +400,52 @@ try {
   // necessarily finish. Keep the app active long enough for WidgetSync to publish
   // its initial App Group timeline before moving to SpringBoard.
   await new Promise((complete) => setTimeout(complete, 8_000));
+
+  // Installing a new TestFlight build replaces the app bundle but must retain the
+  // data container and Supabase identity. Reinstall the exact Release .app over the
+  // running installation and compare only a one-way fingerprint of the saved user id.
+  const dataContainer = execFileSync(
+    'xcrun',
+    ['simctl', 'get_app_container', udid, bundleId, 'data'],
+    { encoding: 'utf8' },
+  ).trim();
+  const beforeUpdate = authContinuityFingerprint(dataContainer);
+  execFileSync('xcrun', ['simctl', 'install', udid, appPath], {
+    encoding: 'utf8',
+    maxBuffer: 8 * 1024 * 1024,
+  });
+  const reopened = await client.apps.open({
+    ...device,
+    app: bundleId,
+    relaunch: true,
+    foreground: true,
+    timeoutMs: 120_000,
+  });
+  saveJson('01-app-after-update-open.json', reopened);
+  await waitForInitialCalendar();
+  await new Promise((complete) => setTimeout(complete, 2_000));
+  const updatedDataContainer = execFileSync(
+    'xcrun',
+    ['simctl', 'get_app_container', udid, bundleId, 'data'],
+    { encoding: 'utf8' },
+  ).trim();
+  const afterUpdate = authContinuityFingerprint(updatedDataContainer);
+  if (beforeUpdate.digest !== afterUpdate.digest) {
+    throw new Error('the authenticated user changed after installing an app update');
+  }
+  saveJson('01-app-update-continuity.json', {
+    preserved: true,
+    beforeCandidateCount: beforeUpdate.candidateCount,
+    afterCandidateCount: afterUpdate.candidateCount,
+    scannedFilesBefore: beforeUpdate.scannedFiles,
+    scannedFilesAfter: afterUpdate.scannedFiles,
+  });
+  record('app-update authentication continuity verified', {
+    preserved: true,
+    candidateCount: afterUpdate.candidateCount,
+  });
+  const appAfterUpdateCapture = await screenshot('01-app-after-update', 3);
+  ocr(appAfterUpdateCapture, '01-app-after-update');
 
   const springboardOpen = await client.apps.open({
     ...device,

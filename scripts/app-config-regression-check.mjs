@@ -48,7 +48,15 @@ try {
     googleIosClientId: '123456-runtime-test.apps.googleusercontent.com',
   });
 
-  console.log('\nApp config regressions: 7 passed');
+  delete process.env.EXPO_PUBLIC_SUPABASE_URL;
+  delete process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  assert.throws(
+    () => configFor('production'),
+    /Production config requires EXPO_PUBLIC_SUPABASE_URL/,
+    'production config must fail before emitting a bundle without backend settings',
+  );
+
+  console.log('\nApp config regressions: 8 passed');
 } finally {
   for (const name of managedEnvironment) {
     const original = originalEnvironment[name];

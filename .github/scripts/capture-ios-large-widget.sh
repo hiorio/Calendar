@@ -80,7 +80,8 @@ set +e
 node .github/scripts/verify-ios-large-widget.mjs \
   "$udid" \
   "$bundle_id" \
-  "$evidence_directory"
+  "$evidence_directory" \
+  "$app_path"
 verification_status=$?
 set -e
 

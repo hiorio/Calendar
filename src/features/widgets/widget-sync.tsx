@@ -328,7 +328,7 @@ function privacyPreferencesHydrated() {
 
 /** 앱이 알고 있는 RLS 적용 결과만 WidgetKit 공유 저장소에 복사한다. 세션 키는 넘기지 않는다. */
 export function WidgetSync() {
-  const { user } = useAuth();
+  const { retainedUserId, user } = useAuth();
   const calendars = useMyCalendars();
   const { weekStart } = useCalendarPreference();
   const hiddenCalendarIds = useCalendarFilter((state) => state.hidden);
@@ -386,6 +386,10 @@ export function WidgetSync() {
   }, []);
 
   useEffect(() => {
+    // 업데이트/설정 오류로 세션을 잠시 못 읽는 동안에는 마지막 사용자의 위젯을
+    // 빈 스냅샷으로 덮어쓰지 않는다. 명시적 로그아웃은 연속성 표식도 지운다.
+    if (!user && retainedUserId) return;
+
     const userId = user?.id ?? null;
     // 쿼리가 로딩/실패 중이어도 표시 범위가 바뀌면 이전 스냅샷부터 지운다.
     // AsyncStorage 복원이 끝나기 전 기본값(app/hidden=[])으로 개인 내용을 쓰지 않는다.
@@ -496,6 +500,7 @@ export function WidgetSync() {
     preferredScheme,
     privacyReady,
     quickAddCalendarId,
+    retainedUserId,
     selectedCalendarIds,
     showQuickActions,
     theme,

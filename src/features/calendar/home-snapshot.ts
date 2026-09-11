@@ -10,6 +10,19 @@ const STORAGE_KEY = 'timeline-home-month-snapshot-v1';
 
 let writeQueue: Promise<void> = Promise.resolve();
 
+/** 세션 복구 전에도 같은 설치에 남은 캘린더를 그릴 수 있게 소유자만 읽는다. */
+export async function loadHomeSnapshotOwnerId(): Promise<string | null> {
+  const raw = await AsyncStorage.getItem(STORAGE_KEY);
+  const cache = parseHomeSnapshotCache(raw);
+
+  if (!cache) {
+    if (raw !== null) await AsyncStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
+
+  return cache.userId;
+}
+
 export async function loadHomeMonthSnapshot(
   userId: string,
   monthKey: string,

@@ -42,6 +42,45 @@ const deferred = () => {
 };
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 
+const continuityStore = storage();
+const continuity = load('src/features/auth/auth-continuity.ts', {
+  '@react-native-async-storage/async-storage': { default: continuityStore },
+});
+await check('auth continuity keeps the last installation user without storing credentials', async () => {
+  await continuity.saveAuthContinuity({ id: 'existing-user', is_anonymous: false });
+  const remembered = await continuity.loadAuthContinuity();
+  assert.equal(remembered.userId, 'existing-user');
+  assert.equal(remembered.isAnonymous, false);
+  assert.equal('access_token' in remembered, false);
+  await continuity.clearAuthContinuity();
+  assert.equal(await continuity.loadAuthContinuity(), null);
+});
+
+const snapshotStore = storage();
+const snapshotCache = load('src/features/calendar/home-snapshot-cache.ts', {});
+const homeSnapshot = load('src/features/calendar/home-snapshot.ts', {
+  '@react-native-async-storage/async-storage': { default: snapshotStore },
+  '@/features/calendar/home-snapshot-cache': snapshotCache,
+});
+await check('calendar snapshot owner remains readable before auth recovery', async () => {
+  const snapshot = {
+    key: '2026-09:sunday',
+    savedAt: '2026-09-11T00:00:00.000Z',
+    marksByDate: {
+      '2026-09-11': [
+        { id: 'event', title: '보존된 일정', color: '#1B54A8', isAllDay: true },
+      ],
+    },
+    stickersByDate: {},
+  };
+  await homeSnapshot.saveHomeMonthSnapshot('existing-user', snapshot);
+  assert.equal(await homeSnapshot.loadHomeSnapshotOwnerId(), 'existing-user');
+  assert.deepEqual(
+    await homeSnapshot.loadHomeMonthSnapshot('existing-user', '2026-09:sunday'),
+    snapshot,
+  );
+});
+
 const pendingKey = 'auth.pendingGuestDataTransfer.v1';
 const store = storage();
 let currentUser = { id: 'G1', is_anonymous: true };
@@ -214,6 +253,43 @@ function componentMocks(react) {
   for (const [path, name] of [['button', 'Button'], ['card', 'Card'], ['empty-state', 'EmptyState'], ['field', 'Field'], ['segmented', 'Segmented'], ['screen', 'Content'], ['text', 'Txt']]) mocks[`@/components/ui/${path}`] = { [name]: name };
   return mocks;
 }
+await check('missing auth renders the calendar tabs instead of redirecting to account', () => {
+  const navigations = [];
+  function Tabs() {}
+  Tabs.Screen = 'TabsScreen';
+  const appLayout = load('src/app/(app)/_layout.tsx', {
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
+    'expo-router': { Tabs, router: { push: (href) => navigations.push(href) } },
+    'react/jsx-runtime': jsx,
+    'react-native': {
+      Platform: { OS: 'ios', select: (values) => values.ios ?? values.default },
+      StyleSheet: { create: (values) => values, hairlineWidth: 1 },
+    },
+    '@/components/ui/preferred-text-style': { usePreferredTextStyle: () => ({}) },
+    '@/constants/theme': { Typography: { caption: {} } },
+    '@/features/auth/auth-provider': {
+      useAuth: () => ({ session: null, isLoading: false }),
+    },
+    '@/hooks/use-theme': {
+      useTheme: () => ({
+        colors: {
+          accent: 'accent',
+          textTertiary: 'tertiary',
+          chrome: 'chrome',
+          chromeBorder: 'border',
+        },
+      }),
+    },
+  }).default;
+
+  const tree = appLayout();
+  assert.equal(tree.type, Tabs);
+  const addTab = tree.props.children.find((child) => child.props.name === 'new');
+  let prevented = false;
+  addTab.props.listeners.tabPress({ preventDefault: () => { prevented = true; } });
+  assert.equal(prevented, true);
+  assert.equal(navigations[0].pathname, '/account');
+});
 await check('keyboard plus button submits one quick event and completion cannot pop an unmounted screen', async () => {
   const harness = hooks();
   const request = deferred();

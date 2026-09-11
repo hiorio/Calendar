@@ -298,9 +298,14 @@ gh workflow run app-store.yml --ref codex/timeline-release `
 OTA 배포 예:
 
 ```bash
-npx eas-cli update --channel preview --environment preview --message "달력 화면 개선"
-npx eas-cli update --channel production --environment production --message "1.0.0 수정"
+APP_VARIANT=preview npx eas-cli update --channel preview --environment preview --message "달력 화면 개선"
+APP_VARIANT=production npx eas-cli update --channel production --environment production --message "1.0.0 수정"
 ```
+
+`APP_VARIANT`를 생략하면 채널과 다른 앱 설정으로 번들할 수 있으므로 반드시 함께 지정합니다.
+특히 production은 Supabase 공개 설정이 없으면 app config 생성 단계에서 중단합니다. 게시 전에는
+같은 환경에서 iOS export를 만든 뒤 `npm run update:verify -- <export-directory>`로 실제 Hermes
+번들과 manifest용 설정을 검사합니다.
 
 다음 변경은 OTA만으로 전달할 수 없습니다. `app.json`의 `version`을 올리고 새 iOS 빌드를
 만듭니다.

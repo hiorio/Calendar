@@ -42,6 +42,7 @@ const MODES = [
 export default function AccountScreen() {
   const { colors, scheme } = useTheme();
   const {
+    user,
     isGuest,
     bootstrapError,
     createAccount,
@@ -54,7 +55,9 @@ export default function AccountScreen() {
     mode?: Mode;
   }>();
 
-  const [mode, setMode] = useState<Mode>(requestedMode === 'sign-in' ? 'sign-in' : 'create');
+  const [mode, setMode] = useState<Mode>(
+    requestedMode === 'sign-in' || !user ? 'sign-in' : 'create',
+  );
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [nickname, setNickname] = useState('');
@@ -67,7 +70,8 @@ export default function AccountScreen() {
 
   const busy = pending !== null;
   const disabled = busy || !isSupabaseConfigured;
-  const creating = mode === 'create';
+  const activeMode: Mode = user ? mode : 'sign-in';
+  const creating = activeMode === 'create';
   const googleNativeConfigMissing = Platform.OS === 'ios' && !isNativeGoogleSignInSupported;
   const googleDisabled =
     disabled || googleNativeConfigMissing || providerAvailability?.google !== true;
@@ -195,16 +199,16 @@ export default function AccountScreen() {
           </View>
 
           {!isSupabaseConfigured && (
-            <Notice tone="danger" title="Supabase 설정이 필요합니다">
-              프로젝트 루트에 .env를 만들고 EXPO_PUBLIC_SUPABASE_URL / _ANON_KEY 를 채운 뒤 개발
-              서버를 다시 시작하세요.
+            <Notice tone="danger" title="앱 연결을 복구하지 못했습니다">
+              앱을 완전히 종료한 뒤 다시 열어 주세요. 저장된 일정은 캘린더 화면에서 계속 볼 수
+              있습니다.
             </Notice>
           )}
 
-          {bootstrapError && (
-            <Notice tone="danger" title="게스트로 시작할 수 없습니다">
-              Supabase 프로젝트에서 익명 로그인을 켜야 가입 없이 쓸 수 있습니다. 우선은 계정을
-              만들어 주세요.
+          {bootstrapError && isSupabaseConfigured && (
+            <Notice tone="danger" title="로그인을 복구하지 못했습니다">
+              기존 로그인과 저장된 일정은 지우지 않았습니다. 네트워크를 확인하고 앱을 다시 열거나
+              아래에서 기존 계정으로 로그인해 주세요.
             </Notice>
           )}
 
@@ -215,8 +219,8 @@ export default function AccountScreen() {
           )}
 
           <Segmented
-            options={MODES}
-            value={mode}
+            options={user ? MODES : MODES.filter((option) => option.value === 'sign-in')}
+            value={activeMode}
             onChange={(next) => {
               setMode(next);
               setMessage(null);

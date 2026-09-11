@@ -86,6 +86,7 @@
     "icons": "node scripts/make-icons.mjs",
     "db:types": "supabase gen types typescript --local > src/types/database.generated.ts",
     "deploy:check": "node scripts/check-deploy-env.mjs",
+    "update:verify": "node scripts/verify-update-runtime-config.mjs",
     "links:generate": "node scripts/write-link-associations.mjs",
     "sentry:upload-update": "sentry-expo-upload-sourcemaps dist",
     "web:export": "expo export --platform web"

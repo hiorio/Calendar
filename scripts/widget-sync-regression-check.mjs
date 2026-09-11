@@ -45,6 +45,7 @@ const persist = { hasHydrated: () => hydrated, onHydrate: () => () => {}, onFini
 function storeHook(name) { const hook = (select) => select(stores[name]); hook.persist = persist; return hook; }
 
 let user = { id: 'A' };
+let retainedUserId = 'A';
 let calendars = [
   { id: 'allowed', name: '선택', color: colors.DEFAULT_CALENDAR_COLOR },
   { id: 'private', name: '비공개', color: colors.DEFAULT_CALENDAR_COLOR },
@@ -94,7 +95,7 @@ const mocks = {
   } } },
   'expo-linking': { createURL: (path, options) => `app://${path}${options ? `?${JSON.stringify(options.queryParams)}` : ''}` },
   '@/constants/theme': { ThemePalettes: { apricot: { light: palette, dark: palette } } },
-  '@/features/auth/auth-provider': { useAuth: () => ({ user }) },
+  '@/features/auth/auth-provider': { useAuth: () => ({ retainedUserId, user }) },
   '@/features/calendar/month-layout': layout,
   '@/features/calendars/colors': colors,
   '@/features/calendars/queries': { useMyCalendars: () => ({ data: calendars }) },
@@ -207,14 +208,20 @@ check('calendar publication failure does not block memo publication and retries 
   assert.ok(lastTimeline('memo'));
   assert.equal(entries.filter((entry) => entry.method === 'snapshot').length, 0);
 });
-check('signout clears previous snapshots even with cached query data still present', () => {
+check('temporary auth loss preserves the last published widget snapshot', () => {
   user = null;
+  render();
+  assert.equal(entries.length, 0);
+});
+check('signout clears previous snapshots even with cached query data still present', () => {
+  retainedUserId = null;
   render();
   assert.equal(entries.length, 2);
   assert.ok(entries.every((entry) => entry.method === 'snapshot' && entry.props.events.length === 0));
 });
 check('account switch with unavailable calendars leaves cleared snapshots', () => {
   user = { id: 'B' };
+  retainedUserId = 'B';
   calendars = undefined;
   render();
   assert.equal(entries.length, 2);

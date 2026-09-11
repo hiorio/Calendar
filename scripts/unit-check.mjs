@@ -39,6 +39,15 @@ const { parseSocialProviderAvailability } =
   await import('../src/features/auth/provider-settings-parser.ts');
 const { resolvePublicRuntimeConfig } = await import('../src/lib/runtime-config.ts');
 const {
+  AUTH_STORAGE_KEY,
+  UNCONFIGURED_AUTH_STORAGE_KEY,
+  authStorageForRuntime,
+  createMigratingAuthStorage,
+  legacySupabaseAuthStorageKey,
+} = await import('../src/lib/auth-storage.ts');
+const { shouldCreateGuestSession } =
+  await import('../src/features/auth/bootstrap-policy.ts');
+const {
   applyTimePickerParts,
   composeMinute,
   minuteDigitOptions,
@@ -635,6 +644,58 @@ console.log('\n12. 배포 런타임 설정');
       googleIosClientId: undefined,
     },
   );
+}
+
+// ---------------------------------------------------------------------------
+console.log('\n13. 업데이트 뒤 로그인 연속성');
+{
+  const legacyKey = legacySupabaseAuthStorageKey('https://project-ref.supabase.co');
+  eq('기존 Supabase 세션 키를 같은 규칙으로 찾는다', legacyKey, 'sb-project-ref-auth-token');
+
+  const values = new Map([[legacyKey, 'old-session']]);
+  const storage = {
+    getItem: async (key) => values.get(key) ?? null,
+    setItem: async (key, value) => {
+      values.set(key, value);
+    },
+    removeItem: async (key) => {
+      values.delete(key);
+    },
+  };
+  const migrated = createMigratingAuthStorage(storage, 'https://project-ref.supabase.co');
+
+  eq('업데이트 첫 실행은 기존 세션을 고정 키로 옮겨 읽는다', await migrated.getItem(AUTH_STORAGE_KEY), 'old-session');
+  eq('이관된 세션은 다음 실행에도 고정 키에 남는다', values.get(AUTH_STORAGE_KEY), 'old-session');
+
+  await migrated.setItem(AUTH_STORAGE_KEY, 'refreshed-session');
+  eq('토큰 갱신은 고정 키와 롤백용 기존 키를 함께 유지한다',
+    [values.get(AUTH_STORAGE_KEY), values.get(legacyKey)],
+    ['refreshed-session', 'refreshed-session']);
+
+  await migrated.removeItem(AUTH_STORAGE_KEY);
+  check('명시적 로그아웃은 두 세션 키를 모두 지운다',
+    !values.has(AUTH_STORAGE_KEY) && !values.has(legacyKey));
+
+  values.set(AUTH_STORAGE_KEY, 'must-survive');
+  const unavailable = authStorageForRuntime(
+    storage,
+    'http://localhost:54321',
+    false,
+  );
+  eq('설정 없는 클라이언트는 별도 저장 키를 쓴다',
+    unavailable.storageKey, UNCONFIGURED_AUTH_STORAGE_KEY);
+  eq('설정 없는 클라이언트는 정상 세션을 읽지 못한다',
+    await unavailable.storage.getItem(UNCONFIGURED_AUTH_STORAGE_KEY), null);
+  await unavailable.storage.removeItem(UNCONFIGURED_AUTH_STORAGE_KEY);
+  eq('설정 없는 클라이언트의 정리는 정상 세션을 지우지 않는다',
+    values.get(AUTH_STORAGE_KEY), 'must-survive');
+
+  check('사용 흔적이 있으면 빈 게스트로 덮어쓰지 않는다',
+    !shouldCreateGuestSession({ isConfigured: true, rememberedUserId: 'existing-user' }));
+  check('운영 설정이 없으면 새 게스트 요청도 보내지 않는다',
+    !shouldCreateGuestSession({ isConfigured: false, rememberedUserId: null }));
+  check('설정이 정상인 완전한 새 설치만 게스트로 시작한다',
+    shouldCreateGuestSession({ isConfigured: true, rememberedUserId: null }));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

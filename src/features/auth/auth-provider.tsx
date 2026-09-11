@@ -23,7 +23,16 @@ import {
   discardPendingGuestDataTransfer,
   prepareGuestDataTransfer,
 } from '@/features/auth/guest-data-transfer';
-import { clearHomeSnapshotCache } from '@/features/calendar/home-snapshot';
+import {
+  clearAuthContinuity,
+  loadAuthContinuity,
+  saveAuthContinuity,
+} from '@/features/auth/auth-continuity';
+import { shouldCreateGuestSession } from '@/features/auth/bootstrap-policy';
+import {
+  clearHomeSnapshotCache,
+  loadHomeSnapshotOwnerId,
+} from '@/features/calendar/home-snapshot';
 import {
   retryPendingPushRelink,
   subscribeToPushTokenChanges,
@@ -32,6 +41,7 @@ import {
   withPushStateClearedAfterAccountDeletion,
   withPushUnregisteredForSessionEnd,
 } from '@/features/notifications/push';
+import { isSupabaseConfigured } from '@/lib/env';
 import { supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
@@ -43,6 +53,8 @@ type AuthContextValue = {
   isGuest: boolean;
   /** 게스트 세션조차 못 만든 경우 (프로젝트에서 익명 로그인이 꺼져 있는 등) */
   bootstrapError: Error | null;
+  /** 세션을 잠시 못 읽어도 같은 설치의 로컬 캘린더를 찾기 위한 마지막 사용자 */
+  retainedUserId: string | null;
 
   /** 게스트 → 정식 계정. 지금까지 쓴 데이터를 그대로 들고 간다 */
   createAccount: (email: string, password: string, nickname: string) => Promise<CreateAccountResult>;
@@ -73,12 +85,19 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [bootstrapError, setBootstrapError] = useState<Error | null>(null);
+  const [retainedUserId, setRetainedUserId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   useEffect(() => {
     let active = true;
     // 캐시를 비울지 판단하는 기준. 세션이 아니라 **사용자 id**를 본다.
     let lastUserId: string | null = null;
+    const bootstrapTimeout = setTimeout(() => {
+      if (!active) return;
+      // 인증 서버가 느리거나 설정을 읽지 못해도 로컬 캘린더부터 연다.
+      setBootstrapError(new Error('로그인 복구가 지연되고 있습니다.'));
+      setIsLoading(false);
+    }, 4_000);
 
     const { data: listener } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       if (!active) return;
@@ -101,16 +120,44 @@ export function AuthProvider({ children }: PropsWithChildren) {
 
       setSession(nextSession);
       if (nextSession) {
+        setRetainedUserId(nextUserId);
+        void saveAuthContinuity(nextSession.user).catch(() => undefined);
         setBootstrapError(null);
         setIsLoading(false);
+        clearTimeout(bootstrapTimeout);
       }
     });
 
     (async () => {
-      const { data } = await supabase.auth.getSession();
+      // 새 고정 세션 키가 도입되기 전 설치도 보호한다. 연속성 표식이 아직 없으면
+      // 홈 스냅샷의 소유자를 같은 설치의 마지막 사용자로 사용한다.
+      const [continuity, snapshotOwnerId] = await Promise.all([
+        loadAuthContinuity().catch(() => null),
+        loadHomeSnapshotOwnerId().catch(() => null),
+      ]);
+      const rememberedUserId = continuity?.userId ?? snapshotOwnerId;
       if (!active) return;
+      setRetainedUserId(rememberedUserId);
+
+      if (!isSupabaseConfigured) {
+        setBootstrapError(new Error('앱 연결 설정을 불러오지 못했습니다.'));
+        setIsLoading(false);
+        clearTimeout(bootstrapTimeout);
+        return;
+      }
+
+      const { data, error: sessionError } = await supabase.auth.getSession();
+      if (!active) return;
+      if (sessionError) {
+        setBootstrapError(sessionError);
+        setIsLoading(false);
+        clearTimeout(bootstrapTimeout);
+        return;
+      }
 
       if (data.session) {
+        setRetainedUserId(data.session.user.id);
+        void saveAuthContinuity(data.session.user).catch(() => undefined);
         // 인증 전환 뒤 앱이 종료됐거나 성공 응답만 유실된 경우를 복구한다. 이관 RPC는
         // 같은 대상 계정의 재호출을 멱등 처리한다.
         if (!data.session.user.is_anonymous) {
@@ -130,8 +177,32 @@ export function AuthProvider({ children }: PropsWithChildren) {
         // 다시 넣지 않고 현재 인증 상태를 읽는다.
         const restored = await supabase.auth.getSession();
         if (!active) return;
-        setSession(restored.data.session);
+        if (restored.data.session) {
+          setSession(restored.data.session);
+          setRetainedUserId(restored.data.session.user.id);
+          void saveAuthContinuity(restored.data.session.user).catch(() => undefined);
+          setBootstrapError(null);
+        } else {
+          setBootstrapError(
+            restored.error ?? new Error('저장된 로그인을 복구하지 못했습니다.'),
+          );
+        }
         setIsLoading(false);
+        clearTimeout(bootstrapTimeout);
+        return;
+      }
+
+      // 기존 사용 흔적이 있는데 세션만 안 보이는 경우 새 게스트를 만들면 다른 사용자로
+      // 바뀌고 빈 캘린더가 저장된다. 원래 세션과 로컬 스냅샷을 그대로 보존한다.
+      if (
+        !shouldCreateGuestSession({
+          isConfigured: isSupabaseConfigured,
+          rememberedUserId,
+        })
+      ) {
+        setBootstrapError(new Error('저장된 로그인을 복구하지 못했습니다.'));
+        setIsLoading(false);
+        clearTimeout(bootstrapTimeout);
         return;
       }
 
@@ -141,12 +212,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
       if (error) {
         setBootstrapError(error);
         setIsLoading(false);
+        clearTimeout(bootstrapTimeout);
       }
       // 성공하면 onAuthStateChange가 세션을 채우며 isLoading을 내린다
     })();
 
     return () => {
       active = false;
+      clearTimeout(bootstrapTimeout);
       listener.subscription.unsubscribe();
     };
   }, [queryClient]);
@@ -168,6 +241,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
       isLoading,
       isGuest: session?.user?.is_anonymous ?? false,
       bootstrapError,
+      retainedUserId,
 
       async createAccount(email, password, nickname) {
         // 게스트 사용자에 이메일/비밀번호를 붙인다. user.id가 그대로라 데이터가 유지된다.
@@ -281,6 +355,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
           const { error } = await supabase.auth.signOut();
           if (error) throw error;
           await clearHomeSnapshotBestEffort();
+          await clearAuthContinuityBestEffort();
+          setRetainedUserId(null);
           // 로그인 화면에 가두지 않는다. 곧바로 새 게스트 세션으로 되돌린다.
           const { error: guestError } = await supabase.auth.signInAnonymously();
           if (guestError) setBootstrapError(guestError);
@@ -300,6 +376,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
           // 서버에서 사용자가 사라졌다. device_tokens도 cascade로 함께 사라진다.
           await supabase.auth.signOut();
           queryClient.clear();
+          await clearAuthContinuityBestEffort();
+          setRetainedUserId(null);
 
           // 로그아웃과 같은 규칙 — 로그인 화면에 가두지 않는다. 계정을 지웠으니
           // 앱을 처음 켠 것과 같은 상태로 돌려놓는다.
@@ -308,7 +386,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
         });
       },
     }),
-    [session, isLoading, bootstrapError, queryClient],
+    [session, isLoading, bootstrapError, retainedUserId, queryClient],
   );
 
   return <AuthContext value={value}>{children}</AuthContext>;
@@ -327,6 +405,15 @@ async function clearHomeSnapshotBestEffort(): Promise<void> {
     // 로컬 표시 캐시 삭제 실패가 로그인·로그아웃·계정 삭제를 막아서는 안 된다.
     // 새 화면에서도 저장된 userId를 현재 세션과 다시 대조하므로 다른 사용자의
     // 스냅샷이 화면에 표시되지는 않는다.
+  }
+}
+
+async function clearAuthContinuityBestEffort(): Promise<void> {
+  try {
+    await clearAuthContinuity();
+  } catch {
+    // 명시적 로그아웃은 Supabase 세션 삭제를 이미 끝냈다. 보조 표식 삭제 실패가
+    // 새 게스트 시작을 막지 않으며 다음 유효 세션이 값을 덮어쓴다.
   }
 }
 
