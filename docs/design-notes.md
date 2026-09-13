@@ -1261,6 +1261,11 @@ archive하며, workflow는 production environment·작업 브랜치·명시적 �
 EAS Build와 로컬 EAS Build는 사용하지 않습니다. 업로드가 끝났다는 사실과 App Review에
 제출됐다는 사실은 구분해 확인합니다.
 
+Expo 인증 상태를 workflow secret으로 임시 설치할 때는 비어 있지 않은 유효한 JSON인지 먼저
+검사합니다. 저장된 인증이 없거나 만료됐다면 Mac mini에 이미 로그인된 상태를 사용하고, 임시
+인증이 실패하면 덮어쓰기 전 백업을 즉시 복원해 한 번 더 검증합니다. 공백 secret이 정상적인
+로컬 로그인을 가리는 상태로 배포 전체를 중단하지 않습니다.
+
 production에서 원격 푸시가 활성화돼 있으므로 꺼져 있다고 적힌 개인정보 처리방침도 실제
 처리와 맞췄습니다. 알림 허용 시 Expo 토큰과 전달에 필요한 일정·댓글 정보를 Supabase와
 Expo가 처리하며, Sentry 원격 진단은 계속 비활성입니다.

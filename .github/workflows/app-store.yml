@@ -114,22 +114,45 @@ jobs:
           set -euo pipefail
           state_path="$HOME/.expo/state.json"
           state_backup="$RUNNER_TEMP/expo-state.backup"
+          auth_state_installed=0
+          auth_ok=0
           echo "EXPO_STATE_PATH=$state_path" >> "$GITHUB_ENV"
           echo "EXPO_STATE_BACKUP=$state_backup" >> "$GITHUB_ENV"
-          echo 'EXPO_STATE_INSTALLED=0' >> "$GITHUB_ENV"
 
           if [[ -z "${EXPO_TOKEN:-}" ]]; then
-            [[ -n "${EXPO_AUTH_STATE_JSON:-}" ]]
-            mkdir -p "$(dirname "$state_path")"
-            if [[ -f "$state_path" ]]; then
-              cp "$state_path" "$state_backup"
+            if node -e '
+              const value = process.env.EXPO_AUTH_STATE_JSON?.trim();
+              if (!value) process.exit(1);
+              JSON.parse(value);
+            '; then
+              mkdir -p "$(dirname "$state_path")"
+              if [[ -f "$state_path" ]]; then
+                cp "$state_path" "$state_backup"
+              fi
+              printf '%s' "$EXPO_AUTH_STATE_JSON" > "$state_path"
+              chmod 600 "$state_path"
+              auth_state_installed=1
+
+              if npx --yes eas-cli@23.2.0 whoami; then
+                auth_ok=1
+              else
+                echo '::warning::Stored Expo authentication is no longer usable; retrying the Mac mini login.'
+                if [[ -f "$state_backup" ]]; then
+                  cp "$state_backup" "$state_path"
+                else
+                  rm -f "$state_path"
+                fi
+                auth_state_installed=0
+              fi
+            else
+              echo '::warning::Stored Expo authentication is empty or invalid; using the Mac mini login.'
             fi
-            echo 'EXPO_STATE_INSTALLED=1' >> "$GITHUB_ENV"
-            printf '%s' "$EXPO_AUTH_STATE_JSON" > "$state_path"
-            chmod 600 "$state_path"
           fi
 
-          npx --yes eas-cli@23.2.0 whoami
+          if [[ "$auth_ok" == '0' ]]; then
+            npx --yes eas-cli@23.2.0 whoami
+          fi
+          echo "EXPO_STATE_INSTALLED=$auth_state_installed" >> "$GITHUB_ENV"
 
       - name: Install temporary signing credentials
         shell: bash
