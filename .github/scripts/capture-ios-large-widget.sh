@@ -18,6 +18,11 @@ if [[ ! -d "$app_path" ]]; then
   exit 1
 fi
 
+# npm ci changes the installed daemon file stamps on this persistent host. Stop
+# the previous daemon and its owner-scoped retained Apple runner/leases before
+# creating a new proof simulator. The command verifies PID/start-time identity.
+npx agent-device daemon stop --clean
+
 runtime_id="$(xcrun simctl list runtimes --json | node -e '
 let input = "";
 process.stdin.on("data", chunk => input += chunk);

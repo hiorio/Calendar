@@ -431,7 +431,23 @@ async function waitForLargeCalendarWidget(timeoutMs = 45_000) {
 let finalError;
 try {
   record('prepare simulator automation', { udid, bundleId, session });
-  await client.command.prepare({ ...device, action: 'ios-runner', timeoutMs: 240_000 });
+  try {
+    await client.command.prepare({ ...device, action: 'ios-runner', timeoutMs: 240_000 });
+  } catch (error) {
+    const details = error && typeof error === 'object' ? error.details : null;
+    if (
+      details?.phase !== 'runner_rebuild' ||
+      details?.reason !== 'prepare_deadline_expired'
+    ) {
+      throw error;
+    }
+
+    // The first call has already invalidated the stale cached runner. Give only
+    // that exact rebuild timeout one fresh budget; all other failures remain
+    // hard validation failures.
+    record('retry simulator automation prepare after stale runner rebuild timeout', details);
+    await client.command.prepare({ ...device, action: 'ios-runner', timeoutMs: 240_000 });
+  }
 
   const appOpen = await client.apps.open({
     ...device,

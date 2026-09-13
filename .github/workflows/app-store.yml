@@ -116,22 +116,42 @@ jobs:
           state_backup="$RUNNER_TEMP/expo-state.backup"
           auth_state_installed=0
           auth_ok=0
+          rm -f -- "$state_backup"
           echo "EXPO_STATE_PATH=$state_path" >> "$GITHUB_ENV"
           echo "EXPO_STATE_BACKUP=$state_backup" >> "$GITHUB_ENV"
+          echo 'EXPO_STATE_INSTALLED=0' >> "$GITHUB_ENV"
 
-          if [[ -z "${EXPO_TOKEN:-}" ]]; then
+          if [[ -n "${EXPO_TOKEN:-}" ]]; then
+            if npx --yes eas-cli@23.2.0 whoami; then
+              auth_ok=1
+              echo "EXPO_TOKEN=$EXPO_TOKEN" >> "$GITHUB_ENV"
+            else
+              echo '::warning::Stored Expo token is no longer usable; retrying session authentication.'
+              unset EXPO_TOKEN
+              echo 'EXPO_TOKEN=' >> "$GITHUB_ENV"
+            fi
+          else
+            echo 'EXPO_TOKEN=' >> "$GITHUB_ENV"
+          fi
+
+          if [[ "$auth_ok" == '0' ]]; then
             if node -e '
-              const value = process.env.EXPO_AUTH_STATE_JSON?.trim();
-              if (!value) process.exit(1);
-              JSON.parse(value);
+              try {
+                const value = process.env.EXPO_AUTH_STATE_JSON?.trim();
+                if (!value) process.exit(1);
+                JSON.parse(value);
+              } catch {
+                process.exit(1);
+              }
             '; then
               mkdir -p "$(dirname "$state_path")"
               if [[ -f "$state_path" ]]; then
                 cp "$state_path" "$state_backup"
               fi
+              auth_state_installed=1
+              echo 'EXPO_STATE_INSTALLED=1' >> "$GITHUB_ENV"
               printf '%s' "$EXPO_AUTH_STATE_JSON" > "$state_path"
               chmod 600 "$state_path"
-              auth_state_installed=1
 
               if npx --yes eas-cli@23.2.0 whoami; then
                 auth_ok=1
@@ -143,6 +163,7 @@ jobs:
                   rm -f "$state_path"
                 fi
                 auth_state_installed=0
+                echo 'EXPO_STATE_INSTALLED=0' >> "$GITHUB_ENV"
               fi
             else
               echo '::warning::Stored Expo authentication is empty or invalid; using the Mac mini login.'
@@ -243,8 +264,6 @@ jobs:
 
       - name: Build signed production archive
         shell: bash
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
           lab_enabled="$EXPO_PUBLIC_TIME_PICKER_LAB_ENABLED"
@@ -254,8 +273,6 @@ jobs:
 
       - name: Upload to App Store Connect
         shell: bash
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           set -euo pipefail
           npx --yes eas-cli@23.2.0 submit \
@@ -267,8 +284,6 @@ jobs:
 
       - name: Report App Store processing status
         shell: bash
-        env:
-          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: npx --yes eas-cli@23.2.0 submit:status --platform ios --non-interactive
 
       - name: Remove temporary credentials
@@ -314,6 +329,7 @@ jobs:
           fi
 
           rm -f \
+            "${EXPO_STATE_BACKUP:-$RUNNER_TEMP/expo-state.backup}" \
             "$RUNNER_TEMP/timeflower-distribution.p12" \
             "$RUNNER_TEMP/timeflower-app.mobileprovision" \
             "$RUNNER_TEMP/timeflower-widget.mobileprovision" \
