@@ -90,17 +90,18 @@ export function TimePickerLabPicker({
   const { colors, scheme } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const config = VARIANT_CONFIG[variant];
-  const isEventPicker = purpose === 'event';
+  const isExperiment = purpose === 'experiment';
+  const isFormalPicker = !isExperiment;
   const variantLabel =
     variant === 'digit-auto'
-      ? isEventPicker
+      ? isFormalPicker
         ? 'A타입'
         : 'A안'
       : variant === 'digit-composed'
-        ? isEventPicker
+        ? isFormalPicker
           ? 'B타입'
           : 'B안'
-        : isEventPicker
+        : isFormalPicker
           ? 'C타입'
           : 'C안';
   const initial = timePickerParts(value);
@@ -188,7 +189,7 @@ export function TimePickerLabPicker({
       visible>
       <View style={styles.modal}>
         <Pressable
-          accessibilityLabel={isEventPicker ? '시간 선택 닫기' : '시간 선택기 실험 닫기'}
+          accessibilityLabel={isFormalPicker ? '시간 선택 닫기' : '시간 선택기 실험 닫기'}
           onPress={onCancel}
           style={[StyleSheet.absoluteFill, { backgroundColor: colors.shadow, opacity: 0.42 }]}
         />
@@ -206,14 +207,14 @@ export function TimePickerLabPicker({
           <View style={styles.header}>
             <View style={[styles.headerIcon, { backgroundColor: colors.accentSoft }]}>
               <Ionicons
-                name={isEventPicker ? 'time-outline' : 'flask-outline'}
+                name={isFormalPicker ? 'time-outline' : 'flask-outline'}
                 size={18}
                 color={colors.accent}
               />
             </View>
             <View style={styles.headerText}>
               <Txt variant="subtitle">
-                {isEventPicker ? config.eventTitle : config.experimentTitle}
+                {isFormalPicker ? config.eventTitle : config.experimentTitle}
               </Txt>
               <Txt variant="caption" tone="secondary">
                 {headerDescription}
@@ -370,19 +371,25 @@ export function TimePickerLabPicker({
             ) : null}
           </View>
 
-          <View style={[styles.actions, isEventPicker && styles.eventActions]}>
+          <View style={[styles.actions, isFormalPicker && styles.formalActions]}>
             <View style={styles.action}>
               <Button label="취소" size="md" variant="secondary" onPress={onCancel} />
             </View>
             <View style={styles.action}>
               <Button
-                label={isEventPicker ? '시간 적용' : '실험값 적용'}
+                label={
+                  purpose === 'event'
+                    ? '시간 적용'
+                    : purpose === 'preview'
+                      ? '체험 완료'
+                      : '실험값 적용'
+                }
                 size="md"
                 onPress={() => onConfirm(preview)}
               />
             </View>
           </View>
-          {!isEventPicker ? (
+          {isExperiment ? (
             <Txt variant="caption" tone="tertiary" style={styles.disclaimer}>
               이 값은 실험 화면에만 반영되며 실제 일정에는 저장되지 않습니다.
             </Txt>
@@ -474,7 +481,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
   },
-  eventActions: { paddingBottom: Spacing.lg },
+  formalActions: { paddingBottom: Spacing.lg },
   action: { flex: 1 },
   disclaimer: {
     textAlign: 'center',

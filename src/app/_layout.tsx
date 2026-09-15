@@ -167,7 +167,7 @@ function RootLayout() {
                 />
                 <Stack.Screen
                   name="time-picker-lab"
-                  options={{ presentation: 'modal', headerShown: true, title: '시간 선택기 실험' }}
+                  options={{ presentation: 'modal', headerShown: true, title: '시간 선택 방식' }}
                 />
                 <Stack.Screen
                   name="memos"

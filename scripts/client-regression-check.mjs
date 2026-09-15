@@ -344,7 +344,7 @@ await check('common field passes its visible label and hint to accessibility', (
   assert.equal(input.props.accessibilityHint, '120자까지');
 });
 
-function createDateTimeFieldHarness(style) {
+function createDateTimeFieldHarness(style, fieldProps = {}) {
   const harness = hooks();
   const changes = [];
   const component = load('src/components/ui/date-time-field.tsx', {
@@ -379,7 +379,13 @@ function createDateTimeFieldHarness(style) {
   const value = new Date(2026, 8, 15, 14, 35);
   const render = (mode = 'time') =>
     harness.render(() =>
-      component({ label: '시작', value, mode, onChange: (next) => changes.push(next) }),
+      component({
+        label: '시작',
+        value,
+        mode,
+        onChange: (next) => changes.push(next),
+        ...fieldProps,
+      }),
     );
 
   return { changes, render };
@@ -438,13 +444,52 @@ await check('iOS C형도 길게 눌러 확장하는 전용 다이얼로 연결�
   assert.equal(picker.props.purpose, 'event');
 });
 
-await check('정식 설정에는 기본형·A형·B형·C형이 모두 있다', () => {
-  const source = readFileSync(new URL('../src/app/preferences.tsx', import.meta.url), 'utf8');
-  const options = source.match(/const TIME_PICKER_OPTIONS:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
+await check('설정 체험은 저장값 대신 지정한 실제 선택기를 열어 샘플 시각에만 반영한다', () => {
+  const customPreview = createDateTimeFieldHarness('system', {
+    timePickerStyleOverride: 'digit-hold',
+    timePickerPurpose: 'preview',
+  });
+  let tree = customPreview.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = customPreview.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-hold');
+  assert.equal(picker.props.purpose, 'preview');
+  const previewValue = new Date(2026, 8, 15, 16, 52);
+  picker.props.onConfirm(previewValue);
+  assert.deepEqual(customPreview.changes, [previewValue]);
+
+  const systemPreview = createDateTimeFieldHarness('digit-auto', {
+    timePickerStyleOverride: 'system',
+    timePickerPurpose: 'preview',
+  });
+  const systemTree = systemPreview.render();
+  assert.equal(find(systemTree, (node) => node.type === 'DateTimePicker').props.display, 'compact');
+  assert.equal(find(systemTree, (node) => node.type === 'TimePickerLabPicker'), null);
+});
+
+await check('정식 설정에서 기본형·A형·B형·C형을 직접 체험한 뒤 별도로 선택한다', () => {
+  const preferences = readFileSync(
+    new URL('../src/app/preferences.tsx', import.meta.url),
+    'utf8',
+  );
+  const more = readFileSync(new URL('../src/app/(app)/settings.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/app/time-picker-lab.tsx', import.meta.url), 'utf8');
+  const options = source.match(/const STYLE_DEFINITIONS:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
   assert.match(options, /id:\s*'system'/);
   assert.match(options, /id:\s*'digit-auto'/);
   assert.match(options, /id:\s*'digit-composed'/);
   assert.match(options, /id:\s*'digit-hold'/);
+  assert.match(source, /timePickerStyleOverride=\{definition\.id\}/);
+  assert.match(source, /timePickerPurpose="preview"/);
+  assert.match(source, /onPreviewChange=\{setPreviewValue\}/);
+  assert.match(source, /onSelect=\{\(\) => setSelectedStyle\(definition\.id\)\}/);
+  assert.match(source, /accessibilityRole="radiogroup"/);
+  assert.match(source, /accessibilityRole="radio"/);
+  assert.match(source, /accessibilityState=\{\{ checked: selected \}\}/);
+  assert.match(source, /label=\{selected \? '현재 사용 중' : '이 방식 사용'\}/);
+  assert.match(preferences, /router\.push\('\/time-picker-lab'/);
+  assert.match(more, /router\.push\('\/time-picker-lab'/);
 });
 
 // Real QueryClient verifies cancelled/cleared data is not revived by a late network response.

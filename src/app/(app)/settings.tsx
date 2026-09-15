@@ -177,7 +177,7 @@ export default function MoreScreen() {
                   <ListRow
                     title="시간 선택 방식"
                     value={TIME_PICKER_STYLE_LABELS[timePickerStyle]}
-                    onPress={() => router.push('/preferences')}
+                    onPress={() => router.push('/time-picker-lab' as Href)}
                   />
                   <Divider />
                 </>
