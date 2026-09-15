@@ -31,12 +31,6 @@ on:
         required: false
         default: '29'
         type: string
-      time_picker_lab_enabled:
-        description: Expose the internal time picker lab in this build only
-        required: false
-        default: false
-        type: boolean
-
 permissions:
   contents: read
 
@@ -59,7 +53,6 @@ jobs:
       EXPO_PUBLIC_SENTRY_DSN: ${{ vars.EXPO_PUBLIC_SENTRY_DSN }}
       EXPO_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.EXPO_PUBLIC_SUPABASE_ANON_KEY }}
       EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
-      EXPO_PUBLIC_TIME_PICKER_LAB_ENABLED: ${{ inputs.time_picker_lab_enabled && 'true' || 'false' }}
       EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL: ${{ vars.EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL }}
       EXPO_NO_TELEMETRY: '1'
       LANG: en_US.UTF-8
@@ -243,5 +236,4 @@ jobs:
     with:
       confirmation: ${{ inputs.confirmation }}
       build_number: ${{ inputs.build_number }}
-      time_picker_lab_enabled: ${{ inputs.time_picker_lab_enabled }}
     secrets: inherit

@@ -344,6 +344,109 @@ await check('common field passes its visible label and hint to accessibility', (
   assert.equal(input.props.accessibilityHint, '120자까지');
 });
 
+function createDateTimeFieldHarness(style) {
+  const harness = hooks();
+  const changes = [];
+  const component = load('src/components/ui/date-time-field.tsx', {
+    '@react-native-community/datetimepicker': { default: 'DateTimePicker' },
+    react: harness.react,
+    'react/jsx-runtime': jsx,
+    'react-native': {
+      Platform: { OS: 'ios' },
+      Pressable: 'Pressable',
+      StyleSheet: { create: (values) => values },
+      View: 'View',
+    },
+    '@/components/ui/text': { Txt: 'Txt' },
+    '@/constants/theme': { Radius: { sm: 8 }, Spacing: { md: 12, lg: 16, sm: 8 } },
+    '@/features/experiments/time-picker-lab-picker': {
+      TimePickerLabPicker: 'TimePickerLabPicker',
+    },
+    '@/hooks/use-theme': {
+      useTheme: () => ({
+        colors: { surfacePressed: 'pressed', surfaceMuted: 'muted' },
+      }),
+    },
+    '@/lib/event-time': {
+      formatDate: () => '2026. 9. 15.',
+      formatTime: () => '오후 2:35',
+    },
+    '@/stores/time-picker-preference': {
+      useTimePickerPreference: (selector) => selector({ style }),
+    },
+  }).DateTimeField;
+
+  const value = new Date(2026, 8, 15, 14, 35);
+  const render = (mode = 'time') =>
+    harness.render(() =>
+      component({ label: '시작', value, mode, onChange: (next) => changes.push(next) }),
+    );
+
+  return { changes, render };
+}
+
+await check('iOS 기본형과 날짜 입력은 기존 compact 선택기를 유지한다', () => {
+  const system = createDateTimeFieldHarness('system');
+  const systemTree = system.render('time');
+  const systemPicker = find(systemTree, (node) => node.type === 'DateTimePicker');
+  assert.equal(systemPicker.props.mode, 'time');
+  assert.equal(systemPicker.props.display, 'compact');
+  assert.equal(find(systemTree, (node) => node.type === 'TimePickerLabPicker'), null);
+
+  const customDate = createDateTimeFieldHarness('digit-auto');
+  const dateTree = customDate.render('date');
+  assert.equal(find(dateTree, (node) => node.type === 'DateTimePicker').props.mode, 'date');
+  assert.equal(find(dateTree, (node) => node.type === 'TimePickerLabPicker'), null);
+});
+
+await check('iOS A형은 전용 다이얼을 열고 취소하면 값을 바꾸지 않는다', () => {
+  const aType = createDateTimeFieldHarness('digit-auto');
+  let tree = aType.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = aType.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-auto');
+  assert.equal(picker.props.purpose, 'event');
+  picker.props.onCancel();
+  tree = aType.render();
+  assert.equal(find(tree, (node) => node.type === 'TimePickerLabPicker'), null);
+  assert.deepEqual(aType.changes, []);
+});
+
+await check('iOS B형은 확인한 시각을 한 번만 일정 폼에 반영한다', () => {
+  const bType = createDateTimeFieldHarness('digit-composed');
+  let tree = bType.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = bType.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-composed');
+  assert.equal(picker.props.purpose, 'event');
+  const confirmed = new Date(2026, 8, 15, 15, 47);
+  picker.props.onConfirm(confirmed);
+  tree = bType.render();
+  assert.equal(find(tree, (node) => node.type === 'TimePickerLabPicker'), null);
+  assert.deepEqual(bType.changes, [confirmed]);
+});
+
+await check('iOS C형도 길게 눌러 확장하는 전용 다이얼로 연결한다', () => {
+  const cType = createDateTimeFieldHarness('digit-hold');
+  let tree = cType.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = cType.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-hold');
+  assert.equal(picker.props.purpose, 'event');
+});
+
+await check('정식 설정에는 기본형·A형·B형·C형이 모두 있다', () => {
+  const source = readFileSync(new URL('../src/app/preferences.tsx', import.meta.url), 'utf8');
+  const options = source.match(/const TIME_PICKER_OPTIONS:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
+  assert.match(options, /id:\s*'system'/);
+  assert.match(options, /id:\s*'digit-auto'/);
+  assert.match(options, /id:\s*'digit-composed'/);
+  assert.match(options, /id:\s*'digit-hold'/);
+});
+
 // Real QueryClient verifies cancelled/cleared data is not revived by a late network response.
 await check('shared query reset removes cached data after membership is revoked', async () => {
   const { QueryClient, QueryObserver } = nodeRequire('@tanstack/react-query');

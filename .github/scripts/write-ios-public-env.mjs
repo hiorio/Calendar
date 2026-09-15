@@ -23,7 +23,6 @@ const optionalNames = [
   'EXPO_PUBLIC_UNIVERSAL_LINK_BASE_URL',
   'EXPO_PUBLIC_PUSH_ENABLED',
   'EXPO_PUBLIC_SENTRY_DSN',
-  'EXPO_PUBLIC_TIME_PICKER_LAB_ENABLED',
 ];
 
 function normalized(name, required) {

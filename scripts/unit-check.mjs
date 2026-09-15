@@ -54,6 +54,11 @@ const {
   timePickerParts,
 } =
   await import('../src/features/experiments/time-picker-lab-model.ts');
+const {
+  DEFAULT_TIME_PICKER_STYLE,
+  TIME_PICKER_STYLE_LABELS,
+  normalizeTimePickerStyle,
+} = await import('../src/features/events/time-picker-style.ts');
 
 let passed = 0;
 let failed = 0;
@@ -204,6 +209,37 @@ console.log('0. 캘린더 표시 계산');
     '오전 12시는 자정으로 적용하고 초는 버린다',
     [midnight.getHours(), midnight.getMinutes(), midnight.getSeconds(), midnight.getMilliseconds()],
     [0, 5, 0, 0],
+  );
+}
+
+{
+  check('시간 선택 방식의 기본값은 기존 iPhone 선택기', DEFAULT_TIME_PICKER_STYLE === 'system');
+  eq(
+    '정식 시간 선택 방식은 기본형·A형·B형·C형을 제공한다',
+    Object.entries(TIME_PICKER_STYLE_LABELS),
+    [
+      ['system', '기본'],
+      ['digit-auto', 'A타입'],
+      ['digit-composed', 'B타입'],
+      ['digit-hold', 'C타입'],
+    ],
+  );
+  eq(
+    'A형·B형·C형 저장값은 실제 다이얼 variant로 유지한다',
+    [
+      normalizeTimePickerStyle('digit-auto'),
+      normalizeTimePickerStyle('digit-composed'),
+      normalizeTimePickerStyle('digit-hold'),
+    ],
+    ['digit-auto', 'digit-composed', 'digit-hold'],
+  );
+  eq(
+    '누락되거나 알 수 없는 저장값은 기본 선택기로 복구한다',
+    [
+      normalizeTimePickerStyle(undefined),
+      normalizeTimePickerStyle('broken'),
+    ],
+    ['system', 'system'],
   );
 }
 

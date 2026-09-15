@@ -9,11 +9,13 @@ import { Content, Header, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { TIME_PICKER_STYLE_LABELS } from '@/features/events/time-picker-style';
 import { useProfile } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { useCalendarPreference } from '@/stores/calendar-preference';
 import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
 import { useThemePreference } from '@/stores/theme-preference';
+import { useTimePickerPreference } from '@/stores/time-picker-preference';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -39,10 +41,6 @@ const FONT_FAMILY_LABELS = {
   nanumGothic: '나눔고딕',
   nanumMyeongjo: '나눔명조',
 } as const;
-const TIME_PICKER_LAB_ENABLED =
-  Platform.OS === 'ios' &&
-  (__DEV__ || process.env.EXPO_PUBLIC_TIME_PICKER_LAB_ENABLED === 'true');
-
 export default function MoreScreen() {
   const { colors } = useTheme();
   const { isGuest } = useAuth();
@@ -53,6 +51,7 @@ export default function MoreScreen() {
   const fontFamilyPreference = useThemePreference((state) => state.fontFamilyPreference);
   const deviceCalendarsConnected = useDeviceCalendarPreference((state) => state.connected);
   const selectedDeviceCalendars = useDeviceCalendarPreference((state) => state.selectedIds.length);
+  const timePickerStyle = useTimePickerPreference((state) => state.style);
   const { weekStart, showWeekNumbers, showLunar } = useCalendarPreference();
 
   return (
@@ -173,6 +172,16 @@ export default function MoreScreen() {
                 onPress={() => router.push('/preferences')}
               />
               <Divider />
+              {Platform.OS === 'ios' ? (
+                <>
+                  <ListRow
+                    title="시간 선택 방식"
+                    value={TIME_PICKER_STYLE_LABELS[timePickerStyle]}
+                    onPress={() => router.push('/preferences')}
+                  />
+                  <Divider />
+                </>
+              ) : null}
               <ListRow
                 title="외부 캘린더"
                 value={
@@ -182,19 +191,6 @@ export default function MoreScreen() {
               />
             </Card>
           </Section>
-
-          {TIME_PICKER_LAB_ENABLED ? (
-            <Section title="실험">
-              <Card padded={false}>
-                <ListRow
-                  title="시간 선택기 실험실"
-                  subtitle="A·B·C 세 가지 전용 다이얼을 비교합니다"
-                  icon="flask-outline"
-                  onPress={() => router.push('/time-picker-lab' as Href)}
-                />
-              </Card>
-            </Section>
-          ) : null}
         </Content>
       </ScrollView>
     </Screen>

@@ -1,7 +1,7 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, View } from 'react-native';
 
 import { Card, Divider } from '@/components/ui/card';
 import { ListRow } from '@/components/ui/list-row';
@@ -9,11 +9,16 @@ import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import {
+  TIME_PICKER_STYLE_LABELS,
+  type TimePickerStyle,
+} from '@/features/events/time-picker-style';
 import { deviceWidgetsSupported } from '@/features/widgets/widget-capability';
 import { useTheme } from '@/hooks/use-theme';
 import { notify } from '@/lib/confirm';
 import { useCalendarPreference } from '@/stores/calendar-preference';
 import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
+import { useTimePickerPreference } from '@/stores/time-picker-preference';
 import {
   useThemePreference,
   type FontFamilyPreference,
@@ -46,6 +51,13 @@ const FONT_FAMILY_OPTIONS: { id: FontFamilyPreference; title: string }[] = [
   { id: 'nanumMyeongjo', title: '나눔명조' },
 ];
 
+const TIME_PICKER_OPTIONS: { id: TimePickerStyle; title: string }[] = [
+  { id: 'system', title: TIME_PICKER_STYLE_LABELS.system },
+  { id: 'digit-auto', title: TIME_PICKER_STYLE_LABELS['digit-auto'] },
+  { id: 'digit-composed', title: TIME_PICKER_STYLE_LABELS['digit-composed'] },
+  { id: 'digit-hold', title: TIME_PICKER_STYLE_LABELS['digit-hold'] },
+];
+
 export default function PreferencesScreen() {
   const { colors } = useTheme();
   const { isGuest, signOut } = useAuth();
@@ -58,6 +70,8 @@ export default function PreferencesScreen() {
   const setSchemePreference = useThemePreference((state) => state.setSchemePreference);
   const setFontSizePreference = useThemePreference((state) => state.setFontSizePreference);
   const setFontFamilyPreference = useThemePreference((state) => state.setFontFamilyPreference);
+  const timePickerStyle = useTimePickerPreference((state) => state.style);
+  const setTimePickerStyle = useTimePickerPreference((state) => state.setStyle);
   const {
     weekStart,
     showWeekNumbers,
@@ -132,6 +146,25 @@ export default function PreferencesScreen() {
             />
           </Card>
         </Section>
+
+        {Platform.OS === 'ios' ? (
+          <Section title="일정 입력">
+            <Card padded={false}>
+              <ChoiceSetting
+                title="시간 선택 방식"
+                subtitle="일정의 시작·종료 시각을 고르는 방식을 선택합니다."
+                options={TIME_PICKER_OPTIONS}
+                value={timePickerStyle}
+                onChange={setTimePickerStyle}
+              />
+            </Card>
+            <Txt variant="micro" tone="tertiary" style={styles.note}>
+              기본은 iPhone 선택기, A타입은 10분 선택 후 0~9가 펼쳐지고 B타입은 두
+              다이얼을 항상 함께 표시합니다. C타입은 10분 다이얼을 길게 눌러 0~9를
+              펼칩니다.
+            </Txt>
+          </Section>
+        ) : null}
 
         <Section title="알림">
           <Card padded={false}>

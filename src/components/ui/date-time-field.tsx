@@ -4,8 +4,10 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
+import { TimePickerLabPicker } from '@/features/experiments/time-picker-lab-picker';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate, formatTime } from '@/lib/event-time';
+import { useTimePickerPreference } from '@/stores/time-picker-preference';
 
 export type DateTimeFieldProps = {
   label: string;
@@ -32,8 +34,43 @@ export function DateTimeField({
 }: DateTimeFieldProps) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
+  const timePickerStyle = useTimePickerPreference((state) => state.style);
 
   if (Platform.OS === 'ios') {
+    if (mode === 'time' && timePickerStyle !== 'system') {
+      return (
+        <View style={[styles.row, hideLabel && styles.controlOnly]}>
+          {!hideLabel ? (
+            <Txt variant="body" tone="secondary">
+              {label}
+            </Txt>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${label} 선택`}
+            onPress={() => setOpen(true)}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted },
+            ]}>
+            <Txt variant="body">{formatTime(value)}</Txt>
+          </Pressable>
+          {open ? (
+            <TimePickerLabPicker
+              value={value}
+              variant={timePickerStyle}
+              purpose="event"
+              onCancel={() => setOpen(false)}
+              onConfirm={(next) => {
+                setOpen(false);
+                onChange(next);
+              }}
+            />
+          ) : null}
+        </View>
+      );
+    }
+
     return (
       <View style={[styles.row, hideLabel && styles.controlOnly]}>
         {!hideLabel ? (
