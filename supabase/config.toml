@@ -163,6 +163,8 @@ site_url = "http://localhost:8081"
 additional_redirect_urls = [
   "http://localhost:8081",
   "timeline://auth-callback",
+  "timeline-development://auth-callback",
+  "timeline-preview://auth-callback",
   "exp://127.0.0.1:8081/--/auth-callback",
 ]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
@@ -385,6 +387,9 @@ policy = "per_worker"
 inspector_port = 8083
 # The Deno major version to use.
 deno_version = 2
+
+[functions.notification-worker]
+verify_jwt = false
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"

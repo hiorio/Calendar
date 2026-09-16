@@ -14,14 +14,22 @@ import type { DateTimeFieldProps } from './date-time-field';
  * 브라우저가 이미 좋은 선택기를 갖고 있으므로 네이티브 input을 그대로 쓴다.
  * (react-native-web은 DOM으로 렌더되므로 이 파일에서는 input을 직접 쓸 수 있다.)
  */
-export function DateTimeField({ label, value, mode, onChange }: DateTimeFieldProps) {
+export function DateTimeField({
+  label,
+  value,
+  mode,
+  onChange,
+  hideLabel = false,
+}: DateTimeFieldProps) {
   const { colors, scheme } = useTheme();
 
   return (
-    <View style={styles.row}>
-      <Txt variant="body" tone="secondary">
-        {label}
-      </Txt>
+    <View style={[styles.row, hideLabel && styles.controlOnly]}>
+      {!hideLabel ? (
+        <Txt variant="body" tone="secondary">
+          {label}
+        </Txt>
+      ) : null}
 
       <input
         aria-label={label}
@@ -81,4 +89,5 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     minHeight: 44,
   },
+  controlOnly: { minHeight: 0 },
 });

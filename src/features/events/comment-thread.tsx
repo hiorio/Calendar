@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Notice } from '@/components/ui/notice';
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing, Typography } from '@/constants/theme';
 import {
@@ -28,6 +29,7 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
 
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
+  const preferredInputStyle = usePreferredTextStyle(styles.input);
 
   function send() {
     const content = draft.trim();
@@ -114,6 +116,7 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
               backgroundColor: colors.surface,
               borderColor: focused ? colors.accent : colors.border,
             },
+            preferredInputStyle,
           ]}
         />
         <Pressable
