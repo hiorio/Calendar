@@ -582,10 +582,34 @@ try {
   current = await snapshot('07-widget-size-picker', { interactiveOnly: false });
   let position = pagePosition(current);
   record('widget size picker position', position);
+  const mediumPage = 2;
   const desiredPage = 3; // Calendar widget ordering: small, medium, large.
   let currentPage = position?.current ?? 1;
   if (position && position.total < desiredPage) {
     throw new Error(`widget picker exposed only ${position.total} pages; calendar large is unavailable`);
+  }
+
+  while (currentPage < mediumPage) {
+    const advanced = await advanceWidgetPickerPage(currentPage, logicalWidth, logicalHeight);
+    current = advanced.current;
+    position = advanced.position;
+    currentPage = position.current;
+  }
+  if (currentPage !== mediumPage) {
+    throw new Error(`widget picker skipped the calendar medium page and reached page ${currentPage}`);
+  }
+
+  const mediumPickerCapture = await screenshot('07-system-medium-picker', 3);
+  const mediumPickerOcr = ocr(mediumPickerCapture, '07-system-medium-picker');
+  const mediumPickerVerification = countCalendarEvidence(mediumPickerOcr);
+  saveJson('07-system-medium-picker-verification.json', mediumPickerVerification);
+  record('medium calendar picker visual verification', mediumPickerVerification);
+  if (mediumPickerVerification.uniqueDateCount < 7 || mediumPickerVerification.weekdayCount < 4) {
+    throw new Error(
+      'systemMedium picker preview did not expose a complete calendar week: ' +
+        `${mediumPickerVerification.uniqueDateCount} dates, ` +
+        `${mediumPickerVerification.weekdayCount} weekday labels`,
+    );
   }
 
   while (currentPage < desiredPage) {

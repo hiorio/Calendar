@@ -207,7 +207,7 @@ jobs:
           echo "IOS_APP_PATH=$app" >> "$GITHUB_ENV"
           echo "IOS_APP_BUNDLE_ID=$app_bundle_id" >> "$GITHUB_ENV"
 
-      - name: Add and verify the large widget in iOS Simulator
+      - name: Verify medium preview and add the large widget in iOS Simulator
         shell: bash
         run: |
           bash .github/scripts/capture-ios-large-widget.sh \

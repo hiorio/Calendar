@@ -394,9 +394,29 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
     }
 
     if (environment.widgetFamily === 'systemMedium') {
+      const responsive = environment.widgetContentMargins != null;
+      const mediumFallbackDayWidth = 38;
+      const mediumFallbackCalendarWidth = mediumFallbackDayWidth * 7 + columnGap * 6;
+      const mediumColumnFrame = (span = 1) => responsive
+        ? containerRelativeFrame({ axes: 'horizontal', count: 7, span, spacing: columnGap })
+        : frame({
+            width: span * mediumFallbackDayWidth + (span - 1) * columnGap,
+          });
+      const mediumFullWidth = responsive
+        ? containerRelativeFrame({ axes: 'horizontal' })
+        : frame({ width: mediumFallbackCalendarWidth });
+      const mediumHeaderHeight = 22;
+      const mediumDayHeight = 22;
+      const mediumLaneHeight = 12;
       return (
-        <VStack alignment="leading" spacing={3} modifiers={rootModifiers}>
-          <HStack alignment="center" spacing={6} modifiers={[frame({ width: calendarWidth })]}>
+        <VStack
+          alignment="leading"
+          spacing={5}
+          modifiers={[...rootModifiers, mediumFullWidth, frame({ maxHeight: 1000 })]}>
+          <HStack
+            alignment="center"
+            spacing={6}
+            modifiers={[mediumFullWidth, frame({ height: mediumHeaderHeight })]}>
             <Text modifiers={[font({ size: 17, weight: 'bold' }), lineLimit(1)]}>
               {props.monthShortTitle}
             </Text>
@@ -415,7 +435,8 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
                 modifiers={[
                   font({ size: 8, weight: 'medium' }),
                   foregroundStyle(colors.textTertiary),
-                  frame({ width: dayWidth, height: 10 }),
+                  frame({ height: 11 }),
+                  mediumColumnFrame(),
                 ]}>
                 {weekday}
               </Text>
@@ -425,7 +446,8 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
           <RoundedRectangle
             cornerRadius={0.5}
             modifiers={[
-              frame({ width: calendarWidth, height: 1 }),
+              mediumFullWidth,
+              frame({ height: 1 }),
               foregroundStyle(colors.border),
             ]}
           />
@@ -433,7 +455,7 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
           <HStack spacing={columnGap}>
             {currentDays.map((day) => (
               <Link key={day.key} destination={day.url}>
-                <VStack spacing={0} modifiers={[frame({ width: dayWidth, height: 18 })]}>
+                <VStack spacing={0} modifiers={[mediumColumnFrame(), frame({ height: mediumDayHeight })]}>
                   <Text
                     modifiers={[
                       font({ size: 11, weight: day.isToday ? 'bold' : 'semibold' }),
@@ -448,8 +470,8 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
                                 ? colors.saturday
                                 : colors.text,
                       ),
-                      frame({ width: 18, height: 18 }),
-                      ...(day.isToday ? [background(colors.accent), cornerRadius(9)] : []),
+                      frame({ width: 20, height: 20 }),
+                      ...(day.isToday ? [background(colors.accent), cornerRadius(10)] : []),
                     ]}>
                     {day.number}
                   </Text>
@@ -458,30 +480,44 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
             ))}
           </HStack>
 
-          <VStack alignment="leading" spacing={2}>
-            {currentLanes.slice(0, 3).map((lane, laneIndex) => (
-              <ZStack
-                key={`${currentWeek?.key ?? 'current'}-medium-lane-${laneIndex}`}
-                alignment="leading"
-                modifiers={[frame({ width: calendarWidth, height: 10, alignment: 'leading' })]}>
-                {lane.map((event) => {
-                  const eventWidth =
-                    (event.endColumn - event.startColumn + 1) * dayWidth +
-                    (event.endColumn - event.startColumn) * columnGap;
-                  const eventOffset = event.startColumn * (dayWidth + columnGap);
-                  return (
-                    <Link
-                      key={event.key}
-                      destination={event.url}
-                      modifiers={[offset({ x: eventOffset + 1 })]}>
+          <VStack alignment="leading" spacing={2} modifiers={[mediumFullWidth]}>
+            {currentLanes.slice(0, 3).map((lane, laneIndex) => {
+              const segments = [];
+              let cursor = 0;
+              for (const event of [...lane].sort((a, b) => a.startColumn - b.startColumn)) {
+                if (event.startColumn > cursor) {
+                  segments.push({
+                    key: `gap-${cursor}`,
+                    span: event.startColumn - cursor,
+                    event: null,
+                  });
+                }
+                segments.push({
+                  key: event.key,
+                  span: event.endColumn - event.startColumn + 1,
+                  event,
+                });
+                cursor = event.endColumn + 1;
+              }
+              if (cursor < 7) {
+                segments.push({ key: `gap-${cursor}`, span: 7 - cursor, event: null });
+              }
+              return (
+                <HStack
+                  key={`${currentWeek?.key ?? 'current'}-medium-lane-${laneIndex}`}
+                  spacing={columnGap}
+                  modifiers={[mediumFullWidth, frame({ height: mediumLaneHeight })]}>
+                  {segments.map(({ key, span, event }) => event ? (
+                    <Link key={key} destination={event.url}>
                       <Text
                         modifiers={[
-                          font({ size: 7, weight: 'semibold' }),
+                          font({ size: 8, weight: 'semibold' }),
                           foregroundStyle(event.textColors[scheme]),
                           lineLimit(1),
                           minimumScaleFactor(0.75),
                           padding({ horizontal: 2 }),
-                          frame({ width: eventWidth - 2, height: 10, alignment: 'leading' }),
+                          frame({ height: mediumLaneHeight, alignment: 'leading' }),
+                          mediumColumnFrame(span),
                           background(event.colors[scheme]),
                           cornerRadius(3),
                           privacySensitive(),
@@ -489,10 +525,16 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
                         {event.title}
                       </Text>
                     </Link>
-                  );
-                })}
-              </ZStack>
-            ))}
+                  ) : (
+                    <Text
+                      key={key}
+                      modifiers={[mediumColumnFrame(span), frame({ height: mediumLaneHeight })]}>
+                      {' '}
+                    </Text>
+                  ))}
+                </HStack>
+              );
+            })}
           </VStack>
         </VStack>
       );
@@ -606,8 +648,11 @@ export const QuickMemoWidget = createWidget<TimeFlowerWidgetProps>(
     }
 
     const visibleCount = environment.widgetFamily === 'systemMedium' ? 3 : 2;
+    const homeScreenPadding = environment.widgetFamily === 'systemMedium'
+      ? []
+      : [padding({ all: 12 })];
     return (
-      <VStack alignment="leading" spacing={8} modifiers={[...rootModifiers, padding({ all: 12 })]}>
+      <VStack alignment="leading" spacing={8} modifiers={[...rootModifiers, ...homeScreenPadding]}>
         <HStack spacing={6}>
           <VStack alignment="leading" spacing={1}>
             <Text modifiers={[font({ size: 16, weight: 'bold' })]}>빠른 메모</Text>

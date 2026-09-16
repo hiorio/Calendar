@@ -230,6 +230,48 @@ check('hidden event count links to the complete day view', () => {
     node.props.destination === day.url && nodes(node).some((child) => child.props?.children === '+3'));
   assert.ok(overflow);
 });
+check('medium calendar fills the system content area without changing other widget families', () => {
+  const props = propsFor(new Date(2026, 7, 1));
+  const event = { key: 'trip', title: '여행', startColumn: 1, endColumn: 3, filled: true,
+    colors: { light: 'label', dark: 'label' }, textColors: { light: 'ink', dark: 'ink' }, url: '/event/trip' };
+  props.monthWeeks[0].lanes = [[event], [], []];
+  const mediumEnv = { ...env, widgetFamily: 'systemMedium' };
+  const tree = layouts.CalendarWidget(props, mediumEnv);
+  validate(tree);
+
+  assert.equal(tree.props.spacing, 5);
+  assert(tree.props.modifiers.some((modifier) => modifier.name === 'containerRelativeFrame' &&
+    modifier.args[0].axes === 'horizontal'));
+  const header = nodes(tree).find((node) => node.type === 'HStackView' &&
+    nodes(node).some((child) => child.props?.children === '8월'));
+  assert.equal(header.props.modifiers.find((modifier) =>
+    modifier.name === 'frame' && modifier.args[0].height != null).args[0].height, 22);
+  const weekday = nodes(tree).find((node) => node.props?.children === '일');
+  assert.equal(weekday.props.modifiers.find((modifier) => modifier.name === 'containerRelativeFrame').args[0].count, 7);
+  assert.equal(weekday.props.modifiers.find((modifier) =>
+    modifier.name === 'frame' && modifier.args[0].height != null).args[0].height, 11);
+  const today = nodes(tree).find((node) => node.props?.children === 1);
+  const todayCell = nodes(tree).find((node) => node.type === 'VStackView' &&
+    [node.props?.children].flat(Infinity).includes(today));
+  assert.equal(todayCell.props.modifiers.find((modifier) =>
+    modifier.name === 'frame' && modifier.args[0].height != null).args[0].height, 22);
+  const eventTitle = nodes(tree).find((node) => node.props?.children === '여행');
+  const eventColumnFrame = eventTitle.props.modifiers.find((modifier) => modifier.name === 'containerRelativeFrame');
+  assert.equal(eventColumnFrame.args[0].span, 3);
+  assert.equal(eventTitle.props.modifiers.find((modifier) =>
+    modifier.name === 'frame' && modifier.args[0].height != null).args[0].height, 12);
+  assert(!nodes(tree).some((node) => node.props?.modifiers?.some((modifier) => modifier.name === 'offset')));
+
+  const fallback = layouts.CalendarWidget(props, { ...mediumEnv, widgetContentMargins: undefined });
+  const fallbackRootFrame = fallback.props.modifiers.find((modifier) =>
+    modifier.name === 'frame' && modifier.args[0].width != null);
+  assert.equal(fallbackRootFrame.args[0].width, 284);
+
+  const mediumMemo = layouts.QuickMemoWidget(props, mediumEnv);
+  assert(!mediumMemo.props.modifiers.some((modifier) => modifier.name === 'padding'));
+  const smallMemo = layouts.QuickMemoWidget(props, { ...mediumEnv, widgetFamily: 'systemSmall' });
+  assert.equal(smallMemo.props.modifiers.find((modifier) => modifier.name === 'padding').args[0].all, 12);
+});
 check('iOS 17 month controls move backward, forward and back to today without opening the app', () => {
   let props = propsFor(new Date(2026, 7, 1));
   let tree = layouts.CalendarWidget(props, env);
