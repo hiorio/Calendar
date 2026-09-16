@@ -42,12 +42,6 @@ const STYLE_DEFINITIONS: readonly StyleDefinition[] = [
     description: '10분 단위와 0~9의 1분 자리 휠을 항상 함께 보며 시간을 조합합니다.',
     example: '30 + 7 = 37분',
   },
-  {
-    id: 'digit-hold',
-    title: '길게 눌러 오른쪽으로 확장',
-    description: '10분 값을 고른 뒤 같은 휠을 0.6초 길게 누르면 0~9가 나타납니다.',
-    example: '30 선택 · 손 떼기 · 길게 누르기 → 0~9',
-  },
 ];
 
 function currentMinute(): Date {
@@ -183,7 +177,7 @@ export default function TimePickerStyleScreen() {
           <View style={styles.introText}>
             <Txt variant="display">다이얼을 직접 비교하세요</Txt>
             <Txt variant="body" tone="secondary">
-              기본·A·B·C 타입을 같은 시각으로 사용해 본 뒤 원하는 방식을 선택할 수 있습니다.
+              기본·A·B 타입을 같은 시각으로 사용해 본 뒤 원하는 방식을 선택할 수 있습니다.
             </Txt>
           </View>
         </View>

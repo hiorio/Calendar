@@ -1,4 +1,4 @@
-export type TimePickerLabVariant = 'digit-auto' | 'digit-composed' | 'digit-hold';
+export type TimePickerLabVariant = 'digit-auto' | 'digit-composed';
 
 export type TimePickerLabPickerProps = {
   value: Date;

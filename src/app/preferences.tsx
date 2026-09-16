@@ -142,7 +142,7 @@ export default function PreferencesScreen() {
               <ListRow
                 icon="time-outline"
                 title="시간 선택 방식"
-                subtitle="기본·A·B·C 다이얼을 직접 사용해보고 선택"
+                subtitle="기본·A·B 다이얼을 직접 사용해보고 선택"
                 value={TIME_PICKER_STYLE_LABELS[timePickerStyle]}
                 onPress={() => router.push('/time-picker-lab' as Href)}
               />

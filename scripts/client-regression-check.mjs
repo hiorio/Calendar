@@ -434,26 +434,16 @@ await check('iOS B형은 확인한 시각을 한 번만 일정 폼에 반영한�
   assert.deepEqual(bType.changes, [confirmed]);
 });
 
-await check('iOS C형도 길게 눌러 확장하는 전용 다이얼로 연결한다', () => {
-  const cType = createDateTimeFieldHarness('digit-hold');
-  let tree = cType.render();
-  find(tree, (node) => node.type === 'Pressable').props.onPress();
-  tree = cType.render();
-  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
-  assert.equal(picker.props.variant, 'digit-hold');
-  assert.equal(picker.props.purpose, 'event');
-});
-
 await check('설정 체험은 저장값 대신 지정한 실제 선택기를 열어 샘플 시각에만 반영한다', () => {
   const customPreview = createDateTimeFieldHarness('system', {
-    timePickerStyleOverride: 'digit-hold',
+    timePickerStyleOverride: 'digit-composed',
     timePickerPurpose: 'preview',
   });
   let tree = customPreview.render();
   find(tree, (node) => node.type === 'Pressable').props.onPress();
   tree = customPreview.render();
   const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
-  assert.equal(picker.props.variant, 'digit-hold');
+  assert.equal(picker.props.variant, 'digit-composed');
   assert.equal(picker.props.purpose, 'preview');
   const previewValue = new Date(2026, 8, 15, 16, 52);
   picker.props.onConfirm(previewValue);
@@ -468,18 +458,31 @@ await check('설정 체험은 저장값 대신 지정한 실제 선택기를 열
   assert.equal(find(systemTree, (node) => node.type === 'TimePickerLabPicker'), null);
 });
 
-await check('정식 설정에서 기본형·A형·B형·C형을 직접 체험한 뒤 별도로 선택한다', () => {
+await check('정식 설정에서 기본형·A형·B형을 직접 체험한 뒤 별도로 선택한다', () => {
   const preferences = readFileSync(
     new URL('../src/app/preferences.tsx', import.meta.url),
     'utf8',
   );
   const more = readFileSync(new URL('../src/app/(app)/settings.tsx', import.meta.url), 'utf8');
   const source = readFileSync(new URL('../src/app/time-picker-lab.tsx', import.meta.url), 'utf8');
+  const nativePicker = readFileSync(
+    new URL('../src/features/experiments/time-picker-lab-picker.ios.tsx', import.meta.url),
+    'utf8',
+  );
+  const preferenceStore = readFileSync(
+    new URL('../src/stores/time-picker-preference.ts', import.meta.url),
+    'utf8',
+  );
   const options = source.match(/const STYLE_DEFINITIONS:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
   assert.match(options, /id:\s*'system'/);
   assert.match(options, /id:\s*'digit-auto'/);
   assert.match(options, /id:\s*'digit-composed'/);
-  assert.match(options, /id:\s*'digit-hold'/);
+  assert.doesNotMatch(options, /id:\s*'digit-hold'/);
+  assert.doesNotMatch(source, /C타입|기본·A·B·C/);
+  assert.doesNotMatch(preferences, /기본·A·B·C/);
+  assert.doesNotMatch(nativePicker, /digit-hold|onLongPressGesture|long-press/);
+  assert.match(preferenceStore, /version:\s*1/);
+  assert.match(preferenceStore, /migrate:\s*\(persisted\)/);
   assert.match(source, /timePickerStyleOverride=\{definition\.id\}/);
   assert.match(source, /timePickerPurpose="preview"/);
   assert.match(source, /onPreviewChange=\{setPreviewValue\}/);

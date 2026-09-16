@@ -13,6 +13,14 @@ type TimePickerPreferenceState = {
   setStyle: (style: TimePickerStyle) => void;
 };
 
+function persistedStyle(persisted: unknown): TimePickerStyle {
+  if (!persisted || typeof persisted !== 'object') {
+    return DEFAULT_TIME_PICKER_STYLE;
+  }
+
+  return normalizeTimePickerStyle((persisted as { style?: unknown }).style);
+}
+
 /** 계정과 무관하게 이 기기에서만 유지되는 일정 시각 입력 방식. */
 export const useTimePickerPreference = create<TimePickerPreferenceState>()(
   persist(
@@ -23,12 +31,13 @@ export const useTimePickerPreference = create<TimePickerPreferenceState>()(
     {
       name: 'timeline-time-picker-preference',
       storage: createJSONStorage(() => AsyncStorage),
+      version: 1,
       partialize: ({ style }) => ({ style }),
+      migrate: (persisted) => ({ style: persistedStyle(persisted) }),
       merge: (persisted, current) => {
-        const saved = persisted as Partial<TimePickerPreferenceState> | null;
         return {
           ...current,
-          style: normalizeTimePickerStyle(saved?.style),
+          style: persistedStyle(persisted),
         };
       },
     },

@@ -1,7 +1,6 @@
 import { Host, HStack, Picker, Text as SwiftText } from '@expo/ui/swift-ui';
 import {
   accessibilityHidden,
-  accessibilityHint,
   accessibilityIdentifier,
   accessibilityLabel,
   accessibilityValue,
@@ -9,7 +8,6 @@ import {
   frame,
   labelsHidden,
   monospacedDigit,
-  onLongPressGesture,
   pickerStyle,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
@@ -53,13 +51,12 @@ const PICKER_HEIGHT = 196;
 const BASE_PICKER_WIDTH = 184;
 const DIGIT_PICKER_WIDTH = 266;
 const AUTO_FINE_REVEAL_DURATION_MS = 200;
-const HOLD_DURATION_SECONDS = 0.6;
 const PICKER_EDGE_INSET = Spacing.sm;
 
 type VariantConfig = {
   experimentTitle: string;
   eventTitle: string;
-  reveal: 'automatic' | 'always' | 'long-press';
+  reveal: 'automatic' | 'always';
 };
 
 const VARIANT_CONFIG: Record<TimePickerLabVariant, VariantConfig> = {
@@ -72,11 +69,6 @@ const VARIANT_CONFIG: Record<TimePickerLabVariant, VariantConfig> = {
     experimentTitle: 'B안 · 10분 + 1분 조합',
     eventTitle: 'B타입 · 10분 + 1분 조합',
     reveal: 'always',
-  },
-  'digit-hold': {
-    experimentTitle: 'C안 · 길게 눌러 확장',
-    eventTitle: 'C타입 · 길게 눌러 확장',
-    reveal: 'long-press',
   },
 };
 
@@ -97,13 +89,9 @@ export function TimePickerLabPicker({
       ? isFormalPicker
         ? 'A타입'
         : 'A안'
-      : variant === 'digit-composed'
-        ? isFormalPicker
-          ? 'B타입'
-          : 'B안'
-        : isFormalPicker
-          ? 'C타입'
-          : 'C안';
+      : isFormalPicker
+        ? 'B타입'
+        : 'B안';
   const initial = timePickerParts(value);
   const [meridiem, setMeridiem] = useState(initial.meridiem);
   const [hour12, setHour12] = useState(initial.hour12);
@@ -128,15 +116,13 @@ export function TimePickerLabPicker({
   function revealFineMinute() {
     if (fineVisible) return;
 
-    const revealAnimation =
-      config.reveal === 'automatic'
-        ? LayoutAnimation.create(
-            AUTO_FINE_REVEAL_DURATION_MS,
-            LayoutAnimation.Types.easeInEaseOut,
-            LayoutAnimation.Properties.opacity,
-          )
-        : LayoutAnimation.Presets.easeInEaseOut;
-    LayoutAnimation.configureNext(revealAnimation);
+    LayoutAnimation.configureNext(
+      LayoutAnimation.create(
+        AUTO_FINE_REVEAL_DURATION_MS,
+        LayoutAnimation.Types.easeInEaseOut,
+        LayoutAnimation.Properties.opacity,
+      ),
+    );
     setFineVisible(true);
     requestAnimationFrame(() => {
       AccessibilityInfo.announceForAccessibility(
@@ -160,20 +146,9 @@ export function TimePickerLabPicker({
     accessibilityIdentifier(`time-picker-${variant}-coarse-minute`),
     accessibilityLabel(`${variantLabel} 10분 단위`),
     accessibilityValue(`${coarseMinute}분대`),
-    ...(config.reveal === 'long-press'
-      ? [
-          accessibilityHint(
-            '값을 고르고 손을 뗀 뒤 다시 길게 누르면 오른쪽에 1분 자리 선택기가 열립니다',
-          ),
-          onLongPressGesture(() => revealFineMinute(), HOLD_DURATION_SECONDS),
-        ]
-      : []),
   ];
 
   const headerDescription = (() => {
-    if (config.reveal === 'long-press' && !fineVisible) {
-      return '10분 휠을 고르고 손을 뗀 뒤, 같은 휠을 0.6초 길게 누르세요';
-    }
     if (!fineVisible) {
       return '10분 휠을 움직이면 오른쪽에 0~9가 빠르게 나타납니다';
     }
@@ -350,25 +325,8 @@ export function TimePickerLabPicker({
             <Txt variant="caption" tone="secondary" style={styles.relationText}>
               {fineVisible
                 ? `${coarseMinute}분대 + 오른쪽 ${fineSelection} = ${minute}분`
-                : config.reveal === 'long-press'
-                  ? '선택을 마치고 손을 뗀 뒤 10분 휠을 다시 길게 눌러 연결합니다'
-                  : '10분 휠을 움직이면 오른쪽에 0~9가 열립니다'}
+                : '10분 휠을 움직이면 오른쪽에 0~9가 열립니다'}
             </Txt>
-            {!fineVisible && config.reveal === 'long-press' ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="1분 자리 직접 열기"
-                hitSlop={8}
-                onPress={() => revealFineMinute()}
-                style={({ pressed }) => [
-                  styles.revealButton,
-                  { backgroundColor: pressed ? colors.accentPressed : colors.accent },
-                ]}>
-                <Txt variant="micro" tone="onAccent">
-                  직접 열기
-                </Txt>
-              </Pressable>
-            ) : null}
           </View>
 
           <View style={[styles.actions, isFormalPicker && styles.formalActions]}>
@@ -469,12 +427,6 @@ const styles = StyleSheet.create({
     borderRadius: Radius.md,
   },
   relationText: { flex: 1 },
-  revealButton: {
-    minHeight: 44,
-    justifyContent: 'center',
-    paddingHorizontal: Spacing.md,
-    borderRadius: Radius.pill,
-  },
   actions: {
     flexDirection: 'row',
     gap: Spacing.sm,
