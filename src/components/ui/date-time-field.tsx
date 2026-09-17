@@ -4,14 +4,23 @@ import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
+import type { TimePickerStyle } from '@/features/events/time-picker-style';
+import { TimePickerLabPicker } from '@/features/experiments/time-picker-lab-picker';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate, formatTime } from '@/lib/event-time';
+import { useTimePickerPreference } from '@/stores/time-picker-preference';
 
 export type DateTimeFieldProps = {
   label: string;
   value: Date;
   mode: 'date' | 'time';
   onChange: (next: Date) => void;
+  /** 날짜와 시각을 한 행에 나란히 둘 때 바깥 라벨을 숨긴다. */
+  hideLabel?: boolean;
+  /** 설정 화면 미리보기처럼 저장값과 무관하게 특정 시각 선택기를 직접 시험한다. */
+  timePickerStyleOverride?: TimePickerStyle;
+  /** 실제 일정 반영과 설정 화면 체험의 완료 문구를 구분한다. */
+  timePickerPurpose?: 'event' | 'preview';
 };
 
 /**
@@ -21,17 +30,64 @@ export type DateTimeFieldProps = {
  * 여는 방식이다. 플랫폼 관례를 흉내 내지 않고 각자의 UI를 그대로 쓴다.
  * 웹은 이 라이브러리가 지원하지 않아 `date-time-field.web.tsx`로 갈라져 있다.
  */
-export function DateTimeField({ label, value, mode, onChange }: DateTimeFieldProps) {
+export function DateTimeField({
+  label,
+  value,
+  mode,
+  onChange,
+  hideLabel = false,
+  timePickerStyleOverride,
+  timePickerPurpose = 'event',
+}: DateTimeFieldProps) {
   const { colors } = useTheme();
   const [open, setOpen] = useState(false);
+  const storedTimePickerStyle = useTimePickerPreference((state) => state.style);
+  const timePickerStyle = timePickerStyleOverride ?? storedTimePickerStyle;
 
   if (Platform.OS === 'ios') {
+    if (mode === 'time' && timePickerStyle !== 'system') {
+      return (
+        <View style={[styles.row, hideLabel && styles.controlOnly]}>
+          {!hideLabel ? (
+            <Txt variant="body" tone="secondary">
+              {label}
+            </Txt>
+          ) : null}
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`${label} 선택`}
+            onPress={() => setOpen(true)}
+            style={({ pressed }) => [
+              styles.button,
+              { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted },
+            ]}>
+            <Txt variant="body">{formatTime(value)}</Txt>
+          </Pressable>
+          {open ? (
+            <TimePickerLabPicker
+              value={value}
+              variant={timePickerStyle}
+              purpose={timePickerPurpose}
+              onCancel={() => setOpen(false)}
+              onConfirm={(next) => {
+                setOpen(false);
+                onChange(next);
+              }}
+            />
+          ) : null}
+        </View>
+      );
+    }
+
     return (
-      <View style={styles.row}>
-        <Txt variant="body" tone="secondary">
-          {label}
-        </Txt>
+      <View style={[styles.row, hideLabel && styles.controlOnly]}>
+        {!hideLabel ? (
+          <Txt variant="body" tone="secondary">
+            {label}
+          </Txt>
+        ) : null}
         <DateTimePicker
+          accessibilityLabel={`${label} 선택`}
           value={value}
           mode={mode}
           display="compact"
@@ -42,10 +98,12 @@ export function DateTimeField({ label, value, mode, onChange }: DateTimeFieldPro
   }
 
   return (
-    <View style={styles.row}>
-      <Txt variant="body" tone="secondary">
-        {label}
-      </Txt>
+    <View style={[styles.row, hideLabel && styles.controlOnly]}>
+      {!hideLabel ? (
+        <Txt variant="body" tone="secondary">
+          {label}
+        </Txt>
+      ) : null}
 
       <Pressable
         accessibilityRole="button"
@@ -82,6 +140,7 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     minHeight: 44,
   },
+  controlOnly: { minHeight: 0 },
   button: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,

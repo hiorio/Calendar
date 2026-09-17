@@ -9,9 +9,10 @@
  * 달력 격자용 날짜 계산(`lib/date.ts`)과 섞지 않는다. 저쪽은 화면 좌표, 이쪽은 의미다.
  */
 
-import type { EventRow } from '@/types/database';
+import type { EventRow } from '../types/database.ts';
 
-import { toDateKey } from './date';
+import { toDateKey } from './date.ts';
+import { toWallClock } from './timezone.ts';
 
 /** 기기 타임존. 반복 전개(4단계)의 기준이 되므로 일정마다 저장해 둔다. */
 export function deviceTimezone(): string {
@@ -26,6 +27,55 @@ export function deviceTimezone(): string {
 export function parseDateKey(key: string): Date {
   const [year, month, day] = key.split('-').map(Number);
   return new Date(year, month - 1, day);
+}
+
+/**
+ * iOS EventKit 종일 일정의 시작/종료를 앱의 포함 날짜 범위로 바꾼다.
+ *
+ * Expo Calendar는 EventKit의 Date를 UTC ISO 문자열로 직렬화한다. 그래서 한국의
+ * 8월 21일 00:00은 `8월 20일 15:00Z`로 넘어올 수 있다. 문자열 앞의 날짜만 자르면
+ * 하루 전이 되므로, 실제 순간을 기기 타임존의 벽시계 날짜로 다시 투영한다.
+ * 날짜만 들어온 값은 종일 일정의 의미 그대로 두며, 종료일은 EventKit의 배타 범위를
+ * 앱 DB의 포함 범위로 바꾼다.
+ */
+export function deviceAllDayDateRange(
+  start: string | Date,
+  exclusiveEnd: string | Date,
+  timezone = deviceTimezone(),
+): { startDate: string; endDate: string } {
+  const startDate = deviceAllDayDateKey(start, timezone);
+  const exclusiveEndDate = deviceAllDayDateKey(exclusiveEnd, timezone);
+
+  return {
+    startDate,
+    endDate:
+      exclusiveEndDate > startDate ? shiftDateKey(exclusiveEndDate, -1) : startDate,
+  };
+}
+
+function deviceAllDayDateKey(value: string | Date, timezone: string): string {
+  if (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    return value;
+  }
+
+  const wall = toWallClock(value instanceof Date ? value : new Date(value), timezone);
+  return `${wall.year}-${pad2(wall.month)}-${pad2(wall.day)}`;
+}
+
+/** 날짜 키 연산은 UTC 정오에서 해서 서머타임 전환의 영향을 받지 않게 한다. */
+export function shiftDateKey(key: string, amount: number): string {
+  const [year, month, day] = key.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1, day + amount, 12));
+  return `${shifted.getUTCFullYear()}-${pad2(shifted.getUTCMonth() + 1)}-${pad2(shifted.getUTCDate())}`;
+}
+
+/** 종일 일정의 길이는 실제 경과 시간이 아닌 달력 날짜 차이다. */
+export function dateKeyDistance(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T12:00:00Z`) - Date.parse(`${from}T12:00:00Z`)) / 86_400_000);
+}
+
+function pad2(value: number): string {
+  return `${value}`.padStart(2, '0');
 }
 
 /** 폼이 다루는 모양. 화면은 항상 Date 두 개만 신경 쓴다. */
@@ -80,6 +130,51 @@ export function fromTimeColumns(event: EventTimeColumns): EventTimeForm {
   };
 }
 
+/** 회차 ID는 순간이지만 종일 날짜는 일정의 타임존에서 복원한다. */
+export function occurrenceTime<T extends EventTimeColumns>(
+  master: T,
+  originalStart?: string | null,
+  patch?: Partial<{ [K in keyof EventTimeColumns]: EventTimeColumns[K] | null }> | null,
+): T {
+  let base = master;
+  if (originalStart && !Number.isNaN(Date.parse(originalStart))) {
+    if (master.is_all_day) {
+      const wall = toWallClock(new Date(originalStart), master.timezone);
+      const startDate = `${wall.year}-${pad2(wall.month)}-${pad2(wall.day)}`;
+      base = { ...master, start_date: startDate,
+        end_date: shiftDateKey(startDate, dateKeyDistance(master.start_date!, master.end_date!)) };
+    } else {
+      const start = Date.parse(originalStart);
+      const span = Date.parse(master.end_at!) - Date.parse(master.start_at!);
+      base = { ...master, start_at: new Date(start).toISOString(), end_at: new Date(start + span).toISOString() };
+    }
+  }
+  if (!patch) return base;
+  const allDay = patch.is_all_day ?? base.is_all_day;
+  return allDay
+    ? { ...base, is_all_day: true, start_at: null, end_at: null,
+        start_date: patch.start_date ?? base.start_date,
+        end_date: patch.end_date ?? base.end_date }
+    : { ...base, is_all_day: false, start_date: null, end_date: null,
+        start_at: patch.start_at ?? base.start_at, end_at: patch.end_at ?? base.end_at };
+}
+
+/** 종일은 기기 달력 날짜, 시간 지정은 순간으로 조회 구간과 비교한다. */
+export function eventOverlapsRange(event: EventTimeColumns, from: Date, to: Date, allDayTimezone?: string): boolean {
+  if (event.is_all_day) {
+    const last = calendarDateKey(new Date(to.getTime() - 1), allDayTimezone);
+    return Boolean(event.start_date && event.end_date && event.start_date <= last && event.end_date >= calendarDateKey(from, allDayTimezone));
+  }
+  return Date.parse(event.start_at!) < to.getTime() && Date.parse(event.end_at!) > from.getTime();
+}
+
+/** 화면은 기기 날짜를, 리마인더 워커는 일정 타임존의 날짜를 조회한다. */
+export function calendarDateKey(date: Date, timezone?: string): string {
+  if (!timezone) return toDateKey(date);
+  const wall = toWallClock(date, timezone);
+  return `${wall.year}-${pad2(wall.month)}-${pad2(wall.day)}`;
+}
+
 /**
  * 종일 ↔ 시간 지정 전환.
  *
@@ -107,6 +202,10 @@ export function switchAllDay(form: EventTimeForm, isAllDay: boolean): EventTimeF
  * 사용자에게 보여 주고 에러로 막느니, 애초에 그 상태를 만들지 않는다.
  */
 export function moveStart(form: EventTimeForm, start: Date): EventTimeForm {
+  if (form.isAllDay) {
+    const days = dateKeyDistance(toDateKey(form.start), toDateKey(form.end));
+    return { ...form, start, end: parseDateKey(shiftDateKey(toDateKey(start), days)) };
+  }
   const shift = start.getTime() - form.start.getTime();
   return { ...form, start, end: new Date(form.end.getTime() + shift) };
 }
@@ -180,6 +279,41 @@ export function startOfDay(date: Date): Date {
 
 export function addMinutes(date: Date, minutes: number): Date {
   return new Date(date.getTime() + minutes * 60_000);
+}
+
+/**
+ * 새 일정 화면의 기본 시간.
+ *
+ * 월간·일별 화면에서 고른 날짜는 유지하고, 시각은 화면을 연 현재 시·분을 사용한다.
+ * 초와 밀리초는 피커에 보이지 않으므로 버리고 기본 길이는 한 시간으로 둔다.
+ */
+export function newEventTime(date: Date, now = new Date()): EventTimeForm {
+  const start = new Date(date);
+  start.setHours(now.getHours(), now.getMinutes(), 0, 0);
+  return { isAllDay: false, start, end: addMinutes(start, 60) };
+}
+
+/**
+ * 위젯·바로가기에서 여는 빠른 일정의 기본 시간.
+ *
+ * 오늘이면 현재보다 뒤인 다음 30분 경계부터 한 시간, 다른 날이면 그 날
+ * 09:00~10:00이다. 화면마다 반올림 규칙을 다시 만들지 않도록 여기 둔다.
+ */
+export function quickEventTime(date: Date, now = new Date()): EventTimeForm {
+  const selected = startOfDay(date);
+  const today = startOfDay(now);
+
+  if (selected.getTime() !== today.getTime()) {
+    const start = new Date(selected);
+    start.setHours(9, 0, 0, 0);
+    return { isAllDay: false, start, end: addMinutes(start, 60) };
+  }
+
+  const start = new Date(now);
+  start.setSeconds(0, 0);
+  const minutes = start.getMinutes();
+  start.setMinutes(minutes < 30 ? 30 : 60, 0, 0);
+  return { isAllDay: false, start, end: addMinutes(start, 60) };
 }
 
 /** '오후 2:30' */
