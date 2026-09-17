@@ -107,6 +107,48 @@ function ocr(screenshotResult, name) {
   return lines;
 }
 
+function measureMediumCalendarInsets(currentSnapshot, screenshotResult, lines) {
+  const preview = currentSnapshot.nodes.find((node) =>
+    String(node.type ?? node.role).toLowerCase().includes('button') &&
+    /time\s*flower/i.test(node.label ?? '') &&
+    /(?:중간|medium)/i.test(node.value ?? '') &&
+    node.rect,
+  );
+  if (!preview) throw new Error('could not find the systemMedium preview bounds');
+
+  const density = screenshotResult.pixelDensity ?? 1;
+  const toLogicalRect = (line) => ({
+    leading: line.x / density,
+    trailing: (line.x + line.width) / density,
+    centerY: (line.y + line.height / 2) / density,
+  });
+  const month = lines.find((line) => /^\d{1,2}월$/.test(line.text.trim()));
+  if (!month) throw new Error('could not find the month title in the systemMedium preview');
+
+  const monthRect = toLogicalRect(month);
+  const quickAddCandidates = lines
+    .filter((line) => line.text.trim() === '+')
+    .map((line) => ({ line, rect: toLogicalRect(line) }))
+    .filter(({ rect }) =>
+      rect.leading >= preview.rect.x &&
+      rect.trailing <= preview.rect.x + preview.rect.width &&
+      rect.centerY >= preview.rect.y &&
+      rect.centerY <= preview.rect.y + preview.rect.height,
+    )
+    .sort((left, right) =>
+      Math.abs(left.rect.centerY - monthRect.centerY) -
+      Math.abs(right.rect.centerY - monthRect.centerY),
+    );
+  const quickAdd = quickAddCandidates[0]?.rect;
+  if (!quickAdd) throw new Error('could not find the quick-add icon in the systemMedium preview');
+
+  return {
+    previewRect: preview.rect,
+    leading: monthRect.leading - preview.rect.x,
+    trailing: preview.rect.x + preview.rect.width - quickAdd.trailing,
+  };
+}
+
 function authContinuityFingerprint(dataContainer) {
   const userIds = new Set();
   const pending = [dataContainer];
@@ -601,7 +643,15 @@ try {
 
   const mediumPickerCapture = await screenshot('07-system-medium-picker', 3);
   const mediumPickerOcr = ocr(mediumPickerCapture, '07-system-medium-picker');
-  const mediumPickerVerification = countCalendarEvidence(mediumPickerOcr);
+  const mediumPickerInsets = measureMediumCalendarInsets(
+    current,
+    mediumPickerCapture,
+    mediumPickerOcr,
+  );
+  const mediumPickerVerification = {
+    ...countCalendarEvidence(mediumPickerOcr),
+    insets: mediumPickerInsets,
+  };
   saveJson('07-system-medium-picker-verification.json', mediumPickerVerification);
   record('medium calendar picker visual verification', mediumPickerVerification);
   if (mediumPickerVerification.uniqueDateCount < 7 || mediumPickerVerification.weekdayCount < 4) {
@@ -609,6 +659,13 @@ try {
       'systemMedium picker preview did not expose a complete calendar week: ' +
         `${mediumPickerVerification.uniqueDateCount} dates, ` +
         `${mediumPickerVerification.weekdayCount} weekday labels`,
+    );
+  }
+  const { leading, trailing } = mediumPickerInsets;
+  if (leading < 8 || leading > 24 || trailing < 8 || trailing > 24) {
+    throw new Error(
+      'systemMedium picker preview has unbalanced horizontal insets: ' +
+        `leading=${leading.toFixed(2)}pt, trailing=${trailing.toFixed(2)}pt; expected 8...24pt`,
     );
   }
 

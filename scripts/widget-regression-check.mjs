@@ -230,7 +230,7 @@ check('hidden event count links to the complete day view', () => {
     node.props.destination === day.url && nodes(node).some((child) => child.props?.children === '+3'));
   assert.ok(overflow);
 });
-check('medium calendar fills the system content area without changing other widget families', () => {
+check('medium calendar keeps balanced side insets without changing other widget families', () => {
   const props = propsFor(new Date(2026, 7, 1));
   const event = { key: 'trip', title: '여행', startColumn: 1, endColumn: 3, filled: true,
     colors: { light: 'label', dark: 'label' }, textColors: { light: 'ink', dark: 'ink' }, url: '/event/trip' };
@@ -240,14 +240,16 @@ check('medium calendar fills the system content area without changing other widg
   validate(tree);
 
   assert.equal(tree.props.spacing, 5);
-  assert(tree.props.modifiers.some((modifier) => modifier.name === 'containerRelativeFrame' &&
-    modifier.args[0].axes === 'horizontal'));
+  const rootColumnFrame = tree.props.modifiers.find((modifier) =>
+    modifier.name === 'containerRelativeFrame' && modifier.args[0].axes === 'horizontal');
+  assert.equal(rootColumnFrame.args[0].count, 8);
+  assert.equal(rootColumnFrame.args[0].span, 7);
   const header = nodes(tree).find((node) => node.type === 'HStackView' &&
     nodes(node).some((child) => child.props?.children === '8월'));
   assert.equal(header.props.modifiers.find((modifier) =>
     modifier.name === 'frame' && modifier.args[0].height != null).args[0].height, 22);
   const weekday = nodes(tree).find((node) => node.props?.children === '일');
-  assert.equal(weekday.props.modifiers.find((modifier) => modifier.name === 'containerRelativeFrame').args[0].count, 7);
+  assert.equal(weekday.props.modifiers.find((modifier) => modifier.name === 'containerRelativeFrame').args[0].count, 8);
   assert.equal(weekday.props.modifiers.find((modifier) =>
     modifier.name === 'frame' && modifier.args[0].height != null).args[0].height, 11);
   const today = nodes(tree).find((node) => node.props?.children === 1);
@@ -265,7 +267,9 @@ check('medium calendar fills the system content area without changing other widg
   const fallback = layouts.CalendarWidget(props, { ...mediumEnv, widgetContentMargins: undefined });
   const fallbackRootFrame = fallback.props.modifiers.find((modifier) =>
     modifier.name === 'frame' && modifier.args[0].width != null);
-  assert.equal(fallbackRootFrame.args[0].width, 284);
+  assert.equal(fallbackRootFrame.args[0].width, 298);
+  const fallbackInset = (329 - fallbackRootFrame.args[0].width) / 2;
+  assert(fallbackInset >= 8 && fallbackInset <= 24);
 
   const mediumMemo = layouts.QuickMemoWidget(props, mediumEnv);
   assert(!mediumMemo.props.modifiers.some((modifier) => modifier.name === 'padding'));

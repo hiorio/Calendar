@@ -395,15 +395,29 @@ export const CalendarWidget = createWidget<TimeFlowerWidgetProps>(
 
     if (environment.widgetFamily === 'systemMedium') {
       const responsive = environment.widgetContentMargins != null;
-      const mediumFallbackDayWidth = 38;
+      // Reserve one virtual column so the seven visible days do not touch the
+      // rounded widget edge. The seven-day grid stays centered in that space.
+      const mediumColumnCount = 8;
+      const mediumCalendarSpan = 7;
+      const mediumFallbackDayWidth = 40;
       const mediumFallbackCalendarWidth = mediumFallbackDayWidth * 7 + columnGap * 6;
       const mediumColumnFrame = (span = 1) => responsive
-        ? containerRelativeFrame({ axes: 'horizontal', count: 7, span, spacing: columnGap })
+        ? containerRelativeFrame({
+            axes: 'horizontal',
+            count: mediumColumnCount,
+            span,
+            spacing: columnGap,
+          })
         : frame({
             width: span * mediumFallbackDayWidth + (span - 1) * columnGap,
           });
       const mediumFullWidth = responsive
-        ? containerRelativeFrame({ axes: 'horizontal' })
+        ? containerRelativeFrame({
+            axes: 'horizontal',
+            count: mediumColumnCount,
+            span: mediumCalendarSpan,
+            spacing: columnGap,
+          })
         : frame({ width: mediumFallbackCalendarWidth });
       const mediumHeaderHeight = 22;
       const mediumDayHeight = 22;
