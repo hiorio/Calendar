@@ -57,6 +57,13 @@ try {
     wallpaperIntent,
     /TimeFlower 잠금화면 배경 만들기/,
   );
+  assert.match(
+    wallpaperIntent,
+    /struct TimeFlowerWallpaperShortcuts: AppShortcutsProvider/,
+  );
+  assert.match(wallpaperIntent, /intent: GenerateTimeFlowerWallpaperIntent\(\)/);
+  assert.match(wallpaperIntent, /\\\(\.applicationName\) 잠금화면 배경 만들기/);
+  assert.match(wallpaperIntent, /ReturnsValue<IntentFile>/);
   assert.match(wallpaperIntent, /snapshotFileName = "TimeFlowerWallpaperSnapshot\.json"/);
   assert.match(wallpaperIntent, /removedOnCompletion = true/);
   assert.match(wallpaperIntent, /loadSnapshotWithRetry/);
@@ -78,7 +85,7 @@ try {
     'production config must fail before emitting a bundle without backend settings',
   );
 
-  console.log('\nApp config regressions: 16 passed');
+  console.log('\nApp config regressions: 20 passed');
 } finally {
   for (const name of managedEnvironment) {
     const original = originalEnvironment[name];

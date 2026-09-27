@@ -21,18 +21,41 @@ function printableStrings(path) {
   return `${result.stdout}\n${readFileSync(path).toString('latin1')}`;
 }
 
-const metadata = printableStrings(metadataPath);
-for (const required of [
-  'GenerateTimeFlowerWallpaperIntent',
-  'IntentFile',
-]) {
-  assert(metadata.includes(required), `App Intent metadata does not contain ${required}`);
+let metadata;
+try {
+  metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+} catch (error) {
+  assert.fail(`App Intent metadata is not valid JSON: ${error}`);
 }
 
-// Xcode's extracted action metadata records the discoverable AppIntent contract,
-// but it does not guarantee that the source-level AppShortcutsProvider type name
-// survives serialization. The provider itself is compile-checked with the app and
-// its source contract is covered by app-config-regression-check.mjs.
+const actionIdentifier = 'GenerateTimeFlowerWallpaperIntent';
+const action = metadata.actions?.[actionIdentifier];
+assert(action, `App Intent metadata does not contain ${actionIdentifier}`);
+assert.equal(action.identifier, actionIdentifier);
+assert.equal(action.isDiscoverable, true, 'The wallpaper action must be discoverable');
+assert.equal(action.title?.key, 'TimeFlower 잠금화면 배경 만들기');
+assert(action.outputType?.intents, 'The wallpaper action must publish an intent output');
+
+assert.equal(
+  typeof metadata.autoShortcutProviderMangledName,
+  'string',
+  'App Shortcuts provider metadata is missing',
+);
+assert(metadata.autoShortcutProviderMangledName.length > 0, 'App Shortcuts provider is empty');
+const shortcut = metadata.autoShortcuts?.find(
+  (candidate) => candidate.actionIdentifier === actionIdentifier,
+);
+assert(shortcut, 'The wallpaper action is missing from the generated App Shortcuts');
+assert.equal(shortcut.shortTitle?.key, 'TimeFlower 잠금화면 배경 만들기');
+assert.equal(shortcut.systemImageName, 'calendar.badge.clock');
+const phrases = new Set(shortcut.phraseTemplates?.map((phrase) => phrase.key));
+for (const phrase of [
+  '${applicationName} 잠금화면 배경 만들기',
+  '${applicationName} 배경화면 만들기',
+  '${applicationName} 일정 배경화면 만들기',
+]) {
+  assert(phrases.has(phrase), `Generated App Shortcuts are missing phrase: ${phrase}`);
+}
 
 const plistResult = spawnSync(
   '/usr/bin/plutil',
@@ -47,4 +70,4 @@ assert(
   'The wallpaper App Intent marker was not linked into the main app executable',
 );
 
-console.log('Verified TimeFlower wallpaper App Intent metadata and linked implementation.');
+console.log('Verified TimeFlower wallpaper App Intent, App Shortcut, and linked implementation.');
