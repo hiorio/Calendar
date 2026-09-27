@@ -420,7 +420,7 @@ function CompactTimeRow({ label, children }: { label: string; children: React.Re
   return (
     <View style={styles.timeRow}>
       <Ionicons name="calendar-clear-outline" size={20} color={colors.textSecondary} />
-      <Txt variant="body" style={styles.rowLabel}>
+      <Txt variant="body" style={styles.compactLabel}>
         {label}
       </Txt>
       <View style={styles.timeControls}>{children}</View>
@@ -519,8 +519,9 @@ const styles = StyleSheet.create({
   },
   timeControls: {
     flex: 1,
+    minWidth: 0,
     flexDirection: 'row',
-    flexWrap: 'wrap',
+    flexWrap: 'nowrap',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: Spacing.xs,

@@ -23,6 +23,13 @@ export type DateTimeFieldProps = {
   timePickerPurpose?: 'event' | 'preview';
 };
 
+const IOS_COMPACT_HIT_SLOP = {
+  top: Spacing.sm,
+  bottom: Spacing.sm,
+  left: 0,
+  right: 0,
+} as const;
+
 /**
  * 시스템 날짜/시각 선택기.
  *
@@ -56,9 +63,11 @@ export function DateTimeField({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`${label} 선택`}
+            hitSlop={IOS_COMPACT_HIT_SLOP}
             onPress={() => setOpen(true)}
             style={({ pressed }) => [
               styles.button,
+              styles.iosCompactButton,
               { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted },
             ]}>
             <Txt variant="body">{formatTime(value)}</Txt>
@@ -91,6 +100,7 @@ export function DateTimeField({
           value={value}
           mode={mode}
           display="compact"
+          hitSlop={IOS_COMPACT_HIT_SLOP}
           onChange={(_, next) => next && onChange(next)}
         />
       </View>
@@ -148,5 +158,10 @@ const styles = StyleSheet.create({
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  /** iOS compact UIDatePicker와 보이는 높이를 맞추고 터치 영역은 hitSlop으로 보완한다. */
+  iosCompactButton: {
+    minHeight: 34,
+    paddingVertical: Spacing.xs,
   },
 });

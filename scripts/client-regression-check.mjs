@@ -535,7 +535,7 @@ function createDateTimeFieldHarness(style, fieldProps = {}) {
     '@/constants/theme': {
       Layout: { minTouchTarget: 44 },
       Radius: { sm: 8 },
-      Spacing: { md: 12, lg: 16, sm: 8 },
+      Spacing: { xs: 4, sm: 8, md: 12, lg: 16 },
     },
     '@/features/experiments/time-picker-lab-picker': {
       TimePickerLabPicker: 'TimePickerLabPicker',
@@ -575,12 +575,40 @@ await check('iOS 기본형과 날짜 입력은 기존 compact 선택기를 유�
   const systemPicker = find(systemTree, (node) => node.type === 'DateTimePicker');
   assert.equal(systemPicker.props.mode, 'time');
   assert.equal(systemPicker.props.display, 'compact');
+  assert.equal(systemPicker.props.hitSlop.top, 8);
+  assert.equal(systemPicker.props.hitSlop.bottom, 8);
   assert.equal(find(systemTree, (node) => node.type === 'TimePickerLabPicker'), null);
 
   const customDate = createDateTimeFieldHarness('digit-auto');
   const dateTree = customDate.render('date');
   assert.equal(find(dateTree, (node) => node.type === 'DateTimePicker').props.mode, 'date');
   assert.equal(find(dateTree, (node) => node.type === 'TimePickerLabPicker'), null);
+});
+
+await check('iOS 커스텀 시각 버튼은 compact 높이와 44pt 이상의 터치 영역을 함께 유지한다', () => {
+  const custom = createDateTimeFieldHarness('digit-auto');
+  const tree = custom.render('time');
+  const trigger = find(tree, (node) => node.type === 'Pressable');
+  const style = Object.assign({}, ...trigger.props.style({ pressed: false }));
+
+  assert.equal(style.minHeight, 34);
+  assert.equal(style.paddingVertical, 4);
+  assert.equal(trigger.props.hitSlop.top, 8);
+  assert.equal(trigger.props.hitSlop.bottom, 8);
+});
+
+await check('일정 날짜와 시각 입력은 줄바꿈 없이 같은 행을 유지한다', () => {
+  const source = readFileSync(
+    new URL('../src/features/events/event-form.tsx', import.meta.url),
+    'utf8',
+  );
+  const timeControls = source.match(/timeControls:\s*\{([\s\S]*?)\n\s*\},/)?.[1] ?? '';
+
+  assert.match(source, /function CompactTimeRow[\s\S]*?style=\{styles\.compactLabel\}/);
+  assert.match(timeControls, /flexDirection:\s*'row'/);
+  assert.match(timeControls, /\bflex:\s*1/);
+  assert.match(timeControls, /minWidth:\s*0/);
+  assert.match(timeControls, /flexWrap:\s*'nowrap'/);
 });
 
 await check('iOS A형은 전용 다이얼을 열고 취소하면 값을 바꾸지 않는다', () => {
