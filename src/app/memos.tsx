@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { Field } from '@/components/ui/field';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useMyCalendars } from '@/features/calendars/queries';
 import {
@@ -76,7 +76,6 @@ export default function MemosScreen() {
       keyboardShouldPersistTaps="handled">
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">메모</Txt>
           <Txt variant="body" tone="secondary">
             함께 기억할 할 일과 짧은 기록을 캘린더별로 남깁니다.
           </Txt>
@@ -106,7 +105,10 @@ export default function MemosScreen() {
                         { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
                       ]}
                     />
-                    <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
+                    <Txt
+                      variant="label"
+                      tone={selected ? 'accent' : 'secondary'}
+                      style={styles.calendarChipLabel}>
                       {calendar.name}
                     </Txt>
                   </Pressable>
@@ -234,16 +236,19 @@ const styles = StyleSheet.create({
   section: { gap: Spacing.sm },
   calendarPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   calendarChip: {
-    height: 34,
+    minHeight: Layout.minTouchTarget,
+    maxWidth: '100%',
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
     borderRadius: Radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
   },
+  calendarChipLabel: { flexShrink: 1 },
   dot: { width: 8, height: 8, borderRadius: Radius.pill },
-  input: { height: 86, paddingTop: Spacing.md, textAlignVertical: 'top' },
+  input: { minHeight: 86, paddingTop: Spacing.md, textAlignVertical: 'top' },
   memoRow: {
     minHeight: 66,
     flexDirection: 'row',
@@ -252,9 +257,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
   },
-  check: { padding: Spacing.xs },
-  memoText: { flex: 1, gap: Spacing.xs },
-  meta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.xs },
+  check: {
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  memoText: { flex: 1, minWidth: 0, gap: Spacing.xs },
+  meta: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.xs },
   done: { textDecorationLine: 'line-through' },
-  deleteButton: { padding: Spacing.sm },
+  deleteButton: {
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
 });

@@ -14,7 +14,7 @@ const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf
 let passed = 0;
 function check(name, run) { run(); passed++; console.log(`  PASS  ${name}`); }
 
-check('widget deep links keep the calendar behind dismissible day and event modals', () => {
+check('widget deep links keep the calendar behind dismissible native day and event routes', () => {
   const sourceText = read('src/app/_layout.tsx');
   const sourceFile = ts.createSourceFile(
     'src/app/_layout.tsx',
@@ -43,7 +43,8 @@ check('widget deep links keep the calendar behind dismissible day and event moda
   assert.ok(ts.isStringLiteralLike(anchorProperty.initializer));
   assert.equal(anchorProperty.initializer.text, '(app)');
 
-  const modalRoutes = new Set();
+  const routePresentations = new Map();
+  const routeOptions = new Map();
   const attribute = (element, name) => element.attributes.properties.find(
     (property) => ts.isJsxAttribute(property) && property.name.getText(sourceFile) === name,
   );
@@ -61,11 +62,10 @@ check('widget deep links keep the calendar behind dismissible day and event moda
           (property) => ts.isPropertyAssignment(property) &&
             property.name.getText(sourceFile) === 'presentation',
         );
-        if (
-          presentation && ts.isPropertyAssignment(presentation) &&
-          ts.isStringLiteralLike(presentation.initializer) && presentation.initializer.text === 'modal'
-        ) {
-          modalRoutes.add(routeName.text);
+        if (presentation && ts.isPropertyAssignment(presentation) &&
+          ts.isStringLiteralLike(presentation.initializer)) {
+          routePresentations.set(routeName.text, presentation.initializer.text);
+          routeOptions.set(routeName.text, options.expression);
         }
       }
     }
@@ -73,8 +73,16 @@ check('widget deep links keep the calendar behind dismissible day and event moda
   };
   visit(sourceFile);
 
-  assert(modalRoutes.has('day'), 'the widget day route must remain a modal');
-  assert(modalRoutes.has('event/[id]'), 'the widget event route must remain a modal');
+  assert.equal(routePresentations.get('day'), 'formSheet');
+  assert.equal(routePresentations.get('event/[id]'), 'card');
+
+  const dayOptions = routeOptions.get('day');
+  const grabber = dayOptions.properties.find(
+    (property) => ts.isPropertyAssignment(property) &&
+      property.name.getText(sourceFile) === 'sheetGrabberVisible',
+  );
+  assert.ok(grabber && ts.isPropertyAssignment(grabber));
+  assert.equal(grabber.initializer.kind, ts.SyntaxKind.TrueKeyword);
 });
 
 check('empty and unavailable custom calendars never fall back to all', () => {

@@ -14,7 +14,7 @@ import {
 
 import { Content, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { Layout, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import {
   homeMonthSnapshotKey,
@@ -52,7 +52,7 @@ import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference
 
 export default function CalendarScreen() {
   const { colors, scheme } = useTheme();
-  const { bootstrapError, retainedUserId, user } = useAuth();
+  const { bootstrapError, retainedUserId, session, user } = useAuth();
   const { width: windowWidth } = useWindowDimensions();
   const calendars = useMyCalendars();
   const { hidden, toggle } = useCalendarFilter();
@@ -195,6 +195,18 @@ export default function CalendarScreen() {
     setSelected(nextMonth);
   }
 
+  function openNewEvent() {
+    if (!session) {
+      router.push({
+        pathname: '/account',
+        params: { reason: '연결을 복구한 뒤 일정을 추가할 수 있어요.' },
+      });
+      return;
+    }
+
+    router.push('/event-new');
+  }
+
   return (
     <Screen>
       <Content style={styles.content}>
@@ -205,8 +217,16 @@ export default function CalendarScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel={`${formatMonthTitle(month)}. 연도와 월 선택`}
+              accessibilityHint="누르면 연도와 월을 선택하고, 위아래로 쓸어 달을 바꿉니다"
               accessibilityState={{ expanded: monthPickerOpen }}
-              hitSlop={8}
+              accessibilityActions={[
+                { name: 'decrement', label: '이전 달' },
+                { name: 'increment', label: '다음 달' },
+              ]}
+              onAccessibilityAction={(event) => {
+                if (event.nativeEvent.actionName === 'decrement') moveMonth(-1);
+                if (event.nativeEvent.actionName === 'increment') moveMonth(1);
+              }}
               onPress={() => setMonthPickerOpen(true)}
               style={({ pressed }) => [
                 styles.monthTitleButton,
@@ -214,6 +234,17 @@ export default function CalendarScreen() {
               ]}>
               <Txt variant="title">{formatMonthTitle(month)}</Txt>
               <Ionicons name="chevron-down" size={17} color={colors.textTertiary} />
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="일정 추가"
+              accessibilityHint="새 일정 입력 화면을 엽니다"
+              onPress={openNewEvent}
+              style={({ pressed }) => [
+                styles.addButton,
+                pressed && { backgroundColor: colors.surfacePressed },
+              ]}>
+              <Ionicons name="add" size={26} color={colors.text} />
             </Pressable>
           </View>
 
@@ -254,12 +285,12 @@ export default function CalendarScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: visible }}
                     accessibilityLabel={`${calendar.name} ${visible ? '숨기기' : '표시하기'}`}
+                    hitSlop={{ top: 6, bottom: 6 }}
                     onPress={() => toggle(calendar.id)}
                     style={[
                       styles.chip,
                       {
-                        backgroundColor: visible ? colors.surface : 'transparent',
-                        borderColor: visible ? colors.border : colors.borderStrong,
+                        backgroundColor: visible ? colors.surfaceMuted : 'transparent',
                         opacity: visible ? 1 : 0.55,
                       },
                     ]}>
@@ -301,12 +332,12 @@ export default function CalendarScreen() {
                     accessibilityRole="button"
                     accessibilityState={{ selected: visible }}
                     accessibilityLabel={`${calendar.title} 외부 캘린더 ${visible ? '숨기기' : '표시하기'}`}
+                    hitSlop={{ top: 6, bottom: 6 }}
                     onPress={() => toggleDeviceCalendar(calendar.id)}
                     style={[
                       styles.chip,
                       {
-                        backgroundColor: visible ? colors.surface : 'transparent',
-                        borderColor: visible ? colors.border : colors.borderStrong,
+                        backgroundColor: visible ? colors.surfaceMuted : 'transparent',
                         opacity: visible ? 1 : 0.55,
                       },
                     ]}>
@@ -328,6 +359,7 @@ export default function CalendarScreen() {
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel="캘린더 필터 다시 불러오기"
+                  hitSlop={{ top: 6, bottom: 6 }}
                   onPress={() => calendars.refetch()}
                   style={[
                     styles.chip,
@@ -346,8 +378,9 @@ export default function CalendarScreen() {
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel="캘린더 필터 관리"
+                hitSlop={{ top: 6, bottom: 6 }}
                 onPress={() => router.push('/calendars')}
-                style={[styles.chip, styles.manageChip, { borderColor: colors.border }]}>
+                style={[styles.chip, styles.manageChip]}>
                 <Ionicons name="options-outline" size={14} color={colors.textSecondary} />
                 <Txt variant="label" tone="secondary">
                   필터 관리
@@ -356,19 +389,7 @@ export default function CalendarScreen() {
             </ScrollView>
           </View>
 
-          <View
-            style={styles.calendarFrame}
-            accessible
-            accessibilityRole="adjustable"
-            accessibilityLabel={`${formatMonthTitle(month)} 월간 캘린더`}
-            accessibilityActions={[
-              { name: 'decrement', label: '이전 달' },
-              { name: 'increment', label: '다음 달' },
-            ]}
-            onAccessibilityAction={(event) => {
-              if (event.nativeEvent.actionName === 'decrement') moveMonth(-1);
-              if (event.nativeEvent.actionName === 'increment') moveMonth(1);
-            }}>
+          <View style={styles.calendarFrame}>
             <ScrollView
               ref={monthPagerRef}
               horizontal
@@ -473,45 +494,60 @@ const styles = StyleSheet.create({
   topBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: Spacing.md,
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
     paddingTop: 0,
-    paddingBottom: Spacing.sm,
+    paddingBottom: Spacing.xs,
   },
   monthTitleButton: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.xs,
     marginLeft: -Spacing.sm,
+    minHeight: 44,
     paddingHorizontal: Spacing.sm,
-    paddingVertical: Spacing.xs,
     borderRadius: Radius.md,
   },
-  calendarFilterFrame: { flexShrink: 0, height: 44, zIndex: 1 },
+  addButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: -Spacing.sm,
+    borderRadius: Radius.pill,
+  },
+  calendarFilterFrame: {
+    flexShrink: 0,
+    minHeight: Layout.minTouchTarget,
+    justifyContent: 'center',
+    zIndex: 1,
+  },
   connectionNotice: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    marginHorizontal: Spacing.md,
+    marginHorizontal: Spacing.lg,
     marginBottom: Spacing.sm,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
     borderRadius: Radius.md,
   },
   connectionNoticeText: { flex: 1 },
-  calendarStrip: { flex: 1 },
+  calendarStrip: { flexGrow: 0 },
   chipRow: {
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    height: 32,
+    minHeight: Spacing.xxxl,
     paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.xs,
     borderRadius: Radius.pill,
-    borderWidth: StyleSheet.hairlineWidth,
   },
   manageChip: { gap: Spacing.xs },
   dot: { width: 8, height: 8, borderRadius: Radius.pill },

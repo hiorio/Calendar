@@ -73,7 +73,6 @@ export default function ExternalCalendarsScreen() {
       showsVerticalScrollIndicator={false}>
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">외부 캘린더</Txt>
           <Txt variant="body" tone="secondary">
             iPhone에 등록된 iCloud·Google·구독 캘린더를 TimeFlower에서 함께 봅니다.
           </Txt>

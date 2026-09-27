@@ -245,6 +245,19 @@ export const Spacing = {
   xxxl: 32,
 } as const;
 
+/**
+ * 화면과 컨트롤의 공통 치수.
+ *
+ * 고정 높이 대신 최소 높이로 사용해 Dynamic Type이 켜져도 내용이 잘리지 않게 한다.
+ */
+export const Layout = {
+  screenGutter: Spacing.xl,
+  rowInset: Spacing.lg,
+  minTouchTarget: 44,
+  controlHeight: 44,
+  prominentControlHeight: 50,
+} as const;
+
 export const Radius = {
   sm: 8,
   md: 12,
@@ -254,15 +267,15 @@ export const Radius = {
 } as const;
 
 export const Typography = {
-  hero: { fontSize: 34, lineHeight: 40, fontWeight: '700' },
+  hero: { fontSize: 34, lineHeight: 41, fontWeight: '700' },
   display: { fontSize: 28, lineHeight: 34, fontWeight: '700' },
-  title: { fontSize: 20, lineHeight: 26, fontWeight: '700' },
-  subtitle: { fontSize: 17, lineHeight: 24, fontWeight: '600' },
-  body: { fontSize: 15, lineHeight: 22, fontWeight: '500' },
-  bodyStrong: { fontSize: 15, lineHeight: 22, fontWeight: '700' },
-  label: { fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  caption: { fontSize: 12, lineHeight: 16, fontWeight: '500' },
-  micro: { fontSize: 11, lineHeight: 14, fontWeight: '500' },
+  title: { fontSize: 20, lineHeight: 25, fontWeight: '600' },
+  subtitle: { fontSize: 17, lineHeight: 22, fontWeight: '600' },
+  body: { fontSize: 17, lineHeight: 24, fontWeight: '400' },
+  bodyStrong: { fontSize: 17, lineHeight: 24, fontWeight: '600' },
+  label: { fontSize: 15, lineHeight: 20, fontWeight: '500' },
+  caption: { fontSize: 13, lineHeight: 18, fontWeight: '400' },
+  micro: { fontSize: 11, lineHeight: 14, fontWeight: '400' },
 } as const;
 
 export type TypographyVariant = keyof typeof Typography;
@@ -270,14 +283,14 @@ export type TypographyVariant = keyof typeof Typography;
 /** 그림자는 두 단계면 충분하다. 남발하면 화면이 지저분해진다. */
 export const Elevation = {
   card: Platform.select({
-    ios: { shadowOpacity: 0.06, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } },
-    android: { elevation: 2 },
-    default: { boxShadow: '0 4px 12px rgba(36, 28, 24, 0.06)' },
+    ios: { shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 2 } },
+    android: { elevation: 1 },
+    default: { boxShadow: '0 2px 8px rgba(36, 28, 24, 0.04)' },
   }),
   floating: Platform.select({
-    ios: { shadowOpacity: 0.18, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
-    android: { elevation: 6 },
-    default: { boxShadow: '0 6px 20px rgba(36, 28, 24, 0.18)' },
+    ios: { shadowOpacity: 0.14, shadowRadius: 16, shadowOffset: { width: 0, height: 6 } },
+    android: { elevation: 5 },
+    default: { boxShadow: '0 6px 20px rgba(36, 28, 24, 0.14)' },
   }),
 } as const;
 

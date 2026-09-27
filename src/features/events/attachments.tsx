@@ -10,7 +10,7 @@ import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import {
   MAX_ATTACHMENT_BYTES,
   useDeleteEventAttachment,
@@ -212,12 +212,13 @@ export function EventAttachments({
 
   return (
     <View style={styles.section}>
-      <View style={styles.sectionHeading}>
-        <Txt variant="subtitle">첨부</Txt>
-        <Txt variant="caption" tone="tertiary">
-          {(attachments.data?.length ?? 0)}/{MAX_FILES}
-        </Txt>
-      </View>
+      <Txt
+        accessibilityLabel={`현재 ${attachments.data?.length ?? 0}개, 최대 ${MAX_FILES}개`}
+        variant="caption"
+        tone="tertiary"
+        style={styles.attachmentCount}>
+        {(attachments.data?.length ?? 0)}/{MAX_FILES}
+      </Txt>
 
       <PickerButtons
         disabled={upload.isPending || full}
@@ -367,7 +368,6 @@ function IconButton({
       accessibilityRole="button"
       accessibilityLabel={label}
       disabled={disabled}
-      hitSlop={8}
       onPress={(event) => {
         event.stopPropagation();
         onPress();
@@ -511,7 +511,7 @@ const styles = StyleSheet.create({
   compactDraftActions: { flexDirection: 'row', gap: Spacing.xs },
   compactDraftList: { gap: Spacing.sm, paddingHorizontal: Spacing.lg },
   compactDraftChip: {
-    height: 34,
+    minHeight: Layout.minTouchTarget,
     maxWidth: 190,
     flexDirection: 'row',
     alignItems: 'center',
@@ -519,6 +519,7 @@ const styles = StyleSheet.create({
     paddingLeft: Spacing.md,
   },
   compactDraftName: { maxWidth: 140 },
+  attachmentCount: { alignSelf: 'flex-end' },
   attachmentRow: {
     minHeight: 64,
     flexDirection: 'row',
@@ -537,8 +538,8 @@ const styles = StyleSheet.create({
   },
   fileText: { flex: 1, gap: 1 },
   iconButton: {
-    width: 36,
-    height: 36,
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',

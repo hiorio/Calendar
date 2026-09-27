@@ -1,12 +1,12 @@
 import { useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Divider } from '@/components/ui/card';
 import { Content } from '@/components/ui/screen';
 import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
-import { Spacing } from '@/constants/theme';
+import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useMyCalendars } from '@/features/calendars/queries';
 import { EventDetailTools } from '@/features/events/event-detail-tools';
 import { EventEditorHeader } from '@/features/events/event-editor-header';
@@ -57,7 +57,7 @@ export default function EventEditScreen() {
   if (!event.data || !calendars.data || exceptionPending) {
     return (
       <>
-        <EventEditorHeader saveDisabled onSave={() => undefined} />
+        <EventEditorHeader title="일정 수정" saveDisabled onSave={() => undefined} />
         <Content style={[styles.empty, { backgroundColor: colors.background }]}>
           <Txt variant="body" tone="secondary">
             {event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
@@ -118,6 +118,7 @@ export default function EventEditScreen() {
   return (
     <>
       <EventEditorHeader
+        title="일정 수정"
         pending={pending}
         saveDisabled={submitBlocked}
         onSave={() => formRef.current?.submit()}
@@ -125,7 +126,11 @@ export default function EventEditScreen() {
       <KeyboardAvoidingView
         style={[styles.flex, { backgroundColor: colors.background }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Content style={styles.content}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
           <EventForm
             key={`${id}:${effectiveScope}`}
             ref={formRef}
@@ -190,7 +195,7 @@ export default function EventEditScreen() {
             calendarId={master.calendar_id}
             isRecurring={isRecurring}
           />
-        </Content>
+        </ScrollView>
       </KeyboardAvoidingView>
     </>
   );
@@ -198,11 +203,12 @@ export default function EventEditScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  scroll: { flex: 1, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   content: {
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
+    gap: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxxl,
   },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
   scopeSection: { gap: Spacing.sm, padding: Spacing.lg },

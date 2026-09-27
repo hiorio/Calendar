@@ -107,7 +107,7 @@ function RootLayout() {
                 />
                 <Stack.Screen
                   name="calendars"
-                  options={{ presentation: 'modal', headerShown: true, title: '내 캘린더' }}
+                  options={{ presentation: 'card', headerShown: true, title: '내 캘린더' }}
                 />
                 <Stack.Screen
                   name="calendar-new"
@@ -124,9 +124,12 @@ function RootLayout() {
                 <Stack.Screen
                   name="day"
                   options={{
-                    presentation: 'modal',
+                    presentation: 'formSheet',
                     headerShown: false,
                     title: '일정',
+                    sheetAllowedDetents: [0.9, 1],
+                    sheetInitialDetentIndex: 0,
+                    sheetGrabberVisible: true,
                   }}
                 />
                 <Stack.Screen
@@ -147,7 +150,7 @@ function RootLayout() {
                 />
                 <Stack.Screen
                   name="event/[id]"
-                  options={{ presentation: 'modal', headerShown: false, title: '일정' }}
+                  options={{ presentation: 'card', headerShown: false, title: '일정' }}
                 />
                 <Stack.Screen
                   name="event-edit"
@@ -155,43 +158,43 @@ function RootLayout() {
                 />
                 <Stack.Screen
                   name="notifications"
-                  options={{ presentation: 'modal', headerShown: true, title: '알림 설정' }}
+                  options={{ presentation: 'card', headerShown: true, title: '알림 설정' }}
                 />
                 <Stack.Screen
                   name="preferences"
-                  options={{ presentation: 'modal', headerShown: true, title: '설정' }}
+                  options={{ presentation: 'card', headerShown: true, title: '설정' }}
                 />
                 <Stack.Screen
                   name="widget-settings"
-                  options={{ presentation: 'modal', headerShown: true, title: '위젯' }}
+                  options={{ presentation: 'card', headerShown: true, title: '위젯' }}
                 />
                 <Stack.Screen
                   name="lock-screen-board"
                   options={{
-                    presentation: 'modal',
+                    presentation: 'card',
                     headerShown: true,
                     title: '잠금화면 보드',
                   }}
                 />
                 <Stack.Screen
                   name="time-picker-lab"
-                  options={{ presentation: 'modal', headerShown: true, title: '시간 선택 방식' }}
+                  options={{ presentation: 'card', headerShown: true, title: '시간 선택 방식' }}
                 />
                 <Stack.Screen
                   name="memos"
-                  options={{ presentation: 'modal', headerShown: true, title: '메모' }}
+                  options={{ presentation: 'card', headerShown: true, title: '메모' }}
                 />
                 <Stack.Screen
                   name="search"
-                  options={{ presentation: 'modal', headerShown: true, title: '검색' }}
+                  options={{ presentation: 'card', headerShown: true, title: '검색' }}
                 />
                 <Stack.Screen
                   name="external-calendars"
-                  options={{ presentation: 'modal', headerShown: true, title: '외부 캘린더' }}
+                  options={{ presentation: 'card', headerShown: true, title: '외부 캘린더' }}
                 />
                 <Stack.Screen
                   name="account-delete"
-                  options={{ presentation: 'modal', headerShown: true, title: '계정 삭제' }}
+                  options={{ presentation: 'card', headerShown: true, title: '계정 삭제' }}
                 />
               </Stack>
               <StatusBar style={isDark || theme === 'ink' ? 'light' : 'dark'} />

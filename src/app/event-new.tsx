@@ -1,13 +1,13 @@
 import { router, useLocalSearchParams } from 'expo-router';
 import { useRef, useState } from 'react';
-import { KeyboardAvoidingView, Platform, StyleSheet, View } from 'react-native';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useMyCalendars } from '@/features/calendars/queries';
 import {
@@ -150,13 +150,18 @@ export default function NewEventScreen() {
   return (
     <>
       <EventEditorHeader
+        title="새 일정"
         pending={create.isPending || saving}
         onSave={() => formRef.current?.submit()}
       />
       <KeyboardAvoidingView
         style={[styles.flex, { backgroundColor: colors.background }]}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <Content style={styles.content}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
           {multiCopy === 'true' ? (
             <View style={[styles.copyGuide, { backgroundColor: colors.accentSoft }]}>
               <Txt variant="label" tone="accent">
@@ -199,7 +204,7 @@ export default function NewEventScreen() {
               저장하지 못했습니다: {(create.error as Error).message}
             </Txt>
           ) : null}
-        </Content>
+        </ScrollView>
       </KeyboardAvoidingView>
     </>
   );
@@ -207,11 +212,12 @@ export default function NewEventScreen() {
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
+  scroll: { flex: 1, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
   content: {
-    gap: Spacing.md,
-    paddingHorizontal: Spacing.lg,
-    paddingTop: Spacing.md,
-    paddingBottom: Spacing.sm,
+    gap: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxxl,
   },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
   copyGuide: {

@@ -12,17 +12,18 @@ import {
   tag,
 } from '@expo/ui/swift-ui/modifiers';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   AccessibilityInfo,
   LayoutAnimation,
   Modal,
   Pressable,
+  ScrollView,
   StyleSheet,
   useWindowDimensions,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Button } from '@/components/ui/button';
 import { Txt } from '@/components/ui/text';
@@ -50,7 +51,7 @@ const COARSE_MINUTE_OPTIONS = Array.from({ length: 6 }, (_, index) => index * 10
 const PICKER_HEIGHT = 196;
 const BASE_PICKER_WIDTH = 184;
 const DIGIT_PICKER_WIDTH = 266;
-const AUTO_FINE_REVEAL_DURATION_MS = 200;
+const AUTO_FINE_REVEAL_DURATION_MS = 160;
 const PICKER_EDGE_INSET = Spacing.sm;
 
 type VariantConfig = {
@@ -61,13 +62,13 @@ type VariantConfig = {
 
 const VARIANT_CONFIG: Record<TimePickerLabVariant, VariantConfig> = {
   'digit-auto': {
-    experimentTitle: 'A안 · 0~9 자동 확장',
-    eventTitle: 'A타입 · 0~9 자동 확장',
+    experimentTitle: '빠른 분 선택 · A',
+    eventTitle: '빠른 분 선택 · A',
     reveal: 'automatic',
   },
   'digit-composed': {
-    experimentTitle: 'B안 · 10분 + 1분 조합',
-    eventTitle: 'B타입 · 10분 + 1분 조합',
+    experimentTitle: '펼친 분 선택 · B',
+    eventTitle: '펼친 분 선택 · B',
     reveal: 'always',
   },
 };
@@ -80,17 +81,18 @@ export function TimePickerLabPicker({
   onConfirm,
 }: TimePickerLabPickerProps) {
   const { colors, scheme } = useTheme();
-  const { width: windowWidth } = useWindowDimensions();
+  const { height: windowHeight, width: windowWidth } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const config = VARIANT_CONFIG[variant];
   const isExperiment = purpose === 'experiment';
   const isFormalPicker = !isExperiment;
   const variantLabel =
     variant === 'digit-auto'
       ? isFormalPicker
-        ? 'A타입'
+        ? '빠른 선택 A'
         : 'A안'
       : isFormalPicker
-        ? 'B타입'
+        ? '펼친 선택 B'
         : 'B안';
   const initial = timePickerParts(value);
   const [meridiem, setMeridiem] = useState(initial.meridiem);
@@ -98,10 +100,12 @@ export function TimePickerLabPicker({
   const [coarseMinute, setCoarseMinute] = useState(initial.coarseMinute);
   const [fineSelection, setFineSelection] = useState(initial.minute % 10);
   const [fineVisible, setFineVisible] = useState(config.reveal === 'always');
+  const [reduceMotionEnabled, setReduceMotionEnabled] = useState(false);
   const minute = composeMinute(coarseMinute, fineSelection);
   const fineMinuteOptions = minuteDigitOptions();
   const expandedWidth = DIGIT_PICKER_WIDTH;
   const availableWidth = Math.min(windowWidth, MaxContentWidth);
+  const sheetMaxHeight = Math.max(0, windowHeight - insets.top);
   const pickerLeft = Math.min(
     availableWidth / 2 - BASE_PICKER_WIDTH / 2,
     availableWidth - expandedWidth - PICKER_EDGE_INSET,
@@ -113,16 +117,34 @@ export function TimePickerLabPicker({
     minute,
   });
 
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotionEnabled(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      'reduceMotionChanged',
+      setReduceMotionEnabled,
+    );
+
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
+
   function revealFineMinute() {
     if (fineVisible) return;
 
-    LayoutAnimation.configureNext(
-      LayoutAnimation.create(
-        AUTO_FINE_REVEAL_DURATION_MS,
-        LayoutAnimation.Types.easeInEaseOut,
-        LayoutAnimation.Properties.opacity,
-      ),
-    );
+    if (!reduceMotionEnabled) {
+      LayoutAnimation.configureNext(
+        LayoutAnimation.create(
+          AUTO_FINE_REVEAL_DURATION_MS,
+          LayoutAnimation.Types.easeOut,
+          LayoutAnimation.Properties.opacity,
+        ),
+      );
+    }
     setFineVisible(true);
     requestAnimationFrame(() => {
       AccessibilityInfo.announceForAccessibility(
@@ -161,7 +183,8 @@ export function TimePickerLabPicker({
       onRequestClose={onCancel}
       presentationStyle="overFullScreen"
       transparent
-      visible>
+      visible
+    >
       <View style={styles.modal}>
         <Pressable
           accessibilityLabel={isFormalPicker ? '시간 선택 닫기' : '시간 선택기 실험 닫기'}
@@ -175,18 +198,12 @@ export function TimePickerLabPicker({
             {
               backgroundColor: colors.surface,
               borderColor: colors.border,
+              maxHeight: sheetMaxHeight,
               shadowColor: colors.shadow,
             },
-          ]}>
-          <View style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
+          ]}
+        >
           <View style={styles.header}>
-            <View style={[styles.headerIcon, { backgroundColor: colors.accentSoft }]}>
-              <Ionicons
-                name={isFormalPicker ? 'time-outline' : 'flask-outline'}
-                size={18}
-                color={colors.accent}
-              />
-            </View>
             <View style={styles.headerText}>
               <Txt variant="subtitle">
                 {isFormalPicker ? config.eventTitle : config.experimentTitle}
@@ -202,134 +219,161 @@ export function TimePickerLabPicker({
               onPress={onCancel}
               style={({ pressed }) => [
                 styles.closeButton,
-                { backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted },
-              ]}>
+                {
+                  backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted,
+                },
+              ]}
+            >
               <Ionicons name="close" size={20} color={colors.textSecondary} />
             </Pressable>
           </View>
 
-          <View style={[styles.preview, { backgroundColor: colors.accentSoft }]}>
-            <Txt variant="caption" tone="secondary">
-              현재 선택
-            </Txt>
-            <Txt variant="display" tone="accent">
-              {formatTime(preview)}
-            </Txt>
-          </View>
+          <ScrollView
+            bounces={false}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+            style={styles.contentScroll}
+          >
+            <View style={[styles.preview, { backgroundColor: colors.accentSoft }]}>
+              <Txt variant="caption" tone="secondary">
+                현재 선택
+              </Txt>
+              <Txt variant="display" tone="accent">
+                {formatTime(preview)}
+              </Txt>
+            </View>
 
-          <View style={styles.pickerArea}>
+            <View style={styles.pickerArea}>
+              <View
+                style={[
+                  styles.pickerClip,
+                  {
+                    left: pickerLeft,
+                    width: fineVisible ? expandedWidth : BASE_PICKER_WIDTH,
+                  },
+                ]}
+              >
+                <Host
+                  colorScheme={scheme}
+                  seedColor={colors.accent}
+                  style={[styles.pickerHost, { width: expandedWidth }]}
+                >
+                  <HStack spacing={0}>
+                    <Picker<TimePickerMeridiem>
+                      label="오전 오후"
+                      selection={meridiem}
+                      onSelectionChange={setMeridiem}
+                      modifiers={[
+                        pickerStyle('wheel'),
+                        labelsHidden(),
+                        frame({ width: 68, height: PICKER_HEIGHT }),
+                        accessibilityLabel('오전 오후'),
+                        accessibilityValue(meridiem === 'am' ? '오전' : '오후'),
+                      ]}
+                    >
+                      {MERIDIEM_OPTIONS.map((option) => (
+                        <SwiftText key={option.value} modifiers={[tag(option.value)]}>
+                          {option.label}
+                        </SwiftText>
+                      ))}
+                    </Picker>
+
+                    <Picker<number>
+                      label="시"
+                      selection={hour12}
+                      onSelectionChange={setHour12}
+                      modifiers={[
+                        pickerStyle('wheel'),
+                        labelsHidden(),
+                        frame({ width: 52, height: PICKER_HEIGHT }),
+                        accessibilityLabel('시'),
+                        accessibilityValue(`${hour12}시`),
+                      ]}
+                    >
+                      {HOUR_OPTIONS.map((hour) => (
+                        <SwiftText key={hour} modifiers={[tag(hour), monospacedDigit()]}>
+                          {hour}
+                        </SwiftText>
+                      ))}
+                    </Picker>
+
+                    <Picker<number>
+                      label="10분 단위"
+                      selection={coarseMinute}
+                      onSelectionChange={selectCoarseMinute}
+                      modifiers={coarseModifiers}
+                    >
+                      {COARSE_MINUTE_OPTIONS.map((option) => (
+                        <SwiftText key={option} modifiers={[tag(option), monospacedDigit()]}>
+                          {`${option}`.padStart(2, '0')}
+                        </SwiftText>
+                      ))}
+                    </Picker>
+
+                    <SwiftText
+                      modifiers={[
+                        frame({ width: 18, height: PICKER_HEIGHT }),
+                        accessibilityHidden(),
+                      ]}
+                    >
+                      ＋
+                    </SwiftText>
+
+                    <Picker<number>
+                      label="1분 자리"
+                      selection={fineSelection}
+                      onSelectionChange={setFineSelection}
+                      modifiers={[
+                        pickerStyle('wheel'),
+                        labelsHidden(),
+                        frame({ width: 64, height: PICKER_HEIGHT }),
+                        disabled(!fineVisible),
+                        accessibilityHidden(!fineVisible),
+                        accessibilityIdentifier(`time-picker-${variant}-fine-minute`),
+                        accessibilityLabel(`${variantLabel} 1분 숫자`),
+                        accessibilityValue(`${fineSelection}, 최종 ${minute}분`),
+                      ]}
+                    >
+                      {fineMinuteOptions.map((option) => (
+                        <SwiftText key={option} modifiers={[tag(option), monospacedDigit()]}>
+                          {`${option}`}
+                        </SwiftText>
+                      ))}
+                    </Picker>
+                  </HStack>
+                </Host>
+              </View>
+            </View>
+
             <View
               style={[
-                styles.pickerClip,
+                styles.relation,
                 {
-                  left: pickerLeft,
-                  width: fineVisible ? expandedWidth : BASE_PICKER_WIDTH,
+                  backgroundColor: colors.surfaceMuted,
+                  borderColor: colors.border,
                 },
-              ]}>
-              <Host
-                colorScheme={scheme}
-                seedColor={colors.accent}
-                style={[styles.pickerHost, { width: expandedWidth }]}>
-                <HStack spacing={0}>
-                  <Picker<TimePickerMeridiem>
-                    label="오전 오후"
-                    selection={meridiem}
-                    onSelectionChange={setMeridiem}
-                    modifiers={[
-                      pickerStyle('wheel'),
-                      labelsHidden(),
-                      frame({ width: 68, height: PICKER_HEIGHT }),
-                      accessibilityLabel('오전 오후'),
-                      accessibilityValue(meridiem === 'am' ? '오전' : '오후'),
-                    ]}>
-                    {MERIDIEM_OPTIONS.map((option) => (
-                      <SwiftText key={option.value} modifiers={[tag(option.value)]}>
-                        {option.label}
-                      </SwiftText>
-                    ))}
-                  </Picker>
-
-                  <Picker<number>
-                    label="시"
-                    selection={hour12}
-                    onSelectionChange={setHour12}
-                    modifiers={[
-                      pickerStyle('wheel'),
-                      labelsHidden(),
-                      frame({ width: 52, height: PICKER_HEIGHT }),
-                      accessibilityLabel('시'),
-                      accessibilityValue(`${hour12}시`),
-                    ]}>
-                    {HOUR_OPTIONS.map((hour) => (
-                      <SwiftText key={hour} modifiers={[tag(hour), monospacedDigit()]}>
-                        {hour}
-                      </SwiftText>
-                    ))}
-                  </Picker>
-
-                  <Picker<number>
-                    label="10분 단위"
-                    selection={coarseMinute}
-                    onSelectionChange={selectCoarseMinute}
-                    modifiers={coarseModifiers}>
-                    {COARSE_MINUTE_OPTIONS.map((option) => (
-                      <SwiftText key={option} modifiers={[tag(option), monospacedDigit()]}>
-                        {`${option}`.padStart(2, '0')}
-                      </SwiftText>
-                    ))}
-                  </Picker>
-
-                  <SwiftText
-                    modifiers={[
-                      frame({ width: 18, height: PICKER_HEIGHT }),
-                      accessibilityHidden(),
-                    ]}>
-                    ＋
-                  </SwiftText>
-
-                  <Picker<number>
-                    label="1분 자리"
-                    selection={fineSelection}
-                    onSelectionChange={setFineSelection}
-                    modifiers={[
-                      pickerStyle('wheel'),
-                      labelsHidden(),
-                      frame({ width: 64, height: PICKER_HEIGHT }),
-                      disabled(!fineVisible),
-                      accessibilityHidden(!fineVisible),
-                      accessibilityIdentifier(`time-picker-${variant}-fine-minute`),
-                      accessibilityLabel(`${variantLabel} 1분 숫자`),
-                      accessibilityValue(`${fineSelection}, 최종 ${minute}분`),
-                    ]}>
-                    {fineMinuteOptions.map((option) => (
-                      <SwiftText key={option} modifiers={[tag(option), monospacedDigit()]}>
-                        {`${option}`}
-                      </SwiftText>
-                    ))}
-                  </Picker>
-                </HStack>
-              </Host>
+              ]}
+            >
+              <Ionicons
+                name={fineVisible ? 'link-outline' : 'hand-left-outline'}
+                size={16}
+                color={fineVisible ? colors.accent : colors.textSecondary}
+              />
+              <Txt variant="caption" tone="secondary" style={styles.relationText}>
+                {fineVisible
+                  ? `${coarseMinute}분대 + 오른쪽 ${fineSelection} = ${minute}분`
+                  : '10분 휠을 움직이면 오른쪽에 0~9가 열립니다'}
+              </Txt>
             </View>
-          </View>
 
-          <View
-            style={[
-              styles.relation,
-              { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
-            ]}>
-            <Ionicons
-              name={fineVisible ? 'link-outline' : 'hand-left-outline'}
-              size={16}
-              color={fineVisible ? colors.accent : colors.textSecondary}
-            />
-            <Txt variant="caption" tone="secondary" style={styles.relationText}>
-              {fineVisible
-                ? `${coarseMinute}분대 + 오른쪽 ${fineSelection} = ${minute}분`
-                : '10분 휠을 움직이면 오른쪽에 0~9가 열립니다'}
-            </Txt>
-          </View>
+            {isExperiment ? (
+              <Txt variant="caption" tone="tertiary" style={styles.disclaimer}>
+                이 값은 실험 화면에만 반영되며 실제 일정에는 저장되지 않습니다.
+              </Txt>
+            ) : null}
+          </ScrollView>
 
-          <View style={[styles.actions, isFormalPicker && styles.formalActions]}>
+          <View style={styles.actions}>
             <View style={styles.action}>
               <Button label="취소" size="md" variant="secondary" onPress={onCancel} />
             </View>
@@ -347,11 +391,6 @@ export function TimePickerLabPicker({
               />
             </View>
           </View>
-          {isExperiment ? (
-            <Txt variant="caption" tone="tertiary" style={styles.disclaimer}>
-              이 값은 실험 화면에만 반영되며 실제 일정에는 저장되지 않습니다.
-            </Txt>
-          ) : null}
         </SafeAreaView>
       </View>
     </Modal>
@@ -369,35 +408,24 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.xl,
     ...Elevation.floating,
   },
-  grabber: {
-    width: 42,
-    height: 4,
-    alignSelf: 'center',
-    marginTop: Spacing.sm,
-    borderRadius: Radius.pill,
-  },
   header: {
     minHeight: 78,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
-  },
-  headerIcon: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.pill,
+    paddingTop: Spacing.sm,
+    paddingBottom: Spacing.sm,
   },
   headerText: { flex: 1, gap: 1 },
   closeButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
   },
+  contentScroll: { flexShrink: 1 },
   preview: {
     alignItems: 'center',
     gap: Spacing.xs,
@@ -432,8 +460,8 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     paddingTop: Spacing.md,
+    paddingBottom: Spacing.lg,
   },
-  formalActions: { paddingBottom: Spacing.lg },
   action: { flex: 1 },
   disclaimer: {
     textAlign: 'center',

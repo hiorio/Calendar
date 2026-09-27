@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import {
   CALENDAR_COLORS,
   DEFAULT_CALENDAR_COLOR,
@@ -49,7 +49,6 @@ export default function NewCalendarScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Content style={styles.content}>
           <View style={styles.intro}>
-            <Txt variant="display">새 캘린더</Txt>
             <Txt variant="body" tone="secondary">
               만든 뒤 초대 링크를 보내면 함께 쓸 수 있습니다.
             </Txt>
@@ -80,16 +79,19 @@ export default function NewCalendarScreen() {
                     accessibilityLabel={`색 ${option}`}
                     accessibilityState={{ selected }}
                     onPress={() => setColor(option)}
-                    style={[
-                      styles.swatch,
-                      { backgroundColor: calendarColorForScheme(option, scheme) },
-                      selected && { borderColor: colors.text, borderWidth: 2 },
-                    ]}>
-                    {selected ? (
-                      <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
-                        ✓
-                      </Txt>
-                    ) : null}
+                    style={styles.swatchTarget}>
+                    <View
+                      style={[
+                        styles.swatch,
+                        { backgroundColor: calendarColorForScheme(option, scheme) },
+                        selected && { borderColor: colors.text, borderWidth: 2 },
+                      ]}>
+                      {selected ? (
+                        <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
+                          ✓
+                        </Txt>
+                      ) : null}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -125,7 +127,13 @@ const styles = StyleSheet.create({
   content: { flex: 0, gap: Spacing.xl, paddingHorizontal: Spacing.xl },
   intro: { gap: Spacing.xs },
   colorSection: { gap: Spacing.sm },
-  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  swatchTarget: {
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   swatch: {
     width: 40,
     height: 40,

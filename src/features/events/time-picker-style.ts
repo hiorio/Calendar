@@ -3,9 +3,9 @@ export type TimePickerStyle = 'system' | 'digit-auto' | 'digit-composed';
 export const DEFAULT_TIME_PICKER_STYLE: TimePickerStyle = 'system';
 
 export const TIME_PICKER_STYLE_LABELS: Record<TimePickerStyle, string> = {
-  system: '기본',
-  'digit-auto': 'A타입',
-  'digit-composed': 'B타입',
+  system: 'iPhone 기본',
+  'digit-auto': '빠른 선택 · A',
+  'digit-composed': '펼친 선택 · B',
 };
 
 /** 저장값이 오래됐거나 손상돼도 기존 iPhone 선택기로 안전하게 돌아간다. */

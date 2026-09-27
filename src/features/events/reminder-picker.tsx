@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import {
   REMINDER_CHOICES,
   useMyReminders,
@@ -20,10 +20,6 @@ export function ReminderPicker({ eventId }: { eventId: string }) {
 
   return (
     <View style={styles.section}>
-      <Txt variant="label" tone="secondary">
-        미리 알림
-      </Txt>
-
       <View style={styles.chips}>
         {REMINDER_CHOICES.map((choice) => {
           const on = selected.has(choice.minutes);
@@ -75,7 +71,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    height: 34,
+    minHeight: Layout.minTouchTarget,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
     borderWidth: 1,

@@ -7,7 +7,7 @@ import { Card, Divider } from '@/components/ui/card';
 import { ListRow } from '@/components/ui/list-row';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme';
+import { Layout, Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { TIME_PICKER_STYLE_LABELS } from '@/features/events/time-picker-style';
 import { deviceWidgetsSupported } from '@/features/widgets/widget-capability';
@@ -103,7 +103,6 @@ export default function PreferencesScreen() {
           <Card padded={false}>
             <ListRow
               title="언어"
-              subtitle="영어 지원을 위한 다국어 구조는 다음 배포 단계에서 연결합니다."
               value="한국어"
             />
             <Divider />
@@ -136,21 +135,7 @@ export default function PreferencesScreen() {
           </Card>
         </Section>
 
-        {Platform.OS === 'ios' ? (
-          <Section title="일정 입력">
-            <Card padded={false}>
-              <ListRow
-                icon="time-outline"
-                title="시간 선택 방식"
-                subtitle="기본·A·B 다이얼을 직접 사용해보고 선택"
-                value={TIME_PICKER_STYLE_LABELS[timePickerStyle]}
-                onPress={() => router.push('/time-picker-lab' as Href)}
-              />
-            </Card>
-          </Section>
-        ) : null}
-
-        <Section title="알림">
+        <Section title="연결 및 확장">
           <Card padded={false}>
             <ListRow
               icon="notifications-outline"
@@ -158,11 +143,7 @@ export default function PreferencesScreen() {
               subtitle="이 기기 등록과 캘린더 음소거 관리"
               onPress={() => router.push('/notifications')}
             />
-          </Card>
-        </Section>
-
-        <Section title="외부 캘린더">
-          <Card padded={false}>
+            <Divider inset="icon" />
             <ListRow
               icon="calendar-outline"
               title="기기 캘린더"
@@ -172,35 +153,45 @@ export default function PreferencesScreen() {
               }
               onPress={() => router.push('/external-calendars')}
             />
+            {deviceWidgetsSupported ? (
+              <>
+                <Divider inset="icon" />
+                <ListRow
+                  icon="apps-outline"
+                  title="바탕화면·잠금화면 위젯"
+                  subtitle="표시할 캘린더와 빠른 일정·메모 설정"
+                  onPress={() => router.push('/widget-settings' as Href)}
+                />
+                {lockScreenBoardSupported ? (
+                  <>
+                    <Divider inset="icon" />
+                    <ListRow
+                      icon="phone-portrait-outline"
+                      title="잠금화면 일정 보드"
+                      subtitle="월간·오늘 보드를 배경화면으로 자동 생성"
+                      onPress={() => router.push('/lock-screen-board' as Href)}
+                    />
+                  </>
+                ) : null}
+              </>
+            ) : null}
           </Card>
         </Section>
 
-        {deviceWidgetsSupported ? (
-          <Section title="위젯">
-            <Card padded={false}>
-              <ListRow
-                icon="apps-outline"
-                title="바탕화면·잠금화면 위젯"
-                subtitle="표시할 캘린더와 빠른 일정·메모 설정"
-                onPress={() => router.push('/widget-settings' as Href)}
-              />
-              {lockScreenBoardSupported ? (
-                <>
-                  <Divider />
-                  <ListRow
-                    icon="phone-portrait-outline"
-                    title="잠금화면 일정 보드"
-                    subtitle="월간·오늘 보드를 배경화면으로 자동 생성"
-                    onPress={() => router.push('/lock-screen-board' as Href)}
-                  />
-                </>
-              ) : null}
-            </Card>
-          </Section>
-        ) : null}
-
-        <Section title="표시">
+        <Section title="화면 및 입력">
           <Card padded={false}>
+            {Platform.OS === 'ios' ? (
+              <>
+                <ListRow
+                  icon="time-outline"
+                  title="시간 선택 방식"
+                  subtitle="세 가지 방식을 직접 사용해보고 선택"
+                  value={TIME_PICKER_STYLE_LABELS[timePickerStyle]}
+                  onPress={() => router.push('/time-picker-lab' as Href)}
+                />
+                <Divider />
+              </>
+            ) : null}
             <ChoiceSetting
               title="화면 스타일"
               subtitle="기본값은 iPhone의 라이트·다크 모드를 따릅니다."
@@ -257,7 +248,7 @@ export default function PreferencesScreen() {
                   subtitle="재설치·기기 변경에도 현재 데이터 보존"
                   onPress={() => router.push('/account')}
                 />
-                <Divider />
+                <Divider inset="icon" />
                 <ListRow
                   icon="log-in-outline"
                   title="이미 계정이 있어요"
@@ -276,7 +267,7 @@ export default function PreferencesScreen() {
                 onPress={handleSignOut}
               />
             )}
-            <Divider />
+            <Divider inset="icon" />
             <ListRow
               icon="trash-outline"
               title="계정 삭제"
@@ -452,7 +443,7 @@ const styles = StyleSheet.create({
   choiceLabel: { gap: 2 },
   choiceOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   choice: {
-    minHeight: 36,
+    minHeight: Layout.minTouchTarget,
     justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: Radius.pill,

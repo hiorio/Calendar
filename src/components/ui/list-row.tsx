@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Spacing } from '@/constants/theme';
+import { Layout, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type ListRowProps = {
@@ -10,6 +10,8 @@ export type ListRowProps = {
   subtitle?: string;
   /** 왼쪽 아이콘 (Ionicons 이름) */
   icon?: React.ComponentProps<typeof Ionicons>['name'];
+  /** 기본은 중립색이며 꼭 강조해야 하는 행만 accent를 쓴다. */
+  iconTone?: 'neutral' | 'accent';
   /** 오른쪽에 붙는 값 또는 커스텀 노드 */
   value?: string;
   right?: React.ReactNode;
@@ -23,6 +25,7 @@ export function ListRow({
   title,
   subtitle,
   icon,
+  iconTone = 'neutral',
   value,
   right,
   onPress,
@@ -35,6 +38,7 @@ export function ListRow({
   return (
     <Pressable
       accessibilityRole={onPress ? 'button' : undefined}
+      accessibilityState={{ disabled }}
       disabled={disabled || !onPress}
       onPress={onPress}
       style={({ pressed }) => [
@@ -43,8 +47,18 @@ export function ListRow({
         disabled && styles.disabled,
       ]}>
       {icon ? (
-        <View style={[styles.icon, { backgroundColor: danger ? colors.dangerSoft : colors.accentSoft }]}>
-          <Ionicons name={icon} size={17} color={danger ? colors.danger : colors.accent} />
+        <View style={styles.icon}>
+          <Ionicons
+            name={icon}
+            size={20}
+            color={
+              danger
+                ? colors.danger
+                : iconTone === 'accent'
+                  ? colors.accent
+                  : colors.textSecondary
+            }
+          />
         </View>
       ) : null}
 
@@ -61,7 +75,7 @@ export function ListRow({
 
       {right ??
         (value ? (
-          <Txt variant="body" tone="secondary">
+          <Txt variant="body" tone="secondary" numberOfLines={1}>
             {value}
           </Txt>
         ) : null)}
@@ -78,12 +92,11 @@ const styles = StyleSheet.create({
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
-    minHeight: 54,
+    minHeight: Layout.prominentControlHeight,
   },
   icon: {
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
   },

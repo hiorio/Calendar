@@ -81,7 +81,6 @@ export default function QuickMemoScreen() {
         showsVerticalScrollIndicator={false}>
         <Content style={styles.content}>
           <View style={styles.intro}>
-            <Txt variant="display">퀵 메모</Txt>
             <Txt variant="body" tone="secondary">
               떠오른 내용을 바로 남기고 캘린더 구성원과 함께 봅니다.
             </Txt>

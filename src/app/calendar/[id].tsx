@@ -12,7 +12,7 @@ import { ListRow } from '@/components/ui/list-row';
 import { Notice } from '@/components/ui/notice';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import {
   CALENDAR_COLORS,
@@ -280,16 +280,19 @@ export default function CalendarDetailScreen() {
                         accessibilityLabel={`색 ${option}`}
                         accessibilityState={{ selected }}
                         onPress={() => setColor(option)}
-                        style={[
-                          styles.swatch,
-                          { backgroundColor: calendarColorForScheme(option, scheme) },
-                          selected && { borderColor: colors.text, borderWidth: 2 },
-                        ]}>
-                        {selected ? (
-                          <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
-                            ✓
-                          </Txt>
-                        ) : null}
+                        style={styles.swatchTarget}>
+                        <View
+                          style={[
+                            styles.swatch,
+                            { backgroundColor: calendarColorForScheme(option, scheme) },
+                            selected && { borderColor: colors.text, borderWidth: 2 },
+                          ]}>
+                          {selected ? (
+                            <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
+                              ✓
+                            </Txt>
+                          ) : null}
+                        </View>
                       </Pressable>
                     );
                   })}
@@ -515,7 +518,13 @@ const styles = StyleSheet.create({
   coverActions: { flex: 1, gap: Spacing.sm },
   coverButtons: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
   colorSection: { gap: Spacing.sm },
-  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.xs },
+  swatchTarget: {
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   swatch: {
     width: 36,
     height: 36,
@@ -527,8 +536,8 @@ const styles = StyleSheet.create({
   },
   memberActions: { flexDirection: 'row', gap: Spacing.xs },
   iconAction: {
-    width: 34,
-    height: 34,
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
     borderRadius: Radius.sm,
     alignItems: 'center',
     justifyContent: 'center',

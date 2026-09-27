@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { Platform, Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import type { TimePickerStyle } from '@/features/events/time-picker-style';
 import { TimePickerLabPicker } from '@/features/experiments/time-picker-lab-picker';
 import { useTheme } from '@/hooks/use-theme';
@@ -138,12 +138,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    minHeight: 44,
+    minHeight: Layout.minTouchTarget,
   },
   controlOnly: { minHeight: 0 },
   button: {
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
+    minHeight: Layout.minTouchTarget,
     borderRadius: Radius.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

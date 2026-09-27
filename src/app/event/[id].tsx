@@ -86,6 +86,24 @@ export default function EventDetailScreen() {
           )
           .join(' · ')
       : '알림 없음';
+  const detailRows: {
+    key: string;
+    icon: React.ComponentProps<typeof Ionicons>['name'];
+    label: string;
+    imageUrl?: string | null;
+  }[] = [
+    { key: 'reminder', icon: 'alarm-outline', label: reminderLabel },
+    {
+      key: 'calendar',
+      icon: 'calendar-outline',
+      label: calendar?.name ?? master.calendarName,
+      imageUrl: calendar?.coverUrl,
+    },
+  ];
+  if (location) detailRows.push({ key: 'location', icon: 'location-outline', label: location });
+  if (description) {
+    detailRows.push({ key: 'description', icon: 'document-text-outline', label: description });
+  }
 
   return (
     <Screen edges={['top', 'bottom']}>
@@ -106,31 +124,32 @@ export default function EventDetailScreen() {
         contentContainerStyle={styles.scrollContent}>
         <Content>
           <View style={styles.hero}>
-            <Txt variant="display" tone="accent" style={styles.title}>
+            <Txt variant="display" style={styles.title}>
               {title}
             </Txt>
             <TimeHero event={effective} />
           </View>
 
-          <View style={[styles.details, { borderColor: colors.border }]}>
-            <DetailRow icon="alarm-outline" label={reminderLabel} />
-            <DetailRow
-              icon="calendar-outline"
-              label={calendar?.name ?? master.calendarName}
-              imageUrl={calendar?.coverUrl}
-            />
-            {location ? <DetailRow icon="location-outline" label={location} /> : null}
-            {description ? <DetailRow icon="document-text-outline" label={description} /> : null}
+          <View
+            style={[
+              styles.details,
+              { backgroundColor: colors.surface, borderColor: colors.border },
+            ]}>
+            {detailRows.map((row, index) => (
+              <DetailRow
+                key={row.key}
+                icon={row.icon}
+                label={row.label}
+                imageUrl={row.imageUrl}
+                showSeparator={index < detailRows.length - 1}
+              />
+            ))}
           </View>
 
           <View style={styles.activity}>
-            <View style={styles.dateDivider}>
-              <View style={[styles.line, { backgroundColor: colors.border }]} />
-              <Txt variant="label" tone="tertiary">
-                {formatActivityDate(master.created_at)}
-              </Txt>
-              <View style={[styles.line, { backgroundColor: colors.border }]} />
-            </View>
+            <Txt variant="caption" tone="tertiary">
+              {formatActivityDate(master.created_at)}
+            </Txt>
             <View style={styles.activityLine}>
               <ProfileBadge
                 imageUrl={creator.data?.avatar_url ?? null}
@@ -172,17 +191,14 @@ function TimeHero({ event }: { event: TimeShape }) {
     const start = parseDateKey(event.start_date!);
     const end = parseDateKey(event.end_date!);
     return (
-      <View style={styles.allDayTime}>
-        <Txt variant="title">{formatFullDate(start)}</Txt>
+      <View style={[styles.timeSummary, { backgroundColor: colors.surfaceMuted }]}>
+        <TimePoint label={event.start_date === event.end_date ? '날짜' : '시작'} date={start} allDay />
         {event.start_date !== event.end_date ? (
           <>
-            <Ionicons name="chevron-forward" size={28} color={colors.accent} />
-            <Txt variant="title">{formatFullDate(end)}</Txt>
+            <View style={[styles.timeDivider, { backgroundColor: colors.border }]} />
+            <TimePoint label="종료" date={end} allDay />
           </>
         ) : null}
-        <Txt variant="body" tone="secondary">
-          종일
-        </Txt>
       </View>
     );
   }
@@ -191,27 +207,25 @@ function TimeHero({ event }: { event: TimeShape }) {
   const end = new Date(event.end_at!);
 
   return (
-    <View style={styles.timeRange}>
-      <TimeColumn date={start} />
-      <Ionicons
-        name="chevron-forward"
-        size={34}
-        color={colors.accent}
-        style={styles.timeArrow}
-      />
-      <TimeColumn date={end} />
+    <View style={[styles.timeSummary, { backgroundColor: colors.surfaceMuted }]}>
+      <TimePoint label="시작" date={start} />
+      <View style={[styles.timeDivider, { backgroundColor: colors.border }]} />
+      <TimePoint label="종료" date={end} />
     </View>
   );
 }
 
-function TimeColumn({ date }: { date: Date }) {
-  const [meridiem, clock] = formatTime(date).split(' ');
+function TimePoint({ label, date, allDay = false }: { label: string; date: Date; allDay?: boolean }) {
   return (
-    <View style={styles.timeColumn}>
-      <Txt variant="subtitle">{formatFullDate(date)}</Txt>
-      <View style={styles.clockRow}>
-        <Txt variant="body">{meridiem}</Txt>
-        <Txt variant="hero">{clock}</Txt>
+    <View style={styles.timePoint}>
+      <Txt variant="caption" tone="secondary" style={styles.timePointLabel}>
+        {label}
+      </Txt>
+      <View style={styles.timePointValue}>
+        <Txt variant="subtitle">{formatFullDate(date)}</Txt>
+        <Txt variant={allDay ? 'body' : 'title'} tone={allDay ? 'secondary' : 'default'}>
+          {allDay ? '종일' : formatTime(date)}
+        </Txt>
       </View>
     </View>
   );
@@ -221,16 +235,22 @@ function DetailRow({
   icon,
   label,
   imageUrl,
+  showSeparator,
 }: {
   icon: React.ComponentProps<typeof Ionicons>['name'];
   label: string;
   imageUrl?: string | null;
+  showSeparator: boolean;
 }) {
   const { colors } = useTheme();
   return (
-    <View style={[styles.detailRow, { borderBottomColor: colors.border }]}>
-      <Ionicons name={icon} size={24} color={colors.accent} />
-      <Txt variant="subtitle" style={styles.detailLabel} numberOfLines={3}>
+    <View
+      style={[
+        styles.detailRow,
+        showSeparator && { borderBottomColor: colors.border, borderBottomWidth: StyleSheet.hairlineWidth },
+      ]}>
+      <Ionicons name={icon} size={21} color={colors.textSecondary} />
+      <Txt variant="body" style={styles.detailLabel}>
         {label}
       </Txt>
       {imageUrl ? (
@@ -336,24 +356,23 @@ const styles = StyleSheet.create({
   empty: { justifyContent: 'center', alignItems: 'center' },
   scrollContent: { flexGrow: 1, paddingBottom: Spacing.lg },
   hero: {
-    alignItems: 'center',
-    gap: Spacing.xxl,
+    gap: Spacing.lg,
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.lg,
-    paddingBottom: Spacing.xxxl,
+    paddingBottom: Spacing.xxl,
   },
-  title: { textAlign: 'center' },
-  timeRange: {
+  title: { textAlign: 'left' },
+  timeSummary: {
     width: '100%',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
+    gap: Spacing.md,
+    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
   },
-  timeColumn: { flex: 1, alignItems: 'center', gap: Spacing.xs },
-  clockRow: { flexDirection: 'row', alignItems: 'baseline', gap: Spacing.xs },
-  timeArrow: { opacity: 0.75 },
-  allDayTime: { alignItems: 'center', gap: Spacing.sm },
+  timePoint: { flexDirection: 'row', alignItems: 'flex-start', gap: Spacing.md },
+  timePointLabel: { minWidth: 28, paddingTop: 2 },
+  timePointValue: { flex: 1, gap: 2 },
+  timeDivider: { height: StyleSheet.hairlineWidth },
   details: {
     borderTopWidth: StyleSheet.hairlineWidth,
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -363,21 +382,17 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.lg,
-    borderBottomWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
   },
   detailLabel: { flex: 1 },
   calendarThumb: { width: 38, height: 38, borderRadius: Radius.sm },
   activity: {
-    minHeight: 190,
-    alignItems: 'center',
-    gap: Spacing.xl,
+    alignItems: 'flex-start',
+    gap: Spacing.md,
     paddingHorizontal: Spacing.xl,
-    paddingTop: Spacing.xxxl,
+    paddingVertical: Spacing.xxl,
   },
-  dateDivider: { width: '100%', flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
-  line: { flex: 1, height: StyleSheet.hairlineWidth },
   activityLine: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
-  tools: { paddingHorizontal: Spacing.lg },
+  tools: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl },
 });

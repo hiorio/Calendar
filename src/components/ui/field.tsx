@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, Typography } from '@/constants/theme';
+import { Layout, Radius, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { usePreferredTextStyle } from './preferred-text-style';
@@ -38,8 +38,8 @@ export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldPro
           styles.input,
           {
             color: colors.text,
-            backgroundColor: colors.surface,
-            borderColor: focused ? colors.accent : colors.border,
+            backgroundColor: colors.surfaceMuted,
+            borderColor: focused ? colors.accent : 'transparent',
           },
           style,
           preferredTextStyle,
@@ -62,6 +62,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg,
-    height: 50,
+    paddingVertical: Spacing.md,
+    minHeight: Layout.prominentControlHeight,
   },
 });

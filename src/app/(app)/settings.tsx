@@ -1,6 +1,5 @@
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { router, type Href } from 'expo-router';
-import { ActivityIndicator, Platform, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { router } from 'expo-router';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -9,27 +8,12 @@ import { Content, Header, Screen } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
-import { TIME_PICKER_STYLE_LABELS } from '@/features/events/time-picker-style';
 import { useProfile } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
-import { useCalendarPreference } from '@/stores/calendar-preference';
 import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
 import { useThemePreference } from '@/stores/theme-preference';
-import { useTimePickerPreference } from '@/stores/time-picker-preference';
-
-type IconName = React.ComponentProps<typeof Ionicons>['name'];
-
-const SHORTCUTS: { title: string; icon: IconName; href: Href }[] = [
-  { title: '메모', icon: 'document-text-outline', href: '/memos' },
-  { title: '검색', icon: 'search-outline', href: '/search' },
-  { title: '설정', icon: 'settings-outline', href: '/preferences' },
-  { title: '알림', icon: 'notifications-outline', href: '/notifications' },
-  { title: '활동', icon: 'pulse-outline', href: '/activity' },
-  { title: '캘린더 관리', icon: 'calendar-outline', href: '/calendars' },
-];
 
 const THEME_LABELS = { apricot: '살구', indigo: '쪽빛', ink: '먹빛' } as const;
-const SCHEME_LABELS = { system: '기기 설정', light: '라이트', dark: '다크' } as const;
 const FONT_SIZE_LABELS = {
   small: '작게',
   standard: '보통',
@@ -46,55 +30,16 @@ export default function MoreScreen() {
   const { isGuest } = useAuth();
   const profile = useProfile();
   const theme = useThemePreference((state) => state.theme);
-  const schemePreference = useThemePreference((state) => state.schemePreference);
   const fontSizePreference = useThemePreference((state) => state.fontSizePreference);
   const fontFamilyPreference = useThemePreference((state) => state.fontFamilyPreference);
   const deviceCalendarsConnected = useDeviceCalendarPreference((state) => state.connected);
   const selectedDeviceCalendars = useDeviceCalendarPreference((state) => state.selectedIds.length);
-  const timePickerStyle = useTimePickerPreference((state) => state.style);
-  const { weekStart, showWeekNumbers, showLunar } = useCalendarPreference();
 
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Content>
           <Header title="더보기" />
-
-          <View style={styles.group}>
-            <Card style={styles.brandCard}>
-              <View style={[styles.brandMark, { backgroundColor: colors.accentSoft }]}>
-                <Ionicons name="git-branch-outline" size={28} color={colors.accent} />
-              </View>
-              <View style={styles.brandText}>
-                <Txt variant="subtitle">일정과 기록을 한 흐름으로</Txt>
-                <Txt variant="caption" tone="secondary">
-                  TimeFlower의 설정과 부가 기능을 여기에서 관리합니다.
-                </Txt>
-              </View>
-            </Card>
-          </View>
-
-          <View style={styles.group}>
-            <Card padded={false} style={styles.shortcutGrid}>
-              {SHORTCUTS.map((shortcut) => (
-                <Pressable
-                  key={shortcut.title}
-                  accessibilityRole="button"
-                  accessibilityLabel={shortcut.title}
-                  onPress={() => router.push(shortcut.href)}
-                  style={({ pressed }) => [
-                    styles.shortcut,
-                    {
-                      borderColor: colors.border,
-                      backgroundColor: pressed ? colors.surfacePressed : 'transparent',
-                    },
-                  ]}>
-                  <Ionicons name={shortcut.icon} size={25} color={colors.accent} />
-                  <Txt variant="label">{shortcut.title}</Txt>
-                </Pressable>
-              ))}
-            </Card>
-          </View>
 
           <Section title="계정">
             <Card padded={false}>
@@ -134,60 +79,60 @@ export default function MoreScreen() {
             </Card>
           </Section>
 
-          <Section title="캘린더 설정">
+          <Section title="캘린더">
             <Card padded={false}>
               <ListRow
-                title="한 주의 시작"
-                value={weekStart === 'sunday' ? '일요일' : '월요일'}
-                onPress={() => router.push('/preferences')}
+                title="캘린더 관리"
+                subtitle="공유 캘린더와 구성원 관리"
+                icon="calendar-outline"
+                onPress={() => router.push('/calendars')}
               />
-              <Divider />
+              <Divider inset="icon" />
               <ListRow
-                title="주 번호"
-                value={showWeekNumbers ? '표시' : '숨김'}
-                onPress={() => router.push('/preferences')}
+                title="알림"
+                subtitle="이 기기와 캘린더별 알림 설정"
+                icon="notifications-outline"
+                onPress={() => router.push('/notifications')}
               />
-              <Divider />
-              <ListRow
-                title="음력"
-                value={showLunar ? '표시' : '숨김'}
-                onPress={() => router.push('/preferences')}
-              />
-              <Divider />
-              <ListRow
-                title="화면 테마"
-                value={THEME_LABELS[theme]}
-                onPress={() => router.push('/preferences')}
-              />
-              <Divider />
-              <ListRow
-                title="화면 스타일"
-                value={SCHEME_LABELS[schemePreference]}
-                onPress={() => router.push('/preferences')}
-              />
-              <Divider />
-              <ListRow
-                title="글자"
-                value={`${FONT_FAMILY_LABELS[fontFamilyPreference]} · ${FONT_SIZE_LABELS[fontSizePreference]}`}
-                onPress={() => router.push('/preferences')}
-              />
-              <Divider />
-              {Platform.OS === 'ios' ? (
-                <>
-                  <ListRow
-                    title="시간 선택 방식"
-                    value={TIME_PICKER_STYLE_LABELS[timePickerStyle]}
-                    onPress={() => router.push('/time-picker-lab' as Href)}
-                  />
-                  <Divider />
-                </>
-              ) : null}
+              <Divider inset="icon" />
               <ListRow
                 title="외부 캘린더"
+                subtitle="iCloud·Google·구독 캘린더"
+                icon="link-outline"
                 value={
                   deviceCalendarsConnected ? `${selectedDeviceCalendars}개 표시` : '연결 안 됨'
                 }
                 onPress={() => router.push('/external-calendars')}
+              />
+            </Card>
+          </Section>
+
+          <Section title="도구">
+            <Card padded={false}>
+              <ListRow
+                title="검색"
+                subtitle="일정과 메모 찾기"
+                icon="search-outline"
+                onPress={() => router.push('/search')}
+              />
+              <Divider inset="icon" />
+              <ListRow
+                title="메모"
+                subtitle="캘린더 구성원과 공유하는 기록"
+                icon="document-text-outline"
+                onPress={() => router.push('/memos')}
+              />
+            </Card>
+          </Section>
+
+          <Section title="앱">
+            <Card padded={false}>
+              <ListRow
+                title="설정"
+                subtitle="표시·입력·위젯·계정"
+                icon="settings-outline"
+                value={`${THEME_LABELS[theme]} · ${FONT_FAMILY_LABELS[fontFamilyPreference]} ${FONT_SIZE_LABELS[fontSizePreference]}`}
+                onPress={() => router.push('/preferences')}
               />
             </Card>
           </Section>
@@ -212,25 +157,6 @@ const styles = StyleSheet.create({
   scroll: { paddingBottom: Spacing.xxxl * 2 },
   group: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl, gap: Spacing.sm },
   sectionTitle: { paddingLeft: Spacing.xs },
-  brandCard: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
-  brandMark: {
-    width: 56,
-    height: 56,
-    borderRadius: Radius.lg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandText: { flex: 1, gap: Spacing.xs },
-  shortcutGrid: { flexDirection: 'row', flexWrap: 'wrap' },
-  shortcut: {
-    width: '33.333%',
-    height: 96,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.sm,
-    borderRightWidth: StyleSheet.hairlineWidth,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-  },
   identity: {
     flexDirection: 'row',
     alignItems: 'center',

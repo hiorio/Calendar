@@ -52,7 +52,6 @@ export default function WidgetSettingsScreen() {
       showsVerticalScrollIndicator={false}>
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">위젯</Txt>
           <Txt variant="body" tone="secondary">
             바탕화면과 잠금화면에서 볼 일정과 빠른 작성 위치를 정합니다.
           </Txt>

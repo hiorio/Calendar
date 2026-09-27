@@ -110,7 +110,6 @@ export default function QuickEventScreen() {
         showsVerticalScrollIndicator={false}>
         <Content style={styles.content}>
           <View style={styles.intro}>
-            <Txt variant="display">빠른 일정</Txt>
             <Txt variant="body" tone="secondary">
               제목과 저장 위치만 확인하면 바로 추가됩니다.
             </Txt>

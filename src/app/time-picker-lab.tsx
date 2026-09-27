@@ -7,7 +7,7 @@ import { Card } from '@/components/ui/card';
 import { DateTimeField } from '@/components/ui/date-time-field';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import {
   TIME_PICKER_STYLE_LABELS,
   type TimePickerStyle,
@@ -75,7 +75,7 @@ function TimePickerStyleCard({
         accessibilityState={{ checked: selected }}
         onPress={onSelect}
         style={({ pressed }) => [styles.cardHeader, pressed && styles.cardHeaderPressed]}>
-        <View style={[styles.styleBadge, { backgroundColor: colors.accentSoft }]}>
+        <View style={styles.styleBadge}>
           <Txt variant="label" tone="accent">
             {label}
           </Txt>
@@ -101,13 +101,8 @@ function TimePickerStyleCard({
         {definition.description}
       </Txt>
 
-      <View
-        style={[
-          styles.example,
-          { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
-        ]}>
-        <Ionicons name="git-compare-outline" size={16} color={colors.accent} />
-        <Txt variant="caption" style={styles.exampleText}>
+      <View style={styles.example}>
+        <Txt variant="caption" tone="tertiary" style={styles.exampleText}>
           {definition.example}
         </Txt>
       </View>
@@ -115,7 +110,7 @@ function TimePickerStyleCard({
       <View
         style={[
           styles.preview,
-          { backgroundColor: colors.accentSoft, borderColor: colors.border },
+          { borderTopColor: colors.border },
         ]}>
         <View style={styles.previewCopy}>
           <Txt variant="label">직접 써보기</Txt>
@@ -170,24 +165,12 @@ export default function TimePickerStyleScreen() {
       contentContainerStyle={styles.scroll}
       showsVerticalScrollIndicator={false}>
       <Content style={styles.content}>
-        <View style={styles.intro}>
-          <View style={[styles.introIcon, { backgroundColor: colors.accentSoft }]}>
-            <Ionicons name="time-outline" size={24} color={colors.accent} />
-          </View>
-          <View style={styles.introText}>
-            <Txt variant="display">다이얼을 직접 비교하세요</Txt>
-            <Txt variant="body" tone="secondary">
-              기본·A·B 타입을 같은 시각으로 사용해 본 뒤 원하는 방식을 선택할 수 있습니다.
-            </Txt>
-          </View>
-        </View>
+        <Txt variant="body" tone="secondary">
+          iPhone 기본 방식과 두 가지 빠른 입력 방식을 같은 시각으로 직접 비교할 수 있습니다.
+        </Txt>
 
-        <View
-          style={[
-            styles.guide,
-            { backgroundColor: colors.surfaceMuted, borderColor: colors.border },
-          ]}>
-          <Ionicons name="information-circle-outline" size={18} color={colors.accent} />
+        <View style={styles.guide}>
+          <Ionicons name="information-circle-outline" size={18} color={colors.textSecondary} />
           <Txt variant="caption" tone="secondary" style={styles.guideText}>
             다이얼을 체험하는 동안 설정은 바뀌지 않습니다. 마음에 드는 카드의 이름이나 ‘이
             방식 사용’을 눌러야 일정 입력에 적용됩니다.
@@ -233,45 +216,30 @@ export default function TimePickerStyleScreen() {
 const styles = StyleSheet.create({
   scroll: { flexGrow: 1, paddingBottom: Spacing.xxxl },
   content: { gap: Spacing.lg, padding: Spacing.xl },
-  intro: { flexDirection: 'row', alignItems: 'center', gap: Spacing.lg },
-  introIcon: {
-    width: 52,
-    height: 52,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: Radius.lg,
-  },
-  introText: { flex: 1, gap: Spacing.xs },
   guide: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: Spacing.sm,
-    padding: Spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.xs,
   },
   guideText: { flex: 1 },
   options: { gap: Spacing.lg },
   styleCard: { gap: Spacing.md },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.md },
+  cardHeader: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+  },
   cardHeaderPressed: { opacity: 0.7 },
   styleBadge: {
-    minWidth: 54,
-    height: 32,
+    minWidth: 72,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingHorizontal: Spacing.sm,
-    borderRadius: Radius.pill,
   },
   cardTitle: { flex: 1, gap: 2 },
   example: {
-    minHeight: 40,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.md,
+    paddingHorizontal: Spacing.xs,
   },
   exampleText: { flex: 1 },
   preview: {
@@ -281,9 +249,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    padding: Spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: Spacing.md,
   },
   previewCopy: { flex: 1, minWidth: 176, gap: 2 },
   previewResult: { gap: Spacing.md },

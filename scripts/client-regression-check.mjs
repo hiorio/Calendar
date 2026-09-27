@@ -248,28 +248,29 @@ function find(tree, predicate) {
 function componentMocks(react) {
   const mocks = { react, 'react/jsx-runtime': jsx, 'react-native': native,
     '@/hooks/use-theme': { useTheme: () => ({ colors: {}, scheme: 'light' }) },
-    '@/constants/theme': { Spacing: {}, Radius: {}, Typography: {} },
+    '@/constants/theme': {
+      Layout: { controlHeight: 44, minTouchTarget: 44, prominentControlHeight: 50 },
+      Spacing: {},
+      Radius: {},
+      Typography: {},
+    },
   };
   for (const [path, name] of [['button', 'Button'], ['card', 'Card'], ['empty-state', 'EmptyState'], ['field', 'Field'], ['segmented', 'Segmented'], ['screen', 'Content'], ['text', 'Txt']]) mocks[`@/components/ui/${path}`] = { [name]: name };
   return mocks;
 }
-await check('missing auth renders the calendar tabs instead of redirecting to account', () => {
-  const navigations = [];
+await check('calendar navigation exposes three tabs and keeps the new route hidden', () => {
   function Tabs() {}
   Tabs.Screen = 'TabsScreen';
   const appLayout = load('src/app/(app)/_layout.tsx', {
     '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
-    'expo-router': { Tabs, router: { push: (href) => navigations.push(href) } },
+    'expo-router': { Tabs },
     'react/jsx-runtime': jsx,
     'react-native': {
-      Platform: { OS: 'ios', select: (values) => values.ios ?? values.default },
       StyleSheet: { create: (values) => values, hairlineWidth: 1 },
     },
     '@/components/ui/preferred-text-style': { usePreferredTextStyle: () => ({}) },
     '@/constants/theme': { Typography: { caption: {} } },
-    '@/features/auth/auth-provider': {
-      useAuth: () => ({ session: null, isLoading: false }),
-    },
+    '@/features/auth/auth-provider': { useAuth: () => ({ isLoading: false }) },
     '@/hooks/use-theme': {
       useTheme: () => ({
         colors: {
@@ -284,11 +285,184 @@ await check('missing auth renders the calendar tabs instead of redirecting to ac
 
   const tree = appLayout();
   assert.equal(tree.type, Tabs);
-  const addTab = tree.props.children.find((child) => child.props.name === 'new');
-  let prevented = false;
-  addTab.props.listeners.tabPress({ preventDefault: () => { prevented = true; } });
-  assert.equal(prevented, true);
-  assert.equal(navigations[0].pathname, '/account');
+  const screens = [tree.props.children].flat(Infinity);
+  assert.equal(screens.length, 4);
+  assert.deepEqual(
+    screens
+      .filter((screen) => screen.props.options.href !== null)
+      .map((screen) => [screen.props.name, screen.props.options.title]),
+    [
+      ['index', '캘린더'],
+      ['activity', '활동'],
+      ['settings', '더보기'],
+    ],
+  );
+  const hiddenNewRoute = screens.find((screen) => screen.props.name === 'new');
+  assert.deepEqual(hiddenNewRoute.props.options, { href: null });
+  assert.equal(hiddenNewRoute.props.listeners, undefined);
+});
+
+await check('hidden new route preserves the add-event auth guard for direct links', () => {
+  let session = null;
+  const NewTabRoute = load('src/app/(app)/new.tsx', {
+    'expo-router': { Redirect: 'Redirect' },
+    'react/jsx-runtime': jsx,
+    '@/features/auth/auth-provider': { useAuth: () => ({ session }) },
+  }).default;
+
+  let tree = NewTabRoute();
+  assert.equal(tree.type, 'Redirect');
+  assert.deepEqual(tree.props.href, {
+    pathname: '/account',
+    params: { reason: '연결을 복구한 뒤 일정을 추가할 수 있어요.' },
+  });
+
+  session = { user: { id: 'account' } };
+  tree = NewTabRoute();
+  assert.equal(tree.type, 'Redirect');
+  assert.equal(tree.props.href, '/event-new');
+});
+
+await check('calendar header add affordance routes through the session guard', () => {
+  let session = null;
+  const navigations = [];
+  const query = {
+    data: [],
+    error: null,
+    isError: false,
+    isFetched: true,
+    isSuccess: true,
+  };
+  const react = {
+    useCallback: (callback) => callback,
+    useEffect: () => {},
+    useMemo: (factory) => factory(),
+    useRef: (initial) => ({ current: initial }),
+    useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
+  };
+  const CalendarScreen = load('src/app/(app)/index.tsx', {
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
+    'expo-image': { Image: 'Image' },
+    'expo-router': { router: { push: (href) => navigations.push(href) } },
+    react,
+    'react/jsx-runtime': jsx,
+    'react-native': {
+      Pressable: 'Pressable',
+      ScrollView: 'ScrollView',
+      StyleSheet: { create: (values) => values },
+      useWindowDimensions: () => ({ width: 390 }),
+      View: 'View',
+    },
+    '@/components/ui/screen': { Content: 'Content', Screen: 'Screen' },
+    '@/components/ui/text': { Txt: 'Txt' },
+    '@/constants/theme': {
+      Layout: { minTouchTarget: 44 },
+      MaxContentWidth: 720,
+      Radius: { md: 12, pill: 999, sm: 8 },
+      Spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
+    },
+    '@/features/auth/auth-provider': {
+      useAuth: () => ({
+        bootstrapError: null,
+        retainedUserId: null,
+        session,
+        user: session?.user ?? null,
+      }),
+    },
+    '@/features/calendar/home-snapshot-cache': {
+      homeMonthSnapshotKey: () => '2026-09:sunday',
+    },
+    '@/features/calendar/home-snapshot': {
+      loadHomeMonthSnapshot: async () => null,
+      saveHomeMonthSnapshot: async () => {},
+    },
+    '@/features/calendar/month-view': { MonthView: 'MonthView' },
+    '@/features/calendar/month-picker': { MonthPicker: 'MonthPicker' },
+    '@/features/calendars/colors': { calendarColorForScheme: (color) => color },
+    '@/features/calendars/queries': {
+      useMyCalendars: () => ({ ...query, refetch: () => {} }),
+    },
+    '@/features/external-calendars/queries': {
+      useDeviceCalendarEvents: () => query,
+      useDeviceCalendars: () => query,
+    },
+    '@/features/events/queries': {
+      groupByDate: () => ({}),
+      monthGridRange: () => ({ start: new Date(2026, 7, 30), end: new Date(2026, 9, 10) }),
+      useMonthEvents: () => query,
+    },
+    '@/features/stickers/queries': { useMonthStickers: () => query },
+    '@/hooks/use-theme': {
+      useTheme: () => ({
+        colors: {
+          accent: 'accent',
+          accentSoft: 'accent-soft',
+          danger: 'danger',
+          dangerSoft: 'danger-soft',
+          surfaceMuted: 'surface-muted',
+          surfacePressed: 'surface-pressed',
+          text: 'text',
+          textSecondary: 'text-secondary',
+          textTertiary: 'text-tertiary',
+        },
+        scheme: 'light',
+      }),
+    },
+    '@/lib/date': {
+      addMonths: (date, amount) => new Date(date.getFullYear(), date.getMonth() + amount, 1),
+      formatMonthTitle: () => '2026년 9월',
+      startOfMonth: () => new Date(2026, 8, 1),
+      toDateKey: () => '2026-09-01',
+    },
+    '@/stores/calendar-filter': {
+      useCalendarFilter: () => ({ hidden: [], toggle: () => {} }),
+    },
+    '@/stores/calendar-preference': {
+      useCalendarPreference: () => ({
+        weekStart: 'sunday',
+        showWeekNumbers: false,
+        showLunar: false,
+        colorSaturday: true,
+      }),
+    },
+    '@/stores/device-calendar-preference': {
+      useDeviceCalendarPreference: (selector) =>
+        selector({ selectedIds: [], toggleCalendar: () => {} }),
+    },
+  }).default;
+
+  let tree = CalendarScreen();
+  let addButton = find(
+    tree,
+    (node) => node.type === 'Pressable' && node.props.accessibilityLabel === '일정 추가',
+  );
+  assert.ok(addButton);
+  assert.equal(addButton.props.accessibilityRole, 'button');
+  assert.equal(addButton.props.accessibilityHint, '새 일정 입력 화면을 엽니다');
+  assert.ok(find(addButton, (node) => node.type === 'Ionicons' && node.props.name === 'add'));
+  const topBar = find(
+    tree,
+    (node) => node.type === 'View' && node.props.style?.justifyContent === 'space-between',
+  );
+  assert.ok(topBar);
+  assert.equal([topBar.props.children].flat(Infinity).at(-1), addButton);
+
+  addButton.props.onPress();
+  assert.deepEqual(navigations, [
+    {
+      pathname: '/account',
+      params: { reason: '연결을 복구한 뒤 일정을 추가할 수 있어요.' },
+    },
+  ]);
+
+  session = { user: { id: 'account' } };
+  tree = CalendarScreen();
+  addButton = find(
+    tree,
+    (node) => node.type === 'Pressable' && node.props.accessibilityLabel === '일정 추가',
+  );
+  addButton.props.onPress();
+  assert.equal(navigations.at(-1), '/event-new');
 });
 await check('keyboard plus button submits one quick event and completion cannot pop an unmounted screen', async () => {
   const harness = hooks();
@@ -358,7 +532,11 @@ function createDateTimeFieldHarness(style, fieldProps = {}) {
       View: 'View',
     },
     '@/components/ui/text': { Txt: 'Txt' },
-    '@/constants/theme': { Radius: { sm: 8 }, Spacing: { md: 12, lg: 16, sm: 8 } },
+    '@/constants/theme': {
+      Layout: { minTouchTarget: 44 },
+      Radius: { sm: 8 },
+      Spacing: { md: 12, lg: 16, sm: 8 },
+    },
     '@/features/experiments/time-picker-lab-picker': {
       TimePickerLabPicker: 'TimePickerLabPicker',
     },
@@ -492,7 +670,8 @@ await check('정식 설정에서 기본형·A형·B형을 직접 체험한 뒤 �
   assert.match(source, /accessibilityState=\{\{ checked: selected \}\}/);
   assert.match(source, /label=\{selected \? '현재 사용 중' : '이 방식 사용'\}/);
   assert.match(preferences, /router\.push\('\/time-picker-lab'/);
-  assert.match(more, /router\.push\('\/time-picker-lab'/);
+  assert.match(more, /title="설정"[\s\S]*?router\.push\('\/preferences'/);
+  assert.doesNotMatch(more, /router\.push\('\/time-picker-lab'/);
 });
 
 // Real QueryClient verifies cancelled/cleared data is not revived by a late network response.

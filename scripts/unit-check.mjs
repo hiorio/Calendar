@@ -215,12 +215,12 @@ console.log('0. 캘린더 표시 계산');
 {
   check('시간 선택 방식의 기본값은 기존 iPhone 선택기', DEFAULT_TIME_PICKER_STYLE === 'system');
   eq(
-    '정식 시간 선택 방식은 기본형·A형·B형을 제공한다',
+    '정식 시간 선택 방식은 의미가 드러나는 기본형·A형·B형을 제공한다',
     Object.entries(TIME_PICKER_STYLE_LABELS),
     [
-      ['system', '기본'],
-      ['digit-auto', 'A타입'],
-      ['digit-composed', 'B타입'],
+      ['system', 'iPhone 기본'],
+      ['digit-auto', '빠른 선택 · A'],
+      ['digit-composed', '펼친 선택 · B'],
     ],
   );
   eq(

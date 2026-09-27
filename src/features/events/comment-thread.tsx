@@ -5,7 +5,7 @@ import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 import { Notice } from '@/components/ui/notice';
 import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, Typography } from '@/constants/theme';
+import { Layout, Radius, Spacing, Typography } from '@/constants/theme';
 import {
   formatRelativeTime,
   useAddComment,
@@ -49,10 +49,6 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
 
   return (
     <View style={styles.section}>
-      <Txt variant="label" tone="secondary">
-        댓글
-      </Txt>
-
       {isRecurring ? (
         <Notice tone="info" title="반복 일정의 댓글은 모든 회차가 함께 봅니다">
           이 날짜에만 남는 것이 아닙니다.
@@ -158,8 +154,8 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 2 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   deleteButton: {
-    width: 26,
-    height: 26,
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

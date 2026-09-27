@@ -47,27 +47,23 @@ export function EventDetailTools({
           styles.toolBar,
           { backgroundColor: colors.surface, borderColor: colors.border },
         ]}>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.toolBarContent}>
-          {TOOLS.map((tool) => (
-            <Pressable
-              key={tool.id}
-              accessibilityRole="button"
-              accessibilityLabel={`${tool.label} 설정 열기`}
-              onPress={() => setActive(tool.id)}
-              style={({ pressed }) => [
-                styles.tool,
-                {
-                  backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted,
-                },
-              ]}>
-              <Ionicons name={tool.icon} size={17} color={colors.accent} />
-              <Txt variant="label">{tool.label}</Txt>
-            </Pressable>
-          ))}
-        </ScrollView>
+        {TOOLS.map((tool, index) => (
+          <Pressable
+            key={tool.id}
+            accessibilityRole="button"
+            accessibilityLabel={`${tool.label} 설정 열기`}
+            onPress={() => setActive(tool.id)}
+            style={({ pressed }) => [
+              styles.tool,
+              index > 0 && { borderLeftColor: colors.border, borderLeftWidth: StyleSheet.hairlineWidth },
+              pressed && { backgroundColor: colors.surfacePressed },
+            ]}>
+            <Ionicons name={tool.icon} size={20} color={colors.textSecondary} />
+            <Txt variant="caption" tone="secondary">
+              {tool.label}
+            </Txt>
+          </Pressable>
+        ))}
       </View>
 
       <Modal
@@ -79,19 +75,22 @@ export function EventDetailTools({
           edges={['top', 'bottom']}
           style={[styles.sheet, { backgroundColor: colors.background }]}>
           <View style={[styles.sheetHeader, { borderBottomColor: colors.border }]}>
+            <View style={styles.headerSpacer} />
+            <Txt accessibilityRole="header" variant="subtitle" style={styles.sheetTitle}>
+              {active ? TITLES[active] : ''}
+            </Txt>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="상세 기능 닫기"
-              hitSlop={8}
               onPress={() => setActive(null)}
               style={({ pressed }) => [
-                styles.closeButton,
-                pressed && { backgroundColor: colors.surfacePressed },
+                styles.doneButton,
+                { opacity: pressed ? 0.55 : 1 },
               ]}>
-              <Ionicons name="close" size={26} color={colors.text} />
+              <Txt variant="bodyStrong" tone="accent">
+                완료
+              </Txt>
             </Pressable>
-            <Txt variant="title">{active ? TITLES[active] : ''}</Txt>
-            <View style={styles.headerSpacer} />
           </View>
 
           <ScrollView
@@ -117,40 +116,38 @@ export function EventDetailTools({
 
 const styles = StyleSheet.create({
   toolBar: {
+    flexDirection: 'row',
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.xl,
-  },
-  toolBarContent: {
-    gap: Spacing.sm,
-    paddingHorizontal: Spacing.md,
-    paddingVertical: Spacing.sm,
+    borderRadius: Radius.md,
   },
   tool: {
-    minHeight: 36,
-    flexDirection: 'row',
+    flex: 1,
+    minHeight: 60,
     alignItems: 'center',
+    justifyContent: 'center',
     gap: Spacing.xs,
-    borderRadius: Radius.pill,
-    paddingHorizontal: Spacing.md,
+    paddingHorizontal: Spacing.xs,
+    paddingVertical: Spacing.sm,
   },
   sheet: { flex: 1 },
   sheetHeader: {
-    height: 56,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
     borderBottomWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.sm,
   },
-  closeButton: {
-    width: 44,
-    height: 44,
+  doneButton: {
+    minWidth: 44,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: Radius.pill,
+    paddingHorizontal: Spacing.sm,
   },
   headerSpacer: { width: 44 },
+  sheetTitle: { flex: 1, textAlign: 'center' },
   sheetContent: {
     flexGrow: 1,
     gap: Spacing.xl,

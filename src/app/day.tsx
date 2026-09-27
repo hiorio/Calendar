@@ -20,7 +20,7 @@ import Swipeable, {
 import { Button } from '@/components/ui/button';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Elevation, MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import {
   homeMonthSnapshotKey,
@@ -290,8 +290,6 @@ function DayPage({
             />
           ) : null}
 
-          <View style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
-
           <View style={styles.header}>
             <View style={[styles.heading, featuredDefinition && styles.decoratedHeading]}>
               {featuredDefinition ? (
@@ -322,8 +320,6 @@ function DayPage({
                   styles.roundButton,
                   {
                     backgroundColor: pressed ? colors.surfacePressed : colors.surface,
-                    borderColor: colors.border,
-                    shadowColor: colors.shadow,
                   },
                 ]}>
                 <Ionicons name="sparkles" size={18} color={colors.accent} />
@@ -339,8 +335,6 @@ function DayPage({
                   styles.roundButton,
                   {
                     backgroundColor: pressed ? colors.surfacePressed : colors.surface,
-                    borderColor: colors.border,
-                    shadowColor: colors.shadow,
                   },
                 ]}>
                 <Ionicons name="add" size={22} color={colors.text} />
@@ -392,12 +386,16 @@ function DayPage({
         ) : visibleStickers.length > 0 ? (
           <View style={styles.stickerList}>
             <Txt variant="label" tone="secondary">이 날짜의 스티커</Txt>
-            {visibleStickers.map((sticker) => {
+            {visibleStickers.map((sticker, index) => {
               const definition = stickerByKey(sticker.stickerKey);
               return (
                 <View
                   key={sticker.id}
-                  style={[styles.stickerRow, { backgroundColor: colors.surfaceMuted }]}>
+                  style={[
+                    styles.stickerRow,
+                    { borderBottomColor: colors.border },
+                    index === visibleStickers.length - 1 && styles.lastStickerRow,
+                  ]}>
                   {definition ? (
                     <Image
                       contentFit="contain"
@@ -421,7 +419,7 @@ function DayPage({
                     style={({ pressed }) => [
                       styles.stickerMenuButton,
                       {
-                        backgroundColor: pressed ? colors.surfacePressed : colors.surfaceMuted,
+                        backgroundColor: pressed ? colors.surfacePressed : 'transparent',
                       },
                     ]}>
                     <Ionicons
@@ -824,21 +822,14 @@ const styles = StyleSheet.create({
   hero: {
     position: 'relative',
     paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
     paddingBottom: Spacing.lg,
   },
   decoratedHero: {
-    minHeight: 210,
+    minHeight: 176,
     overflow: 'hidden',
     borderBottomLeftRadius: Radius.lg,
     borderBottomRightRadius: Radius.lg,
-  },
-  grabber: {
-    width: 44,
-    height: 4,
-    alignSelf: 'center',
-    borderRadius: Radius.pill,
-    marginTop: Spacing.sm,
-    marginBottom: Spacing.lg,
   },
   header: {
     flexDirection: 'row',
@@ -856,13 +847,11 @@ const styles = StyleSheet.create({
   headingBackdrop: { opacity: 0.86 },
   headerActions: { flexDirection: 'row', gap: Spacing.sm },
   roundButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
     borderRadius: Radius.pill,
-    ...Elevation.card,
   },
   calendarBadge: {
     position: 'absolute',
@@ -879,19 +868,21 @@ const styles = StyleSheet.create({
   },
   badgeBackdrop: { opacity: 0.86 },
   badgeDot: { width: 7, height: 7, borderRadius: Radius.pill },
-  stickerList: { marginHorizontal: Spacing.xl, marginTop: Spacing.lg, gap: Spacing.sm },
+  stickerList: { marginHorizontal: Spacing.xl, marginTop: Spacing.lg },
   stickerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: Spacing.sm,
-    padding: Spacing.sm,
-    borderRadius: Radius.md,
+    gap: Spacing.md,
+    minHeight: 60,
+    paddingVertical: Spacing.sm,
+    borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  stickerThumbnail: { width: 42, height: 42 },
-  stickerText: { flex: 1, gap: Spacing.xs },
+  lastStickerRow: { borderBottomWidth: 0 },
+  stickerThumbnail: { width: 36, height: 36 },
+  stickerText: { flex: 1, gap: 2 },
   stickerMenuButton: {
-    width: 38,
-    height: 38,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,
@@ -905,7 +896,7 @@ const styles = StyleSheet.create({
     marginHorizontal: Spacing.xl,
     paddingVertical: Spacing.xxxl * 2,
   },
-  eventList: { marginTop: Spacing.xl, paddingHorizontal: Spacing.xl },
+  eventList: { marginTop: Spacing.lg, paddingHorizontal: Spacing.xl },
   swipeableRow: { overflow: 'hidden', borderRadius: Radius.sm },
   deleteAction: {
     width: 76,

@@ -2,7 +2,7 @@ import { StyleSheet, View, type ViewProps } from 'react-native';
 import { SafeAreaView, type Edge } from 'react-native-safe-area-context';
 
 import { Txt } from '@/components/ui/text';
-import { MaxContentWidth, Spacing } from '@/constants/theme';
+import { Layout, MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type ScreenProps = ViewProps & {
@@ -33,7 +33,7 @@ export function Header({ title, subtitle, right }: HeaderProps) {
       <View style={styles.headerText}>
         <Txt variant="display">{title}</Txt>
         {subtitle ? (
-          <Txt variant="body" tone="secondary">
+          <Txt variant="label" tone="secondary">
             {subtitle}
           </Txt>
         ) : null}
@@ -55,7 +55,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    paddingHorizontal: Spacing.xl,
+    paddingHorizontal: Layout.screenGutter,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
   },

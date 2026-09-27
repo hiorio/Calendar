@@ -1,7 +1,7 @@
 import { StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, Typography } from '@/constants/theme';
+import { Layout, Radius, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { toDateKey } from '@/lib/date';
 
@@ -47,6 +47,8 @@ export function DateTimeField({
           border: `1px solid ${colors.border}`,
           borderRadius: Radius.sm,
           padding: `${Spacing.sm}px ${Spacing.md}px`,
+          minHeight: Layout.minTouchTarget,
+          boxSizing: 'border-box',
           fontFamily: 'inherit',
           // 브라우저가 그리는 달력 팝업과 시계 아이콘도 같은 배색을 따르게 한다
           colorScheme: scheme,
@@ -87,7 +89,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     gap: Spacing.md,
-    minHeight: 44,
+    minHeight: Layout.minTouchTarget,
   },
   controlOnly: { minHeight: 0 },
 });

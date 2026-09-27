@@ -89,15 +89,14 @@ function NotificationSettings() {
       contentContainerStyle={styles.scroll}>
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">알림</Txt>
           <Txt variant="body" tone="secondary">
             함께 쓰는 사람이 일정을 넣거나 바꾸면 알려 드립니다.
           </Txt>
         </View>
 
         {!env.pushEnabled ? (
-          <Notice tone="info" title="이 버전에서는 알림 발송이 활성화되지 않았습니다">
-            앱을 최신 버전으로 업데이트해 주세요. 캘린더 변경 내용은 앱에서 확인할 수 있습니다.
+          <Notice tone="info" title="이 기기에서는 푸시 알림을 사용할 수 없어요">
+            일정 변경 내용은 앱 안의 활동 화면에서 계속 확인할 수 있습니다.
           </Notice>
         ) : null}
 

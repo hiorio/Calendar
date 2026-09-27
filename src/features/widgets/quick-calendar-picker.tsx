@@ -1,7 +1,7 @@
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { calendarColorForScheme } from '@/features/calendars/colors';
 import type { MyCalendar } from '@/features/calendars/queries';
 import { useTheme } from '@/hooks/use-theme';
@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   wrap: { gap: Spacing.xs },
   row: { flexDirection: 'row', gap: Spacing.sm, paddingRight: Spacing.lg },
   chip: {
-    minHeight: 38,
+    minHeight: Layout.minTouchTarget,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,

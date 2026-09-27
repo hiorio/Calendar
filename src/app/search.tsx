@@ -8,7 +8,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, Typography } from '@/constants/theme';
+import { Layout, Radius, Spacing, Typography } from '@/constants/theme';
 import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useEventSearch } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
@@ -28,7 +28,6 @@ export default function SearchScreen() {
       keyboardShouldPersistTaps="handled">
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">검색</Txt>
           <Txt variant="body" tone="secondary">
             내가 볼 수 있는 캘린더의 일정 제목을 찾습니다.
           </Txt>
@@ -51,7 +50,11 @@ export default function SearchScreen() {
             style={[styles.input, { color: colors.text }, preferredInputStyle]}
           />
           {query ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="검색어 지우기" onPress={() => setQuery('')}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="검색어 지우기"
+              onPress={() => setQuery('')}
+              style={styles.clearButton}>
               <Ionicons name="close-circle" size={20} color={colors.textTertiary} />
             </Pressable>
           ) : null}
@@ -148,15 +151,27 @@ const styles = StyleSheet.create({
   content: { flex: 0, gap: Spacing.xxl, paddingHorizontal: Spacing.xl },
   intro: { gap: Spacing.xs },
   searchBox: {
-    height: 52,
+    minHeight: Layout.prominentControlHeight,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.xs,
     borderRadius: Radius.md,
     borderWidth: StyleSheet.hairlineWidth,
   },
-  input: { ...Typography.body, flex: 1, height: '100%' },
+  input: {
+    ...Typography.body,
+    flex: 1,
+    minHeight: Layout.minTouchTarget,
+    paddingVertical: Spacing.sm,
+  },
+  clearButton: {
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   section: { gap: Spacing.sm },
   result: {
     minHeight: 74,

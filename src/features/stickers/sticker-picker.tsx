@@ -125,8 +125,6 @@ export function StickerPicker({
               shadowColor: colors.shadow,
             },
           ]}>
-          <View style={[styles.grabber, { backgroundColor: colors.borderStrong }]} />
-
           <View style={styles.sheetHeader}>
             <View style={styles.headerSide}>
               {step === 'sticker' ? (
@@ -143,9 +141,7 @@ export function StickerPicker({
                   <Ionicons name="chevron-back" size={20} color={colors.text} />
                 </Pressable>
               ) : (
-                <View style={[styles.iconButton, { backgroundColor: colors.accentSoft }]}>
-                  <Ionicons name="sparkles" size={18} color={colors.accent} />
-                </View>
+                <View style={styles.iconButton} />
               )}
             </View>
             <View style={styles.sheetTitle}>
@@ -312,13 +308,6 @@ const styles = StyleSheet.create({
     borderTopRightRadius: Radius.xl,
     ...Elevation.floating,
   },
-  grabber: {
-    width: 42,
-    height: 4,
-    alignSelf: 'center',
-    borderRadius: Radius.pill,
-    marginTop: Spacing.sm,
-  },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -327,11 +316,11 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.md,
     paddingBottom: Spacing.lg,
   },
-  headerSide: { width: 40 },
+  headerSide: { width: 44 },
   headerSideEnd: { alignItems: 'flex-end' },
   iconButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: Radius.pill,

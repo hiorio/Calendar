@@ -130,227 +130,255 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
   }), [dirty, onDirtyChange, snapshot, submit]);
 
   return (
-    <View pointerEvents={pending ? 'none' : 'auto'} style={[styles.form, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <TextInput
-        accessibilityLabel="일정 이름"
-        value={title}
-        onChangeText={setTitle}
-        placeholder="무엇을 하나요?"
-        placeholderTextColor={colors.textTertiary}
-        maxLength={100}
-        editable={!pending}
-        returnKeyType="next"
-        style={[styles.titleInput, { color: colors.text }, titleTextStyle]}
-      />
-
-      <Divider />
-
-      <View style={styles.optionRow}>
-        <Ionicons name="calendar-outline" size={20} color={colors.accent} />
-        <ScrollView
-          horizontal
-          style={styles.optionScroller}
-          contentContainerStyle={styles.optionScrollerContent}
-          showsHorizontalScrollIndicator={false}>
-            {calendars.map((calendar) => {
-              const selected = calendar.id === calendarId;
-              return (
-                <Pressable
-                  key={calendar.id}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={calendar.name}
-                  disabled={lockRecurrence || pending}
-                  onPress={() => setCalendarId(calendar.id)}
-                  style={[
-                    styles.calendarChip,
-                    {
-                      backgroundColor: selected ? colors.accentSoft : colors.surface,
-                      borderColor: selected ? colors.accent : colors.borderStrong,
-                    },
-                  ]}>
-                  {calendar.coverUrl ? (
-                    <Image
-                      source={{ uri: calendar.coverUrl }}
-                      contentFit="cover"
-                      style={[
-                        styles.calendarThumbnail,
-                        { borderColor: calendarColorForScheme(calendar.color, scheme) },
-                      ]}
-                    />
-                  ) : (
-                    <View
-                      style={[
-                        styles.dot,
-                        { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
-                      ]}
-                    />
-                  )}
-                  <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
-                    {calendar.name}
-                  </Txt>
-                </Pressable>
-              );
-            })}
-        </ScrollView>
-      </View>
-
-      <Divider />
-
-      <View style={styles.optionRow}>
-        <Ionicons name="time-outline" size={20} color={colors.accent} />
-        <Txt variant="body" style={styles.rowLabel}>
-          종일
-        </Txt>
-        <Switch
-          value={time.isAllDay}
-          onValueChange={(next) => setTime((current) => switchAllDay(current, next))}
-          trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
+    <View pointerEvents={pending ? 'none' : 'auto'} style={styles.form}>
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}>
+        <TextInput
+          accessibilityLabel="일정 이름"
+          value={title}
+          onChangeText={setTitle}
+          placeholder="무엇을 하나요?"
+          placeholderTextColor={colors.textTertiary}
+          maxLength={100}
+          editable={!pending}
+          returnKeyType="next"
+          style={[styles.titleInput, { color: colors.text }, titleTextStyle]}
         />
       </View>
 
-      <Divider />
-
-      <CompactTimeRow label="시작">
-        <DateTimeField
-          hideLabel
-          label="시작 날짜"
-          mode="date"
-          value={time.start}
-          onChange={(next) => setTime((current) => moveStart(current, next))}
-        />
-        {!time.isAllDay ? (
-          <DateTimeField
-            hideLabel
-            label="시작 시각"
-            mode="time"
-            value={time.start}
-            onChange={(next) => setTime((current) => moveStart(current, next))}
-          />
-        ) : null}
-      </CompactTimeRow>
-
-      <CompactTimeRow label="종료">
-        <DateTimeField
-          hideLabel
-          label="종료 날짜"
-          mode="date"
-          value={time.end}
-          onChange={(next) => setTime((current) => moveEnd(current, next))}
-        />
-        {!time.isAllDay ? (
-          <DateTimeField
-            hideLabel
-            label="종료 시각"
-            mode="time"
-            value={time.end}
-            onChange={(next) => setTime((current) => moveEnd(current, next))}
-          />
-        ) : null}
-      </CompactTimeRow>
-
-      <Divider />
-
-      <View style={styles.optionRow}>
-        <Ionicons name="repeat-outline" size={20} color={colors.accent} />
-        <Txt variant="body" style={styles.compactLabel}>
-          반복
-        </Txt>
-        {lockRecurrence ? (
-          <Txt variant="body" tone="secondary" style={styles.readOnlyValue}>
-            {recurrence.freq ? FREQ_LABELS[recurrence.freq] : '안 함'}
-          </Txt>
-        ) : (
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}>
+        <View style={styles.optionRow}>
+          <Ionicons name="calendar-outline" size={20} color={colors.textSecondary} />
           <ScrollView
             horizontal
             style={styles.optionScroller}
             contentContainerStyle={styles.optionScrollerContent}
             showsHorizontalScrollIndicator={false}>
-            {FREQ_OPTIONS.map((freq) => {
-              const selected = freq === recurrence.freq;
-              const label = freq ? FREQ_LABELS[freq] : '안 함';
-              return (
-                <Pressable
-                  key={label}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  accessibilityLabel={`반복 ${label}`}
-                  onPress={() => setRecurrence((current) => ({ ...current, freq }))}
-                  style={[
-                    styles.calendarChip,
-                    {
-                      backgroundColor: selected ? colors.accentSoft : colors.surface,
-                      borderColor: selected ? colors.accent : colors.border,
-                    },
-                  ]}>
-                  <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
-                    {label}
-                  </Txt>
-                </Pressable>
-              );
-            })}
+              {calendars.map((calendar) => {
+                const selected = calendar.id === calendarId;
+                const disabled = lockRecurrence || pending;
+                return (
+                  <Pressable
+                    key={calendar.id}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected, disabled }}
+                    accessibilityLabel={calendar.name}
+                    disabled={disabled}
+                    onPress={() => setCalendarId(calendar.id)}
+                    style={({ pressed }) => [
+                      styles.calendarChip,
+                      {
+                        backgroundColor: selected
+                          ? colors.accentSoft
+                          : pressed
+                            ? colors.surfacePressed
+                            : colors.surface,
+                        borderColor: selected ? colors.accent : colors.borderStrong,
+                        opacity: disabled ? 0.55 : 1,
+                      },
+                    ]}>
+                    {calendar.coverUrl ? (
+                      <Image
+                        source={{ uri: calendar.coverUrl }}
+                        contentFit="cover"
+                        style={[
+                          styles.calendarThumbnail,
+                          { borderColor: calendarColorForScheme(calendar.color, scheme) },
+                        ]}
+                      />
+                    ) : (
+                      <View
+                        style={[
+                          styles.dot,
+                          { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                        ]}
+                      />
+                    )}
+                    <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
+                      {calendar.name}
+                    </Txt>
+                  </Pressable>
+                );
+              })}
           </ScrollView>
-        )}
+        </View>
+
+        <Divider />
+
+        <View style={styles.optionRow}>
+          <Ionicons name="time-outline" size={20} color={colors.textSecondary} />
+          <Txt variant="body" style={styles.rowLabel}>
+            종일
+          </Txt>
+          <Switch
+            value={time.isAllDay}
+            onValueChange={(next) => setTime((current) => switchAllDay(current, next))}
+            trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
+          />
+        </View>
+
+        <Divider />
+
+        <CompactTimeRow label="시작">
+          <DateTimeField
+            hideLabel
+            label="시작 날짜"
+            mode="date"
+            value={time.start}
+            onChange={(next) => setTime((current) => moveStart(current, next))}
+          />
+          {!time.isAllDay ? (
+            <DateTimeField
+              hideLabel
+              label="시작 시각"
+              mode="time"
+              value={time.start}
+              onChange={(next) => setTime((current) => moveStart(current, next))}
+            />
+          ) : null}
+        </CompactTimeRow>
+
+        <CompactTimeRow label="종료">
+          <DateTimeField
+            hideLabel
+            label="종료 날짜"
+            mode="date"
+            value={time.end}
+            onChange={(next) => setTime((current) => moveEnd(current, next))}
+          />
+          {!time.isAllDay ? (
+            <DateTimeField
+              hideLabel
+              label="종료 시각"
+              mode="time"
+              value={time.end}
+              onChange={(next) => setTime((current) => moveEnd(current, next))}
+            />
+          ) : null}
+        </CompactTimeRow>
+
+        <Divider />
+
+        <View style={styles.optionRow}>
+          <Ionicons name="repeat-outline" size={20} color={colors.textSecondary} />
+          <Txt variant="body" style={styles.compactLabel}>
+            반복
+          </Txt>
+          {lockRecurrence ? (
+            <Txt variant="body" tone="secondary" style={styles.readOnlyValue}>
+              {recurrence.freq ? FREQ_LABELS[recurrence.freq] : '안 함'}
+            </Txt>
+          ) : (
+            <ScrollView
+              horizontal
+              style={styles.optionScroller}
+              contentContainerStyle={styles.optionScrollerContent}
+              showsHorizontalScrollIndicator={false}>
+              {FREQ_OPTIONS.map((freq) => {
+                const selected = freq === recurrence.freq;
+                const label = freq ? FREQ_LABELS[freq] : '안 함';
+                return (
+                  <Pressable
+                    key={label}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    accessibilityLabel={`반복 ${label}`}
+                    onPress={() => setRecurrence((current) => ({ ...current, freq }))}
+                    style={({ pressed }) => [
+                      styles.calendarChip,
+                      {
+                        backgroundColor: selected
+                          ? colors.accentSoft
+                          : pressed
+                            ? colors.surfacePressed
+                            : colors.surface,
+                        borderColor: selected ? colors.accent : colors.border,
+                      },
+                    ]}>
+                    <Txt variant="label" tone={selected ? 'accent' : 'secondary'}>
+                      {label}
+                    </Txt>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
+        </View>
+
+        {!lockRecurrence && recurrence.freq ? (
+          <>
+            <Divider />
+            <View style={styles.optionRow}>
+              <Ionicons
+                name="calendar-number-outline"
+                size={20}
+                color={colors.textSecondary}
+              />
+              <Txt variant="body" style={styles.rowLabel}>
+                종료일
+              </Txt>
+              {recurrence.until ? (
+                <DateTimeField
+                  hideLabel
+                  label="반복 종료일"
+                  mode="date"
+                  value={recurrence.until}
+                  onChange={(next) =>
+                    setRecurrence((current) => ({ ...current, until: next }))
+                  }
+                />
+              ) : null}
+              <Switch
+                value={recurrence.until !== null}
+                onValueChange={(on) =>
+                  setRecurrence((current) => ({
+                    ...current,
+                    until: on ? defaultUntil(time.start) : null,
+                  }))
+                }
+                trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
+              />
+            </View>
+          </>
+        ) : null}
       </View>
 
-      {!lockRecurrence && recurrence.freq ? (
-        <>
-          <Divider />
-          <View style={styles.optionRow}>
-            <Ionicons name="calendar-number-outline" size={20} color={colors.accent} />
-            <Txt variant="body" style={styles.rowLabel}>
-              종료일
-            </Txt>
-            {recurrence.until ? (
-              <DateTimeField
-                hideLabel
-                label="반복 종료일"
-                mode="date"
-                value={recurrence.until}
-                onChange={(next) =>
-                  setRecurrence((current) => ({ ...current, until: next }))
-                }
-              />
-            ) : null}
-            <Switch
-              value={recurrence.until !== null}
-              onValueChange={(on) =>
-                setRecurrence((current) => ({
-                  ...current,
-                  until: on ? defaultUntil(time.start) : null,
-                }))
-              }
-              trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
-            />
-          </View>
-        </>
-      ) : null}
+      <View
+        style={[
+          styles.section,
+          { backgroundColor: colors.surface, borderColor: colors.border },
+        ]}>
+        <InlineInput
+          icon="location-outline"
+          accessibilityLabel="장소"
+          value={location}
+          onChangeText={setLocation}
+          placeholder="장소 추가"
+          maxLength={200}
+          editable={!pending}
+        />
 
-      <Divider />
+        <Divider />
 
-      <InlineInput
-        icon="location-outline"
-        accessibilityLabel="장소"
-        value={location}
-        onChangeText={setLocation}
-        placeholder="장소 추가"
-        maxLength={200}
-        editable={!pending}
-      />
+        <InlineInput
+          icon="document-text-outline"
+          accessibilityLabel="메모"
+          value={description}
+          onChangeText={setDescription}
+          placeholder="메모 추가"
+          multiline
+          editable={!pending}
+        />
 
-      <Divider />
-
-      <InlineInput
-        icon="document-text-outline"
-        accessibilityLabel="메모"
-        value={description}
-        onChangeText={setDescription}
-        placeholder="메모 추가"
-        multiline
-        editable={!pending}
-      />
-
-      {children}
+        {children}
+      </View>
 
       {error ? (
         <View style={styles.formMessage}>
@@ -391,7 +419,7 @@ function CompactTimeRow({ label, children }: { label: string; children: React.Re
 
   return (
     <View style={styles.timeRow}>
-      <Ionicons name="calendar-clear-outline" size={20} color={colors.accent} />
+      <Ionicons name="calendar-clear-outline" size={20} color={colors.textSecondary} />
       <Txt variant="body" style={styles.rowLabel}>
         {label}
       </Txt>
@@ -412,7 +440,7 @@ function InlineInput({
 
   return (
     <View style={[styles.inlineInputRow, multiline && styles.inlineInputRowMultiline]}>
-      <Ionicons name={icon} size={20} color={colors.accent} />
+      <Ionicons name={icon} size={20} color={colors.textSecondary} />
       <TextInput
         {...props}
         multiline={multiline}
@@ -437,18 +465,21 @@ function defaultUntil(start: Date): Date {
 
 const styles = StyleSheet.create({
   form: {
+    gap: Spacing.lg,
+  },
+  section: {
     overflow: 'hidden',
     borderWidth: StyleSheet.hairlineWidth,
-    borderRadius: Radius.xl,
+    borderRadius: Radius.md,
   },
   titleInput: {
     ...Typography.title,
-    minHeight: 64,
-    paddingHorizontal: Spacing.xl,
+    minHeight: 68,
+    paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
   },
   optionRow: {
-    minHeight: 48,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
@@ -464,7 +495,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    height: 34,
+    minHeight: 44,
     paddingHorizontal: Spacing.md,
     borderRadius: Radius.pill,
     borderWidth: 1,
@@ -476,36 +507,48 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderRadius: Radius.sm,
   },
-  compactLabel: { width: 36 },
+  compactLabel: { minWidth: 36 },
   rowLabel: { flex: 1 },
   readOnlyValue: { marginLeft: 'auto' },
   timeRow: {
-    minHeight: 50,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
   },
   timeControls: {
+    flex: 1,
     flexDirection: 'row',
+    flexWrap: 'wrap',
     alignItems: 'center',
     justifyContent: 'flex-end',
     gap: Spacing.xs,
   },
   inlineInputRow: {
-    minHeight: 48,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.md,
     paddingHorizontal: Spacing.lg,
   },
-  inlineInputRowMultiline: { minHeight: 58, alignItems: 'flex-start', paddingTop: Spacing.md },
-  inlineInput: { ...Typography.body, flex: 1, minHeight: 44, paddingVertical: Spacing.sm },
+  inlineInputRowMultiline: {
+    minHeight: 84,
+    alignItems: 'flex-start',
+    paddingTop: Spacing.md,
+  },
+  inlineInput: {
+    ...Typography.body,
+    flex: 1,
+    minHeight: 44,
+    paddingVertical: Spacing.sm,
+  },
   inlineInputMultiline: {
-    maxHeight: 58,
+    minHeight: 72,
+    maxHeight: 120,
     paddingTop: 0,
     textAlignVertical: 'top',
   },
-  formMessage: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
-  formAction: { paddingHorizontal: Spacing.lg, paddingVertical: Spacing.sm },
+  formMessage: { paddingHorizontal: Spacing.xs },
+  formAction: {},
 });

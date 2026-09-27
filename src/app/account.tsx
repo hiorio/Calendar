@@ -1,5 +1,5 @@
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { router, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useEffect, useState } from 'react';
 import {
   Alert,
@@ -183,13 +183,14 @@ export default function AccountScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Content style={styles.content}>
+    <>
+      <Stack.Screen options={{ title: creating ? '계정 만들기' : '로그인' }} />
+      <KeyboardAvoidingView
+        style={[styles.flex, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+          <Content style={styles.content}>
           <View style={styles.intro}>
-            <Txt variant="display">{creating ? '계정 만들기' : '로그인'}</Txt>
             <Txt variant="body" tone="secondary">
               {reason ??
                 (creating
@@ -310,17 +311,11 @@ export default function AccountScreen() {
           )}
 
           <Txt variant="micro" tone="tertiary">
-            {googleNativeConfigMissing
-              ? '이 빌드에는 iOS Google 로그인 설정이 포함되지 않았습니다.'
-              : providerCheckFailed
-              ? '소셜 로그인 설정을 확인할 수 없습니다. 네트워크 연결 후 화면을 다시 열어 주세요.'
-              : providerAvailability &&
-                  (!providerAvailability.google ||
-                    (appleAvailable && !providerAvailability.apple))
-                ? '서버에서 활성화된 소셜 로그인만 사용할 수 있습니다.'
-                : providerAvailability
-                  ? '소셜 로그인에는 이메일과 기본 프로필만 사용하며 캘린더 접근 권한은 요청하지 않습니다.'
-                  : '사용할 수 있는 로그인 방식을 확인하고 있습니다.'}
+            {googleNativeConfigMissing || providerCheckFailed
+              ? '일부 로그인 방식을 지금 사용할 수 없습니다. 잠시 후 다시 시도해 주세요.'
+              : providerAvailability
+                ? '소셜 로그인에는 이메일과 기본 프로필만 사용하며 캘린더 접근 권한은 요청하지 않습니다.'
+                : '사용할 수 있는 로그인 방식을 확인하고 있습니다.'}
           </Txt>
 
           {isGuest ? (
@@ -330,9 +325,10 @@ export default function AccountScreen() {
               </Txt>
             </Pressable>
           ) : null}
-        </Content>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          </Content>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
