@@ -203,12 +203,12 @@ jobs:
           assert_code_signed "$app"
           assert_code_signed "$widget"
           node .github/scripts/verify-ios-runtime-config.mjs "$app"
-          node .github/scripts/verify-ios-app-intents.mjs "$app"
           mkdir -p "$RUNNER_TEMP/timeflower-widget-evidence"
           cp "$app/Metadata.appintents/extract.actionsdata" \
             "$RUNNER_TEMP/timeflower-widget-evidence/extract.actionsdata"
           /usr/bin/strings -a "$app/Metadata.appintents/extract.actionsdata" \
             > "$RUNNER_TEMP/timeflower-widget-evidence/app-intents-strings.txt"
+          node .github/scripts/verify-ios-app-intents.mjs "$app"
 
           echo "Compiled app: $app_bundle_id"
           echo "Embedded widget: $widget_bundle_id"

@@ -24,11 +24,15 @@ function printableStrings(path) {
 const metadata = printableStrings(metadataPath);
 for (const required of [
   'GenerateTimeFlowerWallpaperIntent',
-  'TimeFlowerWallpaperShortcuts',
   'IntentFile',
 ]) {
   assert(metadata.includes(required), `App Intent metadata does not contain ${required}`);
 }
+
+// Xcode's extracted action metadata records the discoverable AppIntent contract,
+// but it does not guarantee that the source-level AppShortcutsProvider type name
+// survives serialization. The provider itself is compile-checked with the app and
+// its source contract is covered by app-config-regression-check.mjs.
 
 const plistResult = spawnSync(
   '/usr/bin/plutil',
