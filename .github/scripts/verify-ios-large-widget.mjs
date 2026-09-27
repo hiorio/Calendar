@@ -240,12 +240,8 @@ const initialScreenFailures = [
   /계정 만들기/,
 ];
 const initialCalendarTitlePattern =
-  /^\d{4}년\s*\d{1,2}월(?:\.\s*)?연도와 월 선택$/;
-
-function isInitialCalendarHeader(node) {
-  const role = String(node.role ?? node.type).toLowerCase();
-  return role.includes('button') && initialCalendarTitlePattern.test(node.label ?? '');
-}
+  /\d{4}년\s*\d{1,2}월(?:\.\s*)?연도와 월 선택/;
+const calendarDayLabelPattern = /(?:\d{1,2}월\s*)?\d{1,2}일/g;
 
 async function waitForInitialCalendar(timeoutMs = 60_000) {
   const deadline = Date.now() + timeoutMs;
@@ -265,12 +261,14 @@ async function waitForInitialCalendar(timeoutMs = 60_000) {
         throw new Error(`production app opened on an invalid first screen (${failure})`);
       }
 
-      const calendar = current.nodes.find(isInitialCalendarHeader);
-      if (calendar) {
+      const calendarTitle = lastText.match(initialCalendarTitlePattern)?.[0] ?? null;
+      const dayLabelCount = lastText.match(calendarDayLabelPattern)?.length ?? 0;
+      if (calendarTitle && dayLabelCount >= 28) {
         saveJson('01-app-ready.json', current);
         record('production first-launch calendar verified', {
           appBundleId: current.appBundleId,
-          calendar: nodeText(calendar),
+          calendar: calendarTitle,
+          dayLabelCount,
           nodeCount: current.nodes.length,
         });
         return current;
