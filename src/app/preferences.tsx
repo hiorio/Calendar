@@ -11,6 +11,7 @@ import { Radius, Spacing, ThemePalettes, type AppTheme } from '@/constants/theme
 import { useAuth } from '@/features/auth/auth-provider';
 import { TIME_PICKER_STYLE_LABELS } from '@/features/events/time-picker-style';
 import { deviceWidgetsSupported } from '@/features/widgets/widget-capability';
+import { lockScreenBoardSupported } from '@/features/wallpaper/capability';
 import { useTheme } from '@/hooks/use-theme';
 import { notify } from '@/lib/confirm';
 import { useCalendarPreference } from '@/stores/calendar-preference';
@@ -93,7 +94,6 @@ export default function PreferencesScreen() {
       showsVerticalScrollIndicator={false}>
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">설정</Txt>
           <Txt variant="body" tone="secondary">
             이 기기에서 보이는 캘린더와 알림 방식을 정합니다.
           </Txt>
@@ -184,6 +184,17 @@ export default function PreferencesScreen() {
                 subtitle="표시할 캘린더와 빠른 일정·메모 설정"
                 onPress={() => router.push('/widget-settings' as Href)}
               />
+              {lockScreenBoardSupported ? (
+                <>
+                  <Divider />
+                  <ListRow
+                    icon="phone-portrait-outline"
+                    title="잠금화면 일정 보드"
+                    subtitle="월간·오늘 보드를 배경화면으로 자동 생성"
+                    onPress={() => router.push('/lock-screen-board' as Href)}
+                  />
+                </>
+              ) : null}
             </Card>
           </Section>
         ) : null}

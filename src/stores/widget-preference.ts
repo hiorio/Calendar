@@ -3,16 +3,29 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type WidgetCalendarMode = 'app' | 'all' | 'custom';
+export type WallpaperLayout = 'agenda' | 'month';
+export type WallpaperBackgroundMode = 'theme' | 'photo';
 
 type WidgetPreferenceState = {
   calendarMode: WidgetCalendarMode;
   selectedCalendarIds: string[];
   quickAddCalendarId: string | null;
   showQuickActions: boolean;
+  wallpaperEnabled: boolean;
+  wallpaperLayout: WallpaperLayout;
+  wallpaperBackgroundMode: WallpaperBackgroundMode;
+  wallpaperShowMemos: boolean;
+  /** 사진 파일을 같은 이름으로 교체해도 App Group 스냅샷을 다시 발행하기 위한 값. */
+  wallpaperBackgroundRevision: number;
   setCalendarMode: (calendarMode: WidgetCalendarMode) => void;
   toggleCalendar: (calendarId: string) => void;
   setQuickAddCalendar: (calendarId: string | null) => void;
   setShowQuickActions: (showQuickActions: boolean) => void;
+  setWallpaperEnabled: (wallpaperEnabled: boolean) => void;
+  setWallpaperLayout: (wallpaperLayout: WallpaperLayout) => void;
+  setWallpaperBackgroundMode: (wallpaperBackgroundMode: WallpaperBackgroundMode) => void;
+  setWallpaperShowMemos: (wallpaperShowMemos: boolean) => void;
+  touchWallpaperBackground: () => void;
 };
 
 /**
@@ -28,6 +41,11 @@ export const useWidgetPreference = create<WidgetPreferenceState>()(
       selectedCalendarIds: [],
       quickAddCalendarId: null,
       showQuickActions: true,
+      wallpaperEnabled: false,
+      wallpaperLayout: 'agenda',
+      wallpaperBackgroundMode: 'theme',
+      wallpaperShowMemos: true,
+      wallpaperBackgroundRevision: 0,
       setCalendarMode: (calendarMode) => set({ calendarMode }),
       toggleCalendar: (calendarId) =>
         set((state) => ({
@@ -37,6 +55,15 @@ export const useWidgetPreference = create<WidgetPreferenceState>()(
         })),
       setQuickAddCalendar: (quickAddCalendarId) => set({ quickAddCalendarId }),
       setShowQuickActions: (showQuickActions) => set({ showQuickActions }),
+      setWallpaperEnabled: (wallpaperEnabled) => set({ wallpaperEnabled }),
+      setWallpaperLayout: (wallpaperLayout) => set({ wallpaperLayout }),
+      setWallpaperBackgroundMode: (wallpaperBackgroundMode) =>
+        set({ wallpaperBackgroundMode }),
+      setWallpaperShowMemos: (wallpaperShowMemos) => set({ wallpaperShowMemos }),
+      touchWallpaperBackground: () =>
+        set((state) => ({
+          wallpaperBackgroundRevision: state.wallpaperBackgroundRevision + 1,
+        })),
     }),
     {
       name: 'timeline-widget-preferences',
@@ -46,7 +73,20 @@ export const useWidgetPreference = create<WidgetPreferenceState>()(
         selectedCalendarIds,
         quickAddCalendarId,
         showQuickActions,
-      }) => ({ calendarMode, selectedCalendarIds, quickAddCalendarId, showQuickActions }),
+        wallpaperEnabled,
+        wallpaperLayout,
+        wallpaperBackgroundMode,
+        wallpaperShowMemos,
+      }) => ({
+        calendarMode,
+        selectedCalendarIds,
+        quickAddCalendarId,
+        showQuickActions,
+        wallpaperEnabled,
+        wallpaperLayout,
+        wallpaperBackgroundMode,
+        wallpaperShowMemos,
+      }),
     },
   ),
 );

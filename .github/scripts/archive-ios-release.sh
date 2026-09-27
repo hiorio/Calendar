@@ -120,6 +120,7 @@ widget_build="$(plutil -extract CFBundleVersion raw -o - "$widget/Info.plist")"
 codesign --verify --deep --strict "$app"
 codesign --verify --strict "$widget"
 node .github/scripts/verify-ios-runtime-config.mjs "$app"
+node .github/scripts/verify-ios-app-intents.mjs "$app"
 
 EXPORT_OPTIONS_PATH="$export_options" node <<'NODE'
 const fs = require('node:fs');

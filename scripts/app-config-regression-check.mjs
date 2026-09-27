@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { getConfig } from '@expo/config';
 
@@ -38,7 +39,28 @@ try {
   assert.equal(production.updates?.requestHeaders?.['expo-channel-name'], 'production');
   assert.match(production.updates?.url ?? '', /^https:\/\/u\.expo\.dev\//);
   assert.equal(production.runtimeVersion?.policy, 'appVersion');
-  assert.equal(production.version, '1.4.1');
+  assert.equal(production.version, '1.5.0');
+  const pluginNames = production.plugins?.map((plugin) =>
+    Array.isArray(plugin) ? plugin[0] : plugin,
+  ) ?? [];
+  assert.equal(pluginNames.filter((name) => name === 'expo-widgets').length, 1);
+  assert.equal(
+    pluginNames.filter((name) => name === './plugins/with-timeflower-wallpaper-intent').length,
+    1,
+  );
+  const wallpaperIntent = readFileSync(
+    new URL('../plugins/ios/TimeFlowerWallpaperIntent.swift', import.meta.url),
+    'utf8',
+  );
+  assert.match(wallpaperIntent, /TIMEFLOWER_WALLPAPER_INTENT_V1/);
+  assert.match(
+    wallpaperIntent,
+    /TimeFlower 잠금화면 배경 만들기/,
+  );
+  assert.match(wallpaperIntent, /snapshotFileName = "TimeFlowerWallpaperSnapshot\.json"/);
+  assert.match(wallpaperIntent, /removedOnCompletion = true/);
+  assert.match(wallpaperIntent, /loadSnapshotWithRetry/);
+  assert.match(wallpaperIntent, /@MainActor/);
   assert.deepEqual(production.extra?.publicRuntimeConfig, {
     supabaseUrl: 'https://runtime-test.supabase.co',
     supabaseAnonKey: 'public-runtime-test-key',
@@ -56,7 +78,7 @@ try {
     'production config must fail before emitting a bundle without backend settings',
   );
 
-  console.log('\nApp config regressions: 8 passed');
+  console.log('\nApp config regressions: 16 passed');
 } finally {
   for (const name of managedEnvironment) {
     const original = originalEnvironment[name];

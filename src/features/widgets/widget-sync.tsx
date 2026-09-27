@@ -1,6 +1,6 @@
 import * as Linking from 'expo-linking';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { AppState } from 'react-native';
+import { AppState, Dimensions, PixelRatio } from 'react-native';
 
 import { ThemePalettes, type AppTheme, type ThemeColors } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
@@ -9,6 +9,11 @@ import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
 import { useMyCalendars, type MyCalendar } from '@/features/calendars/queries';
 import { useMonthEvents, type EventOccurrence } from '@/features/events/queries';
 import { useMemos, type MemoWithCalendar } from '@/features/memos/queries';
+import { buildLockScreenBoardSnapshot } from '@/features/wallpaper/snapshot';
+import {
+  publishLockScreenBoardSnapshot,
+  removeLockScreenBoardOutput,
+} from '@/features/wallpaper/storage';
 import { addMonths, buildMonthMatrix, startOfMonth, toDateKey, weekdayLabels } from '@/lib/date';
 import {
   compareEvents,
@@ -336,6 +341,15 @@ export function WidgetSync() {
   const selectedCalendarIds = useWidgetPreference((state) => state.selectedCalendarIds);
   const quickAddCalendarId = useWidgetPreference((state) => state.quickAddCalendarId);
   const showQuickActions = useWidgetPreference((state) => state.showQuickActions);
+  const wallpaperEnabled = useWidgetPreference((state) => state.wallpaperEnabled);
+  const wallpaperLayout = useWidgetPreference((state) => state.wallpaperLayout);
+  const wallpaperBackgroundMode = useWidgetPreference(
+    (state) => state.wallpaperBackgroundMode,
+  );
+  const wallpaperShowMemos = useWidgetPreference((state) => state.wallpaperShowMemos);
+  const wallpaperBackgroundRevision = useWidgetPreference(
+    (state) => state.wallpaperBackgroundRevision,
+  );
   const theme = useThemePreference((state) => state.theme);
   const preferredScheme = useThemePreference((state) => state.schemePreference);
   const [monthAnchor, setMonthAnchor] = useState(() => startOfMonth(new Date()));
@@ -399,6 +413,11 @@ export function WidgetSync() {
       hidden: [...hiddenCalendarIds].sort(),
       accessible: calendars.data?.map((calendar) => calendar.id).sort() ?? null,
       quickAddCalendarId,
+      wallpaperEnabled,
+      wallpaperLayout,
+      wallpaperBackgroundMode,
+      wallpaperShowMemos,
+      wallpaperBackgroundRevision,
     });
     if (lastClearedScope.current !== scope) {
       publishAttempts.current = 0;
@@ -409,6 +428,32 @@ export function WidgetSync() {
       for (const widget of [CalendarWidget, QuickMemoWidget]) {
         try { widget.updateSnapshot(cleared); }
         catch (error) { clearSucceeded = false; Sentry.captureException(error); }
+      }
+      try {
+        removeLockScreenBoardOutput();
+        const now = new Date();
+        const screen = Dimensions.get('screen');
+        const wallpaperCleared = buildLockScreenBoardSnapshot({
+          now,
+          expiresAt: now,
+          dataStart: startOfMonth(now),
+          dataEnd: addMonths(startOfMonth(now), 1),
+          screen: { width: screen.width, height: screen.height, scale: PixelRatio.get() },
+          layout: wallpaperLayout,
+          weekStart,
+          showMemos: wallpaperShowMemos,
+          backgroundMode: wallpaperBackgroundMode,
+          theme,
+          mode,
+          visibleCalendarIds: new Set(),
+          events: [],
+          memos: [],
+          cleared: true,
+        });
+        if (!publishLockScreenBoardSnapshot(wallpaperCleared)) clearSucceeded = false;
+      } catch (error) {
+        clearSucceeded = false;
+        Sentry.captureException(error);
       }
       if (!clearSucceeded) {
         clearAttempts.current.count += 1;
@@ -476,6 +521,31 @@ export function WidgetSync() {
         { date: expiresAt, props: { ...emptyProps(theme, preferredScheme), expired: true } },
       ]); }
     catch (error) { publishSucceeded = false; Sentry.captureException(error); }
+    if (wallpaperEnabled) {
+      try {
+        const screen = Dimensions.get('screen');
+        const snapshot = buildLockScreenBoardSnapshot({
+          now,
+          expiresAt,
+          dataStart: previousEvents.data ? previousMonth : monthAnchor,
+          dataEnd: nextEvents.data ? addMonths(nextMonth, 1) : addMonths(monthAnchor, 1),
+          screen: { width: screen.width, height: screen.height, scale: PixelRatio.get() },
+          layout: wallpaperLayout,
+          weekStart,
+          showMemos: wallpaperShowMemos,
+          backgroundMode: wallpaperBackgroundMode,
+          theme,
+          mode,
+          visibleCalendarIds: timelineCalendarIds,
+          events: allEvents,
+          memos: memos.data ?? [],
+        });
+        if (!publishLockScreenBoardSnapshot(snapshot)) publishSucceeded = false;
+      } catch (error) {
+        publishSucceeded = false;
+        Sentry.captureException(error);
+      }
+    }
     if (publishSucceeded) publishAttempts.current = 0;
     else {
       publishAttempts.current += 1;
@@ -505,6 +575,11 @@ export function WidgetSync() {
     showQuickActions,
     theme,
     user,
+    wallpaperEnabled,
+    wallpaperBackgroundMode,
+    wallpaperBackgroundRevision,
+    wallpaperLayout,
+    wallpaperShowMemos,
     weekStart,
   ]);
 

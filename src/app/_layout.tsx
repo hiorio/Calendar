@@ -166,6 +166,14 @@ function RootLayout() {
                   options={{ presentation: 'modal', headerShown: true, title: '위젯' }}
                 />
                 <Stack.Screen
+                  name="lock-screen-board"
+                  options={{
+                    presentation: 'modal',
+                    headerShown: true,
+                    title: '잠금화면 보드',
+                  }}
+                />
+                <Stack.Screen
                   name="time-picker-lab"
                   options={{ presentation: 'modal', headerShown: true, title: '시간 선택 방식' }}
                 />

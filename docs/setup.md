@@ -88,7 +88,7 @@ npm run web
 | `npm run lint` | ESLint (expo lint) |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run test:unit` | 순수 함수 검사 (DB·화면 없이) |
-| `npm run test:regression` | 일정·계정·알림·메모·위젯의 실제 소스 실행 회귀 검사 (외부 API 모의) |
+| `npm run test:regression` | 일정·계정·알림·메모·위젯·잠금화면 보드의 실제 소스 실행 회귀 검사 (외부 API 모의) |
 | `npm run db:regression` | 로컬 Postgres의 추가 SQL 회귀 검사 (트랜잭션 전체 rollback) |
 | `npm run test:sql-embedded` | Docker 없이 임베디드 PostgreSQL로 SQL 보조 검사 (Supabase 통합 검사 아님) |
 | `npm run typecheck:worker` | Deno 런타임 기준 알림 워커 타입 검사 |
@@ -152,9 +152,10 @@ gh run watch <run-id> --exit-status
 ```
 
 `.github/workflows/ios.yml`은 Node 24 의존성 설치와 정적 검사를 한 뒤
-`expo prebuild → pod install → xcodebuild`로 앱과 `ExpoWidgetsTarget`을 서명 없이
-Simulator용으로 함께 컴파일하고 앱 번들에 위젯이 포함됐는지 확인합니다. Windows 검사만
-통과한 결과를 네이티브 빌드 성공으로 기록하지 않습니다.
+`expo prebuild → pod install → xcodebuild`로 앱과 `ExpoWidgetsTarget`을 Simulator용으로
+함께 컴파일합니다. 앱 번들에 위젯이 포함됐는지, 잠금화면 배경을 만드는 App Intent source와
+`Metadata.appintents`가 main app에 실제로 링크됐는지도 확인합니다. Windows 검사만 통과한
+결과를 네이티브 빌드 성공으로 기록하지 않습니다.
 
 ---
 
@@ -190,6 +191,7 @@ src/
     calendar/             월간 뷰
     calendars/            캘린더·구성원·초대
     events/               일정 쿼리, 폼, 참여자, 댓글
+    wallpaper/            잠금화면 보드 스냅샷·미리보기·App Group 저장
   lib/
     date.ts               달력 격자용 날짜 (화면 좌표)
     event-time.ts         일정의 시간 의미 (설계안 3장)
@@ -200,6 +202,7 @@ src/
 
 supabase/migrations/      번호순. 기존 파일은 수정하지 않고 새로 추가한다.
 scripts/                  스모크·단위 테스트, .env 생성
+plugins/                  prebuild 때 main iOS target에 넣는 config plugin·Swift source
 
 docs/design-notes.md      설계안에서 바꾼 것과 그 이유 ← 먼저 읽어 볼 것
 docs/design-decisions.md  UI 시안의 결정 사항 ← 색을 만지기 전에 읽을 것

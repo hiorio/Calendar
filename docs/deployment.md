@@ -32,6 +32,8 @@ preview와 production이 같은 DB를 쓰면 테스트 데이터·마이그레�
 | `expo-application` | 앱 버전·설치 정보 확인 |
 | `@sentry/react-native` | 네이티브 크래시와 OTA 오류 수집 |
 | `@react-native-google-signin/google-signin` | iOS 네이티브 Google 로그인 |
+| `expo-widgets` | 홈·잠금화면 위젯과 App Group 공유 저장소 |
+| 로컬 App Intent config plugin | 잠금화면 일정 PNG를 단축어에 `IntentFile`로 반환 |
 
 사진은 보관함 읽기만 선언하고 카메라·마이크 권한은 넣지 않았습니다. 기기 캘린더는
 가져오기를 위해 읽기 권한을 선언했습니다. 현재 앱이 사용하지 않는 권한을 미리 넓게
@@ -258,6 +260,31 @@ Simulator에서 앱을 처음 열어 익명 세션 생성 후 월간 캘린더�
 설치용 개발 빌드와 production archive도 같은 Mac mini에서 직접 서명해야 합니다. Apple
 인증서와 프로파일을 연결한 별도 보호 workflow는 TestFlight 또는 실기기 배포를 명시적으로
 요청했을 때만 실행합니다.
+
+### 잠금화면 일정 보드와 단축어
+
+1. TimeFlower를 열고 `설정 > 위젯 > 잠금화면 일정 보드`에서 보드와 배경을 고른 뒤
+   `잠금화면 보드 사용`을 켭니다.
+2. 단축어 앱의 새 단축어에 `TimeFlower 잠금화면 배경 만들기`를 넣습니다.
+3. 이어서 Apple의 `배경화면 사진 설정`을 넣고 첫 동작의 이미지 출력을 연결합니다.
+4. 동작의 미리보기 표시를 끄고, 매일 아침 또는 `TimeFlower를 닫을 때` 개인 자동화를
+   `즉시 실행`으로 저장합니다.
+
+앱이 개인 자동화를 자동 생성하거나 단축어 없이 배경화면을 바꿀 수는 없습니다. PNG 안의
+카드는 터치 가능한 위젯이 아닙니다. App Intent는 앱이 RLS로 받은 최소 표시 데이터만 App
+Group에서 읽고 네트워크나 Supabase 세션을 사용하지 않습니다. 이 기능은 main app target의
+Swift source와 App Intent metadata가 필요하므로 1.5.0보다 오래된 바이너리에 OTA로 보내지
+않습니다.
+
+Mac mini workflow는 `TimeFlowerWallpaperIntent.swift`의 main target 포함 여부,
+`Metadata.appintents/extract.actionsdata`, `GenerateTimeFlowerWallpaperIntent`,
+`TimeFlowerWallpaperShortcuts`, `IntentFile` 반환과 Release 실행 파일 marker를 검사합니다.
+그래도 배경화면 변경 자체는 실제 iPhone에서 다음을 추가 확인해야 합니다.
+
+- 오늘·월간 보드, 테마·사진 배경이 미리보기와 같은 정보 범위를 보인다.
+- 앱을 닫거나 정한 시간이 되면 묻지 않고 지정한 잠금화면을 갱신한다.
+- 계정 A에서 B로 바꾸거나 로그아웃한 뒤 다시 실행하면 A의 일정이 새 이미지에 남지 않는다.
+- 사진 삭제·손상, 오프라인, 만료 스냅샷에서는 오래된 일정 대신 중립 안내가 나온다.
 
 App Store용 archive와 TestFlight 업로드는 `.github/workflows/app-store.yml`을 수동으로
 실행합니다. 이 workflow는 `app-store-production` environment와

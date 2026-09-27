@@ -181,6 +181,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
           ],
         },
       ],
+      './plugins/with-timeflower-wallpaper-intent',
     ],
     extra,
   };

@@ -21,6 +21,8 @@ let timerId = 0;
 let failCalendarClear = false;
 let failCalendarPublish = false;
 const reloads = [];
+const wallpaperSnapshots = [];
+const removedWallpaperOutputs = [];
 function widget(name) {
   return {
     reload() { reloads.push(name); },
@@ -36,7 +38,17 @@ function widget(name) {
 }
 
 const stores = {
-  widgets: { calendarMode: 'custom', selectedCalendarIds: ['allowed'], quickAddCalendarId: null, showQuickActions: true },
+  widgets: {
+    calendarMode: 'custom',
+    selectedCalendarIds: ['allowed'],
+    quickAddCalendarId: null,
+    showQuickActions: true,
+    wallpaperEnabled: false,
+    wallpaperLayout: 'agenda',
+    wallpaperBackgroundMode: 'theme',
+    wallpaperShowMemos: true,
+    wallpaperBackgroundRevision: 0,
+  },
   filter: { hidden: [] },
   theme: { theme: 'apricot', schemePreference: 'system' },
 };
@@ -89,10 +101,14 @@ const react = {
 const palette = { background: 'background', text: 'text', accent: 'accent' };
 const mocks = {
   react,
-  'react-native': { AppState: { addEventListener: (_event, listener) => {
-    mocks.appStateListener = listener;
-    return { remove() {} };
-  } } },
+  'react-native': {
+    AppState: { addEventListener: (_event, listener) => {
+      mocks.appStateListener = listener;
+      return { remove() {} };
+    } },
+    Dimensions: { get: () => ({ width: 390, height: 844 }) },
+    PixelRatio: { get: () => 3 },
+  },
   'expo-linking': { createURL: (path, options) => `app://${path}${options ? `?${JSON.stringify(options.queryParams)}` : ''}` },
   '@/constants/theme': { ThemePalettes: { apricot: { light: palette, dark: palette } } },
   '@/features/auth/auth-provider': { useAuth: () => ({ retainedUserId, user }) },
@@ -101,6 +117,24 @@ const mocks = {
   '@/features/calendars/queries': { useMyCalendars: () => ({ data: calendars }) },
   '@/features/events/queries': { useMonthEvents: () => ({ data: events, isFetched: events !== undefined }) },
   '@/features/memos/queries': { useMemos: () => ({ data: memos }) },
+  '@/features/wallpaper/snapshot': {
+    buildLockScreenBoardSnapshot: (options) => ({
+      ...options,
+      days: options.cleared
+        ? []
+        : options.events.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
+      memos: options.cleared
+        ? []
+        : options.memos.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
+    }),
+  },
+  '@/features/wallpaper/storage': {
+    publishLockScreenBoardSnapshot: (snapshot) => {
+      wallpaperSnapshots.push(snapshot);
+      return true;
+    },
+    removeLockScreenBoardOutput: () => removedWallpaperOutputs.push('removed'),
+  },
   '@/lib/date': dateUtils,
   '@/lib/event-time': eventTime,
   '@/stores/calendar-filter': { useCalendarFilter: storeHook('filter') },
@@ -124,6 +158,7 @@ function render() {
   cursor = 0;
   pendingEffects = [];
   entries.length = 0;
+  wallpaperSnapshots.length = 0;
   module.exports.WidgetSync();
   pendingEffects.forEach((effect) => effect());
 }
@@ -134,9 +169,14 @@ check('unhydrated custom/filter settings never publish query data', () => {
   assert.deepEqual(reloads, ['calendar', 'memo']);
   assert.deepEqual(entries.map((entry) => entry.method), ['snapshot', 'snapshot']);
   assert.ok(entries.every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+  assert.deepEqual(wallpaperSnapshots[0].days, []);
+  assert.equal(removedWallpaperOutputs.length, 1);
 });
 check('hydrated custom selection publishes only allowed events and memos across all timeline entries', () => {
   hydrated = true;
+  stores.widgets.wallpaperEnabled = true;
   render();
   const timeline = lastTimeline();
   assert.ok(timeline.length > 8);
@@ -157,6 +197,10 @@ check('hydrated custom selection publishes only allowed events and memos across 
     .find((item) => item.key === day);
   assert.equal(today.hiddenEventCount, 2);
   assert.equal(timeline.at(-1).props.expired, true);
+  const wallpaper = wallpaperSnapshots.at(-1);
+  assert.equal(wallpaper.cleared, undefined);
+  assert.ok(wallpaper.days.every((item) => item.calendar_id === 'allowed'));
+  assert.ok(wallpaper.memos.every((item) => item.calendar_id === 'allowed'));
 });
 check('returning to the foreground reloads layouts and republishes an unchanged timeline', () => {
   entries.length = 0;
@@ -171,11 +215,21 @@ check('privacy scope reduction clears both widgets while the event query is unav
   render();
   assert.deepEqual(entries.map((entry) => [entry.name, entry.method]), [['calendar', 'snapshot'], ['memo', 'snapshot']]);
   assert.ok(entries.every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
 });
 check('empty custom selection remains empty after queries recover', () => {
   events = [event('a', 'allowed'), event('p', 'private')];
   render();
   assert.ok(lastTimeline().every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
+});
+check('disabling the wallpaper board clears its payload but keeps ordinary widgets publishing', () => {
+  stores.widgets.wallpaperEnabled = false;
+  render();
+  assert.ok(lastTimeline());
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+  stores.widgets.wallpaperEnabled = true;
 });
 check('failure clearing one native widget does not skip the other or publish data', () => {
   stores.widgets.selectedCalendarIds = ['allowed'];
@@ -212,12 +266,15 @@ check('temporary auth loss preserves the last published widget snapshot', () => 
   user = null;
   render();
   assert.equal(entries.length, 0);
+  assert.equal(wallpaperSnapshots.length, 0);
 });
 check('signout clears previous snapshots even with cached query data still present', () => {
   retainedUserId = null;
   render();
   assert.equal(entries.length, 2);
   assert.ok(entries.every((entry) => entry.method === 'snapshot' && entry.props.events.length === 0));
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
 });
 check('account switch with unavailable calendars leaves cleared snapshots', () => {
   user = { id: 'B' };

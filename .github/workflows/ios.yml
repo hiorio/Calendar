@@ -6,6 +6,7 @@ on:
       - 'src/**'
       - 'assets/**'
       - 'scripts/**'
+      - 'plugins/**'
       - 'app.config.ts'
       - 'app.json'
       - 'metro.config.js'
@@ -124,6 +125,7 @@ jobs:
           scheme="$(basename "$project" .xcodeproj)"
           pbxproj="$project/project.pbxproj"
           grep -q 'ExpoWidgetsTarget' "$pbxproj"
+          grep -q 'TimeFlowerWallpaperIntent.swift' "$pbxproj"
 
           entitlement_count="$(grep -R -l '<string>group.com.hiorio.timeline</string>' ios --include='*.entitlements' | wc -l | tr -d ' ')"
           if [[ "$entitlement_count" -lt 2 ]]; then
@@ -201,6 +203,12 @@ jobs:
           assert_code_signed "$app"
           assert_code_signed "$widget"
           node .github/scripts/verify-ios-runtime-config.mjs "$app"
+          node .github/scripts/verify-ios-app-intents.mjs "$app"
+          mkdir -p "$RUNNER_TEMP/timeflower-widget-evidence"
+          cp "$app/Metadata.appintents/extract.actionsdata" \
+            "$RUNNER_TEMP/timeflower-widget-evidence/extract.actionsdata"
+          /usr/bin/strings -a "$app/Metadata.appintents/extract.actionsdata" \
+            > "$RUNNER_TEMP/timeflower-widget-evidence/app-intents-strings.txt"
 
           echo "Compiled app: $app_bundle_id"
           echo "Embedded widget: $widget_bundle_id"
