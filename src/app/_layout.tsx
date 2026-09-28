@@ -165,6 +165,14 @@ function RootLayout() {
                   options={{ presentation: 'card', headerShown: true, title: '설정' }}
                 />
                 <Stack.Screen
+                  name="calendar-display-settings"
+                  options={{ presentation: 'card', headerShown: true, title: '캘린더 표시' }}
+                />
+                <Stack.Screen
+                  name="appearance-settings"
+                  options={{ presentation: 'card', headerShown: true, title: '테마와 글자' }}
+                />
+                <Stack.Screen
                   name="widget-settings"
                   options={{ presentation: 'card', headerShown: true, title: '위젯' }}
                 />

@@ -22,7 +22,8 @@ import { Segmented } from '@/components/ui/segmented';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
 import { useMyCalendars } from '@/features/calendars/queries';
-import { useMonthEvents } from '@/features/events/queries';
+import { useDeviceCalendarEvents } from '@/features/external-calendars/queries';
+import { monthGridRange, useMonthEvents } from '@/features/events/queries';
 import { useMemos } from '@/features/memos/queries';
 import { lockScreenBoardSupported } from '@/features/wallpaper/capability';
 import { LockScreenBoardPreview } from '@/features/wallpaper/preview';
@@ -38,6 +39,7 @@ import { addMonths, startOfMonth } from '@/lib/date';
 import { notify } from '@/lib/confirm';
 import { useCalendarFilter } from '@/stores/calendar-filter';
 import { useCalendarPreference } from '@/stores/calendar-preference';
+import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
 import { useWidgetPreference, type WallpaperLayout } from '@/stores/widget-preference';
 
 const LAYOUT_OPTIONS: readonly { value: WallpaperLayout; label: string }[] = [
@@ -53,6 +55,10 @@ export default function LockScreenBoardScreen() {
   const calendars = useMyCalendars();
   const month = useMemo(() => startOfMonth(new Date()), []);
   const events = useMonthEvents(month, weekStart);
+  const deviceRange = useMemo(() => monthGridRange(month, weekStart), [month, weekStart]);
+  const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end);
+  const deviceCalendarConnected = useDeviceCalendarPreference((state) => state.connected);
+  const selectedDeviceCalendarIds = useDeviceCalendarPreference((state) => state.selectedIds);
   const memos = useMemos();
   const hiddenCalendarIds = useCalendarFilter((state) => state.hidden);
   const calendarMode = useWidgetPreference((state) => state.calendarMode);
@@ -100,18 +106,23 @@ export default function LockScreenBoardScreen() {
       theme,
       mode: calendarMode,
       visibleCalendarIds: visibleIds,
+      visibleDeviceCalendarIds: new Set(deviceCalendarConnected ? selectedDeviceCalendarIds : []),
       events: events.data ?? [],
+      deviceEvents: deviceEvents.data ?? [],
       memos: memos.data ?? [],
     });
   }, [
     backgroundMode,
     calendarMode,
+    deviceCalendarConnected,
+    deviceEvents.data,
     events.data,
     layout,
     memos.data,
     month,
     now,
     showMemos,
+    selectedDeviceCalendarIds,
     theme,
     visibleIds,
     weekStart,
@@ -188,7 +199,7 @@ export default function LockScreenBoardScreen() {
       <Content style={styles.content}>
         <View style={styles.intro}>
           <Txt variant="body" tone="secondary">
-            일정과 메모를 한 장의 배경화면으로 만들어 단축어로 자동 갱신합니다.
+            보드 모양과 배경을 고른 뒤, 단축어에 한 번 연결하면 일정 배경화면을 갱신할 수 있어요.
           </Txt>
         </View>
 
@@ -200,8 +211,13 @@ export default function LockScreenBoardScreen() {
             now={now}
           />
           <Txt variant="micro" tone="tertiary" style={styles.centeredNote}>
-            실제 시계 크기와 위치는 iPhone의 잠금화면 설정에 따라 달라집니다.
+            미리보기의 시계는 예시예요. 실제 시계는 iPhone 설정을 따릅니다.
           </Txt>
+          {deviceCalendarConnected && selectedDeviceCalendarIds.length > 0 && !deviceEvents.data ? (
+            <Txt variant="caption" tone={deviceEvents.isError ? 'danger' : 'secondary'} style={styles.centeredNote}>
+              {deviceEvents.isError ? '연결된 기기 캘린더를 불러오지 못했어요.' : '연결된 기기 캘린더를 불러오는 중이에요.'}
+            </Txt>
+          ) : null}
         </View>
 
         <Section title="사용">
@@ -209,7 +225,7 @@ export default function LockScreenBoardScreen() {
             <ListRow
               icon="lock-closed-outline"
               title="잠금화면 보드 사용"
-              subtitle="켠 뒤에만 일정 스냅샷을 단축어용 공유 공간에 저장"
+              subtitle="켜야 단축어에 최신 일정이 전달돼요"
               right={
                 <Switch
                   accessibilityLabel="잠금화면 보드 사용"
@@ -222,8 +238,7 @@ export default function LockScreenBoardScreen() {
           </Card>
           {!enabled ? (
             <Txt variant="caption" tone="secondary" style={styles.note}>
-              미리보기를 먼저 조정한 뒤 사용을 켜세요. 꺼져 있으면 단축어는 일정 대신 새로고침
-              안내 이미지만 만듭니다.
+              모양을 고른 뒤 켜 주세요. 꺼진 상태에서 단축어를 실행하면 안내 이미지만 나옵니다.
             </Txt>
           ) : null}
         </Section>
@@ -233,7 +248,7 @@ export default function LockScreenBoardScreen() {
           <Txt variant="caption" tone="secondary" style={styles.note}>
             {layout === 'agenda'
               ? '이번 주와 오늘 일정, 남은 메모를 시간순으로 보여 줍니다.'
-              : '올해 진행률과 이번 달 일정을 한눈에 보여 줍니다.'}
+              : '이번 달 달력과 그 아래 오늘 일정을 보여 줍니다.'}
           </Txt>
         </Section>
 
@@ -241,16 +256,24 @@ export default function LockScreenBoardScreen() {
           <Card padded={false}>
             <BackgroundOption
               icon="color-palette-outline"
-              title="테마 배경"
-              subtitle="현재 TimeFlower 테마의 어두운 색으로 생성"
+              title="어두운 테마"
+              subtitle="현재 TimeFlower 테마의 어두운 색"
               selected={backgroundMode === 'theme'}
               onPress={useThemeBackground}
             />
             <Divider />
             <BackgroundOption
+              icon="sunny-outline"
+              title="밝은 테마"
+              subtitle="현재 TimeFlower 테마의 밝은 색"
+              selected={backgroundMode === 'light'}
+              onPress={() => setBackgroundMode('light')}
+            />
+            <Divider />
+            <BackgroundOption
               icon="image-outline"
               title={backgroundUri ? '선택한 사진' : '내 사진'}
-              subtitle="사진은 이 iPhone의 앱 공유 공간에만 보관"
+              subtitle="사진을 골라 배경으로 사용"
               selected={backgroundMode === 'photo' && Boolean(backgroundUri)}
               onPress={chooseBackground}
               loading={picking}
@@ -262,10 +285,18 @@ export default function LockScreenBoardScreen() {
           <Card padded={false}>
             <ListRow
               icon="calendar-outline"
-              title="캘린더 범위"
-              subtitle="홈·잠금화면 위젯과 같은 표시 범위를 사용"
-              value={snapshot.viewName}
+              title="앱 캘린더 범위"
+              subtitle="홈·잠금화면 위젯과 같은 표시 범위"
+              value={calendarMode === 'app' ? undefined : snapshot.viewName}
               onPress={() => router.push('/widget-settings' as Href)}
+            />
+            <Divider />
+            <ListRow
+              icon="link-outline"
+              title="기기 캘린더"
+              subtitle="iPhone에서 연결하고 표시하도록 선택한 일정"
+              value={deviceCalendarConnected ? `${selectedDeviceCalendarIds.length}개 표시` : '연결 안 됨'}
+              onPress={() => router.push('/external-calendars' as Href)}
             />
             <Divider />
             <ListRow
@@ -281,21 +312,27 @@ export default function LockScreenBoardScreen() {
               }
             />
           </Card>
+          <Txt variant="caption" tone="secondary" style={styles.note}>
+            명절은 기기 캘린더에서 공휴일 캘린더를 표시하도록 선택한 경우에 함께 나옵니다.
+          </Txt>
         </Section>
 
-        <Section title="단축어에서 한 번만 연결">
+        <Section title="잠금화면에 적용하기">
           <Card style={styles.stepsCard}>
-            <Step number={1} title="새 단축어를 만들어요">
-              앱 동작에서 ‘TimeFlower 잠금화면 배경 만들기’를 추가합니다.
+            <Step number={1} title="단축어 앱에서 새 단축어 만들기">
+              아래 버튼을 눌러 단축어 앱을 열고 오른쪽 위 +를 누르세요.
             </Step>
-            <Step number={2} title="배경화면 동작을 이어 붙여요">
-              Apple의 ‘배경화면 사진 설정’을 추가하고 앞 동작의 이미지를 연결합니다.
+            <Step number={2} title="TimeFlower 동작 추가">
+              동작 검색에서 ‘TimeFlower 잠금화면 배경 만들기’를 추가하세요.
             </Step>
-            <Step number={3} title="미리보기는 꺼 주세요">
-              실행할 때마다 묻지 않도록 ‘미리보기 표시’를 끕니다.
+            <Step number={3} title="만든 이미지를 잠금화면에 연결">
+              ‘배경화면 사진 설정’을 다음 동작으로 추가하고, 사진 입력에 바로 앞 동작의 결과를 넣으세요. 잠금화면을 선택하고 ‘미리보기 표시’를 끄세요.
             </Step>
-            <Step number={4} title="개인 자동화를 만들어요" last>
-              매일 아침이나 ‘TimeFlower를 닫을 때’를 고르고 ‘즉시 실행’으로 저장합니다.
+            <Step number={4} title="한 번 실행해 확인하기">
+              ▶를 눌러 잠금화면에 적용되는지 확인하세요.
+            </Step>
+            <Step number={5} title="원하면 자동 갱신하기" last>
+              단축어 앱의 ‘자동화’에서 매일 아침이나 ‘TimeFlower를 닫을 때’를 고르고, 방금 만든 단축어를 ‘즉시 실행’으로 저장하세요.
             </Step>
             <Button
               label={enabled ? '단축어 앱 열기' : '먼저 잠금화면 보드를 켜 주세요'}
@@ -305,6 +342,10 @@ export default function LockScreenBoardScreen() {
             />
           </Card>
         </Section>
+
+        <Txt variant="caption" tone="secondary" style={styles.note}>
+          일정을 바꾼 뒤 TimeFlower를 열면 최신 내용이 준비됩니다. 배경화면은 단축어를 실행할 때 갱신돼요.
+        </Txt>
 
         <Notice title="큰 카드는 배경화면의 일부예요">
           카드 안을 누르거나 스크롤할 수 없고, 다음 자동화가 실행될 때 내용이 갱신됩니다.

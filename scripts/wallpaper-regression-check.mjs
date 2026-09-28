@@ -23,8 +23,14 @@ const palette = {
   sunday: '#ff5555',
   saturday: '#5588ff',
 };
+const lightPalette = {
+  ...palette,
+  background: '#faf8f5',
+  surface: '#ffffff',
+  text: '#241c18',
+};
 const mocks = {
-  '@/constants/theme': { ThemePalettes: { apricot: { dark: palette } } },
+  '@/constants/theme': { ThemePalettes: { apricot: { dark: palette, light: lightPalette } } },
   '@/features/calendars/colors': colors,
   '@/lib/date': dateUtils,
   '@/lib/event-time': eventTime,
@@ -80,6 +86,12 @@ const duplicateFirst = allDay('duplicate', 'allowed', '2026-09-26');
 const duplicateLast = { ...duplicateFirst, title: 'deduplicated' };
 const multi = allDay('multi', 'allowed', '2026-09-23', '2026-09-25');
 const hidden = allDay('hidden-event', 'hidden');
+const connectedHoliday = {
+  kind: 'device', id: 'holiday', key: 'device:holiday:2026-09-24',
+  title: '명절', calendarId: 'holiday-calendar', calendarName: '대한민국 공휴일',
+  displayColor: '#E2673F', is_all_day: true, start_date: '2026-09-24', end_date: '2026-09-24',
+  start_at: null, end_at: null, timezone: 'Asia/Seoul',
+};
 const memos = [
   ...Array.from({ length: 10 }, (_, index) => ({
     id: `memo-${index}`,
@@ -137,6 +149,25 @@ check('daily payload is capped while its total count remains accurate', () => {
   assert.equal(day.events.length, 12);
 });
 
+check('monthly board keeps today events for the card below the calendar', () => {
+  const snapshot = build({ layout: 'month' });
+  assert.equal(snapshot.layout, 'month');
+  assert.equal(snapshot.days.find((day) => day.key === '2026-09-24')?.eventCount, 14);
+});
+
+check('selected connected device holidays appear without exposing unselected calendars', () => {
+  const snapshot = build({
+    events: [],
+    visibleDeviceCalendarIds: new Set(['holiday-calendar']),
+    deviceEvents: [connectedHoliday, { ...connectedHoliday, key: 'device:hidden', calendarId: 'hidden-device' }],
+  });
+  const today = snapshot.days.find((item) => item.key === '2026-09-24');
+  assert.equal(today.eventCount, 1);
+  assert.equal(today.events.filter((item) => item.title === '명절').length, 1);
+  assert(!JSON.stringify(snapshot).includes('device:hidden'));
+  assert(!JSON.stringify(build({ deviceEvents: [connectedHoliday] })).includes('명절'));
+});
+
 check('unfinished visible memos are capped and can be disabled', () => {
   const snapshot = build();
   assert.equal(snapshot.memos.length, 8);
@@ -166,6 +197,14 @@ check('photo file, screen bounds, timestamps and theme palette are stable', () =
   assert(Number.isFinite(Date.parse(snapshot.expiresAt)));
   assert.equal(snapshot.palette.background, palette.background);
   assert.equal(build({ backgroundMode: 'theme' }).backgroundFile, undefined);
+});
+
+check('light board uses the light palette and keeps photos on the dark palette', () => {
+  const light = build({ backgroundMode: 'light' });
+  assert.equal(light.backgroundFile, undefined);
+  assert.equal(light.palette.background, lightPalette.background);
+  assert.equal(light.palette.text, lightPalette.text);
+  assert.equal(build({ backgroundMode: 'photo' }).palette.background, palette.background);
 });
 
 function storageFor(widgetsDirectory) {

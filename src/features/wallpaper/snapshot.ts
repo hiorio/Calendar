@@ -1,6 +1,7 @@
 import { ThemePalettes, type AppTheme } from '@/constants/theme';
 import { calendarColorForScheme } from '@/features/calendars/colors';
 import type { EventOccurrence } from '@/features/events/queries';
+import type { DeviceCalendarEvent } from '@/features/external-calendars/types';
 import type { MemoWithCalendar } from '@/features/memos/queries';
 import { toDateKey } from '@/lib/date';
 import {
@@ -8,6 +9,7 @@ import {
   eventDayKeys,
   formatEventTimeRange,
   parseDateKey,
+  type EventTimeColumns,
 } from '@/lib/event-time';
 import type {
   WallpaperBackgroundMode,
@@ -28,13 +30,13 @@ function truncateText(value: string, maximumCharacters: number) {
     : characters.slice(0, maximumCharacters).join('');
 }
 
-function eventStart(event: EventOccurrence) {
+function eventStart(event: EventTimeColumns) {
   return event.is_all_day
     ? parseDateKey(event.start_date!).getTime()
     : new Date(event.start_at!).getTime();
 }
 
-function eventEnd(event: EventOccurrence) {
+function eventEnd(event: EventTimeColumns) {
   if (!event.is_all_day) return new Date(event.end_at!).getTime();
   const end = parseDateKey(event.end_date!);
   end.setDate(end.getDate() + 1);
@@ -60,7 +62,9 @@ type BuildSnapshotOptions = {
   theme: AppTheme;
   mode: WidgetCalendarMode;
   visibleCalendarIds: Set<string>;
+  visibleDeviceCalendarIds?: Set<string>;
   events: EventOccurrence[];
+  deviceEvents?: DeviceCalendarEvent[];
   memos: MemoWithCalendar[];
   cleared?: boolean;
 };
@@ -78,16 +82,21 @@ export function buildLockScreenBoardSnapshot({
   theme,
   mode,
   visibleCalendarIds,
+  visibleDeviceCalendarIds = new Set(),
   events,
+  deviceEvents = [],
   memos,
   cleared = false,
 }: BuildSnapshotOptions): LockScreenBoardSnapshot {
-  const colors = ThemePalettes[theme].dark;
-  const occurrenceByKey = new Map(events.map((event) => [event.key, event]));
+  const colorScheme = backgroundMode === 'light' ? 'light' : 'dark';
+  const colors = ThemePalettes[theme][colorScheme];
+  const occurrenceByKey = new Map<string, EventOccurrence | DeviceCalendarEvent>([
+    ...events.filter((event) => visibleCalendarIds.has(event.calendar_id)),
+    ...deviceEvents.filter((event) => visibleDeviceCalendarIds.has(event.calendarId)),
+  ].map((event) => [event.key, event]));
   const visibleEvents = [...occurrenceByKey.values()]
-    .filter((event) => visibleCalendarIds.has(event.calendar_id))
     .sort(compareEvents);
-  const eventsByDay = new Map<string, EventOccurrence[]>();
+  const eventsByDay = new Map<string, (EventOccurrence | DeviceCalendarEvent)[]>();
 
   for (const event of visibleEvents) {
     for (const key of eventDayKeys(event)) {
@@ -109,7 +118,7 @@ export function buildLockScreenBoardSnapshot({
           title: truncateText(event.title, 120),
           timeLabel: truncateText(formatEventTimeRange(event), 40),
           calendarName: truncateText(event.calendarName, 80),
-          color: calendarColorForScheme(event.displayColor, 'dark'),
+          color: calendarColorForScheme(event.displayColor, colorScheme),
           isAllDay: event.is_all_day,
           sortAt: eventStart(event),
           endAt: eventEnd(event),
@@ -158,7 +167,7 @@ export function buildLockScreenBoardSnapshot({
               id: memo.id,
               content: truncateText(memo.content, 200),
               calendarName: truncateText(memo.calendarName, 80),
-              color: calendarColorForScheme(memo.calendarColor, 'dark'),
+              color: calendarColorForScheme(memo.calendarColor, colorScheme),
             })),
   };
 }

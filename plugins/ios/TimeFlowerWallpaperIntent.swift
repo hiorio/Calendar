@@ -500,9 +500,10 @@ private enum TimeFlowerWallpaperRenderer {
     } else {
       let base = color(input.palette.background, fallback: UIColor(red: 0.12, green: 0.14, blue: 0.17, alpha: 1))
       let accent = color(input.palette.accent, fallback: UIColor(red: 0.89, green: 0.40, blue: 0.25, alpha: 1))
+      let lightBackground = isLightBackground(base)
       let colors = [
-        blend(base, accent, amount: 0.24).cgColor,
-        blend(base, .black, amount: 0.34).cgColor,
+        blend(base, accent, amount: lightBackground ? 0.08 : 0.24).cgColor,
+        blend(base, .black, amount: lightBackground ? 0.06 : 0.34).cgColor,
       ] as CFArray
       if let gradient = CGGradient(
         colorsSpace: CGColorSpaceCreateDeviceRGB(),
@@ -521,9 +522,12 @@ private enum TimeFlowerWallpaperRenderer {
       }
     }
 
+    let lightBackground = isLightBackground(
+      color(input.palette.background, fallback: .black)
+    ) && input.snapshot?.backgroundFile == nil
     let shadeColors = [
-      UIColor.black.withAlphaComponent(0.05).cgColor,
-      UIColor.black.withAlphaComponent(0.34).cgColor,
+      UIColor.black.withAlphaComponent(lightBackground ? 0.02 : 0.05).cgColor,
+      UIColor.black.withAlphaComponent(lightBackground ? 0.08 : 0.34).cgColor,
     ] as CFArray
     if let shade = CGGradient(
       colorsSpace: CGColorSpaceCreateDeviceRGB(),
@@ -654,7 +658,6 @@ private enum TimeFlowerWallpaperRenderer {
     drawAgendaList(
       day: today,
       memos: snapshot.memos,
-      viewName: snapshot.viewName,
       now: now,
       text: text,
       secondary: secondary,
@@ -677,41 +680,45 @@ private enum TimeFlowerWallpaperRenderer {
     let card = color(snapshot.palette.card, fallback: UIColor.black)
     let onAccent = color(snapshot.palette.onAccent, fallback: UIColor.white)
     let daysByKey = dictionaryByDay(snapshot.days)
-
-    let progressRect = CGRect(
-      x: metrics.margin,
-      y: metrics.contentTop,
-      width: bounds.width - metrics.margin * 2,
-      height: metrics.progressCardHeight
-    )
-    drawCard(progressRect, color: card)
-    drawYearProgress(
-      now: now,
-      text: text,
-      secondary: secondary,
-      accent: accent,
-      in: progressRect,
-      scale: metrics.unit
-    )
-
-    let monthY = progressRect.maxY + metrics.gap
+    let today = daysByKey[dayKey(now)]
+    let monthY = min(metrics.contentTop, bounds.height * 0.38)
+    let availableHeight = bounds.height - monthY - metrics.bottomMargin - metrics.gap
+    let monthHeight = min(390 * metrics.unit, max(205 * metrics.unit, availableHeight * 0.64))
     let monthRect = CGRect(
       x: metrics.margin,
       y: monthY,
       width: bounds.width - metrics.margin * 2,
-      height: max(170, bounds.height - monthY - metrics.bottomMargin)
+      height: monthHeight
     )
     drawCard(monthRect, color: card)
     drawMonthGrid(
       now: now,
       weekStart: snapshot.weekStart,
       daysByKey: daysByKey,
-      viewName: snapshot.viewName,
       text: text,
       secondary: secondary,
       accent: accent,
       onAccent: onAccent,
       in: monthRect,
+      scale: metrics.unit
+    )
+
+    let todayRect = CGRect(
+      x: metrics.margin,
+      y: monthRect.maxY + metrics.gap,
+      width: bounds.width - metrics.margin * 2,
+      height: max(90 * metrics.unit, bounds.height - monthRect.maxY - metrics.gap - metrics.bottomMargin)
+    )
+    drawCard(todayRect, color: card)
+    drawAgendaList(
+      day: today,
+      memos: [],
+      now: now,
+      text: text,
+      secondary: secondary,
+      accent: accent,
+      onAccent: onAccent,
+      in: todayRect,
       scale: metrics.unit
     )
   }
@@ -896,7 +903,6 @@ private enum TimeFlowerWallpaperRenderer {
   private static func drawAgendaList(
     day: WallpaperDay?,
     memos: [WallpaperMemo],
-    viewName: String,
     now: Date,
     text: UIColor,
     secondary: UIColor,
@@ -935,19 +941,7 @@ private enum TimeFlowerWallpaperRenderer {
       ),
       scale: scale
     )
-    drawText(
-      viewName,
-      in: CGRect(
-        x: rect.minX + inset,
-        y: rect.minY + 42 * scale,
-        width: rect.width - inset * 2,
-        height: 14 * scale
-      ),
-      font: .systemFont(ofSize: 9 * scale, weight: .medium),
-      color: secondary
-    )
-
-    var y = rect.minY + 63 * scale
+    var y = rect.minY + 49 * scale
     let rowHeight = 31 * scale
     let availableRows = max(1, Int(floor((rect.maxY - y - 14 * scale) / rowHeight)))
     let visibleEvents = Array(events.prefix(availableRows))
@@ -993,7 +987,7 @@ private enum TimeFlowerWallpaperRenderer {
 
     if events.isEmpty, memos.isEmpty {
       drawText(
-        "오늘은 표시할 일정이나 메모가 없어요.",
+        "오늘 예정된 일정이 없어요.",
         in: CGRect(
           x: rect.minX + inset,
           y: rect.midY - 10 * scale,
@@ -1105,98 +1099,10 @@ private enum TimeFlowerWallpaperRenderer {
     _ = secondary
   }
 
-  private static func drawYearProgress(
-    now: Date,
-    text: UIColor,
-    secondary: UIColor,
-    accent: UIColor,
-    in rect: CGRect,
-    scale: CGFloat
-  ) {
-    let calendar = calendar()
-    let year = calendar.component(.year, from: now)
-    let start = calendar.date(from: DateComponents(year: year, month: 1, day: 1)) ?? now
-    let end = calendar.date(from: DateComponents(year: year + 1, month: 1, day: 1)) ?? now
-    let elapsed = max(0, now.timeIntervalSince(start))
-    let duration = max(1, end.timeIntervalSince(start))
-    let progress = min(1, elapsed / duration)
-    let percent = Int(floor(progress * 100))
-    let daysRemaining = max(0, calendar.dateComponents([.day], from: calendar.startOfDay(for: now), to: end).day ?? 0)
-    let inset = 16 * scale
-
-    drawText(
-      String(year),
-      in: CGRect(
-        x: rect.minX + inset,
-        y: rect.minY + 13 * scale,
-        width: 100 * scale,
-        height: 22 * scale
-      ),
-      font: .systemFont(ofSize: 16 * scale, weight: .bold),
-      color: text
-    )
-    drawText(
-      "\(percent)%",
-      in: CGRect(
-        x: rect.maxX - inset - 70 * scale,
-        y: rect.minY + 13 * scale,
-        width: 70 * scale,
-        height: 22 * scale
-      ),
-      font: .monospacedDigitSystemFont(ofSize: 16 * scale, weight: .bold),
-      color: text,
-      alignment: .right
-    )
-
-    let track = CGRect(
-      x: rect.minX + inset,
-      y: rect.minY + 42 * scale,
-      width: rect.width - inset * 2,
-      height: 6 * scale
-    )
-    UIColor.white.withAlphaComponent(0.16).setFill()
-    UIBezierPath(roundedRect: track, cornerRadius: track.height / 2).fill()
-    accent.setFill()
-    UIBezierPath(
-      roundedRect: CGRect(
-        x: track.minX,
-        y: track.minY,
-        width: track.width * progress,
-        height: track.height
-      ),
-      cornerRadius: track.height / 2
-    ).fill()
-
-    drawText(
-      "올해의 \(percent)%가 지났어요",
-      in: CGRect(
-        x: rect.minX + inset,
-        y: rect.minY + 55 * scale,
-        width: rect.width * 0.62,
-        height: 15 * scale
-      ),
-      font: .systemFont(ofSize: 9 * scale, weight: .medium),
-      color: secondary
-    )
-    drawText(
-      "\(daysRemaining)일 남음",
-      in: CGRect(
-        x: rect.maxX - inset - rect.width * 0.35,
-        y: rect.minY + 55 * scale,
-        width: rect.width * 0.35,
-        height: 15 * scale
-      ),
-      font: .monospacedDigitSystemFont(ofSize: 9 * scale, weight: .medium),
-      color: secondary,
-      alignment: .right
-    )
-  }
-
   private static func drawMonthGrid(
     now: Date,
     weekStart: WallpaperWeekStart,
     daysByKey: [String: WallpaperDay],
-    viewName: String,
     text: UIColor,
     secondary: UIColor,
     accent: UIColor,
@@ -1225,24 +1131,11 @@ private enum TimeFlowerWallpaperRenderer {
       font: .systemFont(ofSize: 17 * scale, weight: .bold),
       color: text
     )
-    drawText(
-      viewName,
-      in: CGRect(
-        x: rect.midX,
-        y: rect.minY + 15 * scale,
-        width: rect.maxX - inset - rect.midX,
-        height: 17 * scale
-      ),
-      font: .systemFont(ofSize: 9 * scale, weight: .medium),
-      color: secondary,
-      alignment: .right
-    )
-
     let gridTop = rect.minY + 43 * scale
     let gridBottom = rect.maxY - 10 * scale
     let columnWidth = (rect.width - inset * 2) / 7
     let weekdayHeight = 17 * scale
-    let rowHeight = max(26 * scale, (gridBottom - gridTop - weekdayHeight) / 6)
+    let rowHeight = (gridBottom - gridTop - weekdayHeight) / 6
     let symbols = reorderedWeekdaySymbols(weekStart: weekStart)
     for index in 0 ..< 7 {
       drawText(
@@ -1307,8 +1200,8 @@ private enum TimeFlowerWallpaperRenderer {
         alignment: .center
       )
 
-      let events = Array((daysByKey[key]?.events ?? []).prefix(2))
-      let chipHeight = min(11 * scale, max(7 * scale, (rowHeight - 24 * scale) / 2))
+      let events = Array((daysByKey[key]?.events ?? []).prefix(rowHeight >= 35 * scale ? 2 : 1))
+      let chipHeight = min(11 * scale, max(3 * scale, (rowHeight - 24 * scale) / 2))
       for (eventIndex, event) in events.enumerated() {
         let chip = CGRect(
           x: cell.minX + 2 * scale,
@@ -1457,6 +1350,17 @@ private enum TimeFlowerWallpaperRenderer {
     )
   }
 
+  private static func isLightBackground(_ color: UIColor) -> Bool {
+    var red: CGFloat = 0
+    var green: CGFloat = 0
+    var blue: CGFloat = 0
+    var alpha: CGFloat = 0
+    guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+      return false
+    }
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue > 0.7
+  }
+
   private static func blend(_ first: UIColor, _ second: UIColor, amount: CGFloat) -> UIColor {
     var r1: CGFloat = 0
     var g1: CGFloat = 0
@@ -1488,7 +1392,6 @@ private struct LayoutMetrics {
   let bottomMargin: CGFloat
   let contentTop: CGFloat
   let weekCardHeight: CGFloat
-  let progressCardHeight: CGFloat
 
   init(bounds: CGRect) {
     unit = min(1.35, max(0.78, bounds.width / 390))
@@ -1497,6 +1400,5 @@ private struct LayoutMetrics {
     bottomMargin = 34 * unit
     contentTop = min(310 * unit, bounds.height * 0.43)
     weekCardHeight = 102 * unit
-    progressCardHeight = 82 * unit
   }
 }

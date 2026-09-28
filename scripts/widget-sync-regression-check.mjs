@@ -50,6 +50,7 @@ const stores = {
     wallpaperBackgroundRevision: 0,
   },
   filter: { hidden: [] },
+  device: { connected: false, selectedIds: [] },
   theme: { theme: 'apricot', schemePreference: 'system' },
 };
 let hydrated = false;
@@ -79,6 +80,7 @@ let memos = [
   { id: 'am', calendar_id: 'allowed', content: 'allowed memo', done: false, calendarName: '선택', calendarColor: colors.DEFAULT_CALENDAR_COLOR },
   { id: 'pm', calendar_id: 'private', content: 'private memo', done: false, calendarName: '비공개', calendarColor: colors.DEFAULT_CALENDAR_COLOR },
 ];
+let deviceEvents = [];
 
 const slots = [];
 let cursor = 0;
@@ -115,14 +117,21 @@ const mocks = {
   '@/features/calendar/month-layout': layout,
   '@/features/calendars/colors': colors,
   '@/features/calendars/queries': { useMyCalendars: () => ({ data: calendars }) },
-  '@/features/events/queries': { useMonthEvents: () => ({ data: events, isFetched: events !== undefined }) },
+  '@/features/events/queries': {
+    monthGridRange: (month) => ({ start: month, end: dateUtils.addMonths(month, 1) }),
+    useMonthEvents: () => ({ data: events, isFetched: events !== undefined }),
+  },
+  '@/features/external-calendars/queries': { useDeviceCalendarEvents: () => ({ data: deviceEvents }) },
   '@/features/memos/queries': { useMemos: () => ({ data: memos }) },
   '@/features/wallpaper/snapshot': {
     buildLockScreenBoardSnapshot: (options) => ({
       ...options,
       days: options.cleared
         ? []
-        : options.events.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
+        : [
+          ...options.events.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
+          ...(options.deviceEvents ?? []).filter((item) => options.visibleDeviceCalendarIds?.has(item.calendarId)),
+        ],
       memos: options.cleared
         ? []
         : options.memos.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
@@ -139,6 +148,7 @@ const mocks = {
   '@/lib/event-time': eventTime,
   '@/stores/calendar-filter': { useCalendarFilter: storeHook('filter') },
   '@/stores/calendar-preference': { useCalendarPreference: () => ({ weekStart: 'sunday' }) },
+  '@/stores/device-calendar-preference': { useDeviceCalendarPreference: storeHook('device') },
   '@/stores/theme-preference': { useThemePreference: storeHook('theme') },
   '@/stores/widget-preference': { useWidgetPreference: storeHook('widgets') },
   '@/lib/observability': { Sentry: { captureException: (error) => errors.push(error) } },
@@ -201,6 +211,38 @@ check('hydrated custom selection publishes only allowed events and memos across 
   assert.equal(wallpaper.cleared, undefined);
   assert.ok(wallpaper.days.every((item) => item.calendar_id === 'allowed'));
   assert.ok(wallpaper.memos.every((item) => item.calendar_id === 'allowed'));
+});
+check('wallpaper includes only connected and selected device calendar events', () => {
+  stores.device.connected = true;
+  stores.device.selectedIds = ['holiday-calendar'];
+  deviceEvents = [
+    { kind: 'device', key: 'device:holiday', calendarId: 'holiday-calendar', title: '명절' },
+    { kind: 'device', key: 'device:private', calendarId: 'private-device', title: '비공개' },
+  ];
+  render();
+  const wallpaper = wallpaperSnapshots.at(-1);
+  assert(wallpaper.days.some((item) => item.title === '명절'));
+  assert(!wallpaper.days.some((item) => item.title === '비공개'));
+  stores.device.connected = false;
+  stores.device.selectedIds = [];
+  render();
+  assert(!wallpaperSnapshots.at(-1).days.some((item) => item.title === '명절'));
+  deviceEvents = [];
+});
+check('wallpaper waits for selected device calendars before replacing a cleared scope', () => {
+  stores.device.connected = true;
+  stores.device.selectedIds = ['holiday-calendar'];
+  deviceEvents = undefined;
+  render();
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+  deviceEvents = [{ kind: 'device', key: 'device:holiday', calendarId: 'holiday-calendar', title: '명절' }];
+  render();
+  assert(wallpaperSnapshots.at(-1).days.some((item) => item.title === '명절'));
+  stores.device.connected = false;
+  stores.device.selectedIds = [];
+  deviceEvents = [];
+  render();
 });
 check('returning to the foreground reloads layouts and republishes an unchanged timeline', () => {
   entries.length = 0;

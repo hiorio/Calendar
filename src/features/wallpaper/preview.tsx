@@ -26,12 +26,6 @@ function weekDates(now: Date, weekStart: 'sunday' | 'monday') {
   });
 }
 
-function yearProgress(now: Date) {
-  const start = new Date(now.getFullYear(), 0, 1).getTime();
-  const end = new Date(now.getFullYear() + 1, 0, 1).getTime();
-  return Math.max(0, Math.min(1, (now.getTime() - start) / (end - start)));
-}
-
 export function LockScreenBoardPreview({
   snapshot,
   backgroundUri,
@@ -183,9 +177,6 @@ function AgendaBoard({
             <Text allowFontScaling={false} style={[styles.cardTitle, { color: palette.text }]}>
               {formatDayTitle(now)}
             </Text>
-            <Text allowFontScaling={false} style={[styles.cardMeta, { color: palette.textTertiary }]}>
-              {snapshot.viewName}
-            </Text>
           </View>
           <View style={[styles.countPill, { backgroundColor: palette.accent }]}>
             <Text allowFontScaling={false} style={[styles.countText, { color: palette.onAccent }]}>
@@ -247,42 +238,18 @@ function MonthBoard({
   now: Date;
 }) {
   const { palette } = snapshot;
-  const progress = yearProgress(now);
   const weeks = buildMonthMatrix(now, snapshot.weekStart);
   const labels = weekdayLabels(snapshot.weekStart);
   const todayKey = toDateKey(now);
+  const today = dayMap.get(todayKey);
 
   return (
     <>
-      <View style={[styles.previewCard, styles.progressCard, { backgroundColor: alpha(palette.card, 0.88) }]}>
-        <View style={styles.progressHeading}>
-          <Text allowFontScaling={false} style={[styles.progressYear, { color: palette.text }]}>
-            {now.getFullYear()}
-          </Text>
-          <Text allowFontScaling={false} style={[styles.progressPercent, { color: palette.text }]}>
-            {Math.round(progress * 100)}%
-          </Text>
-        </View>
-        <View style={[styles.progressTrack, { backgroundColor: palette.cardMuted }]}>
-          <View
-            style={[
-              styles.progressFill,
-              { backgroundColor: palette.accent, width: `${Math.round(progress * 100)}%` },
-            ]}
-          />
-        </View>
-      </View>
-
       <View style={[styles.previewCard, styles.monthCard, { backgroundColor: alpha(palette.card, 0.9) }]}>
         <View style={styles.cardHeading}>
-          <View>
-            <Text allowFontScaling={false} style={[styles.cardTitle, { color: palette.text }]}>
-              {formatMonthTitle(now)}
-            </Text>
-            <Text allowFontScaling={false} style={[styles.cardMeta, { color: palette.textTertiary }]}>
-              {snapshot.viewName}
-            </Text>
-          </View>
+          <Text allowFontScaling={false} style={[styles.cardTitle, { color: palette.text }]}>
+            {formatMonthTitle(now)}
+          </Text>
         </View>
         <View style={styles.monthWeek}>
           {labels.map((label, index) => (
@@ -333,6 +300,38 @@ function MonthBoard({
               </View>
             );
           })}
+        </View>
+      </View>
+
+      <View style={[styles.previewCard, styles.monthTodayCard, { backgroundColor: alpha(palette.card, 0.9) }]}>
+        <View style={styles.cardHeading}>
+          <Text allowFontScaling={false} style={[styles.cardTitle, { color: palette.text }]}>
+            {formatDayTitle(now)}
+          </Text>
+          <View style={[styles.countPill, { backgroundColor: palette.accent }]}>
+            <Text allowFontScaling={false} style={[styles.countText, { color: palette.onAccent }]}>
+              {today?.eventCount ?? 0}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.agendaList}>
+          {today?.events.length ? (
+            today.events.slice(0, 3).map((event) => (
+              <View key={event.key} style={styles.agendaRow}>
+                <Text allowFontScaling={false} style={[styles.time, { color: palette.textSecondary }]}>
+                  {event.timeLabel}
+                </Text>
+                <View style={[styles.eventLine, { backgroundColor: event.color }]} />
+                <Text allowFontScaling={false} numberOfLines={1} style={[styles.eventTitle, { color: palette.text }]}>
+                  {event.title}
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text allowFontScaling={false} style={[styles.emptyText, { color: palette.textSecondary }]}>
+              오늘 예정된 일정이 없어요
+            </Text>
+          )}
         </View>
       </View>
     </>
@@ -386,7 +385,6 @@ const styles = StyleSheet.create({
   agendaCard: { flex: 1, minHeight: 218 },
   cardHeading: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   cardTitle: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
-  cardMeta: { marginTop: 1, fontSize: 7, lineHeight: 10, fontWeight: '500' },
   countPill: {
     minWidth: 23,
     height: 20,
@@ -411,13 +409,8 @@ const styles = StyleSheet.create({
   memoRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   memoCircle: { width: 7, height: 7, borderRadius: Radius.pill, borderWidth: 1 },
   memoText: { flex: 1, fontSize: 8, lineHeight: 11, fontWeight: '500' },
-  progressCard: { gap: 6, paddingVertical: 10 },
-  progressHeading: { flexDirection: 'row', justifyContent: 'space-between' },
-  progressYear: { fontSize: 12, lineHeight: 15, fontWeight: '700' },
-  progressPercent: { fontSize: 11, lineHeight: 15, fontWeight: '700' },
-  progressTrack: { height: 4, borderRadius: Radius.pill, overflow: 'hidden' },
-  progressFill: { height: '100%', borderRadius: Radius.pill },
   monthCard: { flex: 1 },
+  monthTodayCard: { height: 112 },
   monthWeek: { flexDirection: 'row', marginTop: 8 },
   monthWeekday: { flex: 1, textAlign: 'center', fontSize: 7, lineHeight: 10, fontWeight: '600' },
   monthGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 },

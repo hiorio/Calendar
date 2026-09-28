@@ -4,7 +4,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type WidgetCalendarMode = 'app' | 'all' | 'custom';
 export type WallpaperLayout = 'agenda' | 'month';
-export type WallpaperBackgroundMode = 'theme' | 'photo';
+export type WallpaperBackgroundMode = 'theme' | 'light' | 'photo';
 
 type WidgetPreferenceState = {
   calendarMode: WidgetCalendarMode;

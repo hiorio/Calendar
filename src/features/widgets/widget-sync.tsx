@@ -7,7 +7,8 @@ import { useAuth } from '@/features/auth/auth-provider';
 import { layoutWeekMarks } from '@/features/calendar/month-layout';
 import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
 import { useMyCalendars, type MyCalendar } from '@/features/calendars/queries';
-import { useMonthEvents, type EventOccurrence } from '@/features/events/queries';
+import { monthGridRange, useMonthEvents, type EventOccurrence } from '@/features/events/queries';
+import { useDeviceCalendarEvents } from '@/features/external-calendars/queries';
 import { useMemos, type MemoWithCalendar } from '@/features/memos/queries';
 import { buildLockScreenBoardSnapshot } from '@/features/wallpaper/snapshot';
 import {
@@ -23,6 +24,7 @@ import {
 } from '@/lib/event-time';
 import { useCalendarFilter } from '@/stores/calendar-filter';
 import { useCalendarPreference } from '@/stores/calendar-preference';
+import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
 import { useThemePreference, type SchemePreference } from '@/stores/theme-preference';
 import { useWidgetPreference, type WidgetCalendarMode } from '@/stores/widget-preference';
 import { Sentry } from '@/lib/observability';
@@ -323,12 +325,16 @@ function subscribeToPrivacyPreferences(onChange: () => void) {
     useWidgetPreference.persist.onFinishHydration(onChange),
     useCalendarFilter.persist.onHydrate(onChange),
     useCalendarFilter.persist.onFinishHydration(onChange),
+    useDeviceCalendarPreference.persist.onHydrate(onChange),
+    useDeviceCalendarPreference.persist.onFinishHydration(onChange),
   ];
   return () => unsubscribe.forEach((stop) => stop());
 }
 
 function privacyPreferencesHydrated() {
-  return useWidgetPreference.persist.hasHydrated() && useCalendarFilter.persist.hasHydrated();
+  return useWidgetPreference.persist.hasHydrated()
+    && useCalendarFilter.persist.hasHydrated()
+    && useDeviceCalendarPreference.persist.hasHydrated();
 }
 
 /** 앱이 알고 있는 RLS 적용 결과만 WidgetKit 공유 저장소에 복사한다. 세션 키는 넘기지 않는다. */
@@ -337,6 +343,8 @@ export function WidgetSync() {
   const calendars = useMyCalendars();
   const { weekStart } = useCalendarPreference();
   const hiddenCalendarIds = useCalendarFilter((state) => state.hidden);
+  const deviceCalendarConnected = useDeviceCalendarPreference((state) => state.connected);
+  const selectedDeviceCalendarIds = useDeviceCalendarPreference((state) => state.selectedIds);
   const mode = useWidgetPreference((state) => state.calendarMode);
   const selectedCalendarIds = useWidgetPreference((state) => state.selectedCalendarIds);
   const quickAddCalendarId = useWidgetPreference((state) => state.quickAddCalendarId);
@@ -363,6 +371,11 @@ export function WidgetSync() {
   const previousEvents = useMonthEvents(previousMonth, weekStart);
   const currentEvents = useMonthEvents(monthAnchor, weekStart);
   const nextMonth = useMemo(() => addMonths(monthAnchor, 1), [monthAnchor]);
+  const deviceRange = useMemo(() => ({
+    start: monthGridRange(previousMonth, weekStart).start,
+    end: monthGridRange(nextMonth, weekStart).end,
+  }), [nextMonth, previousMonth, weekStart]);
+  const deviceEvents = useDeviceCalendarEvents(deviceRange.start, deviceRange.end, wallpaperEnabled);
   // 홈의 현재 달 요청과 같은 캐시를 먼저 채운 뒤 다음 달을 받는다. 위젯은 화면에
   // 보이지 않으므로 첫 화면 네트워크 대역을 선점할 이유가 없다.
   const nextEvents = useMonthEvents(nextMonth, weekStart, currentEvents.isFetched);
@@ -411,6 +424,8 @@ export function WidgetSync() {
       userId, privacyReady, mode,
       selected: [...selectedCalendarIds].sort(),
       hidden: [...hiddenCalendarIds].sort(),
+      deviceConnected: deviceCalendarConnected,
+      deviceSelected: [...selectedDeviceCalendarIds].sort(),
       accessible: calendars.data?.map((calendar) => calendar.id).sort() ?? null,
       quickAddCalendarId,
       wallpaperEnabled,
@@ -521,7 +536,7 @@ export function WidgetSync() {
         { date: expiresAt, props: { ...emptyProps(theme, preferredScheme), expired: true } },
       ]); }
     catch (error) { publishSucceeded = false; Sentry.captureException(error); }
-    if (wallpaperEnabled) {
+    if (wallpaperEnabled && (!deviceCalendarConnected || selectedDeviceCalendarIds.length === 0 || deviceEvents.data)) {
       try {
         const screen = Dimensions.get('screen');
         const snapshot = buildLockScreenBoardSnapshot({
@@ -537,7 +552,9 @@ export function WidgetSync() {
           theme,
           mode,
           visibleCalendarIds: timelineCalendarIds,
+          visibleDeviceCalendarIds: new Set(deviceCalendarConnected ? selectedDeviceCalendarIds : []),
           events: allEvents,
+          deviceEvents: deviceEvents.data ?? [],
           memos: memos.data ?? [],
         });
         if (!publishLockScreenBoardSnapshot(snapshot)) publishSucceeded = false;
@@ -558,6 +575,8 @@ export function WidgetSync() {
     calendars.data,
     clearRetry,
     currentEvents.data,
+    deviceCalendarConnected,
+    deviceEvents.data,
     foregroundRevision,
     hiddenCalendarIds,
     memos.data,
@@ -572,6 +591,7 @@ export function WidgetSync() {
     quickAddCalendarId,
     retainedUserId,
     selectedCalendarIds,
+    selectedDeviceCalendarIds,
     showQuickActions,
     theme,
     user,
