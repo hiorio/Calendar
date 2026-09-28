@@ -4,6 +4,7 @@ import { AppState, Dimensions, PixelRatio } from 'react-native';
 
 import { ThemePalettes, type AppTheme, type ThemeColors } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { layoutWeekMarks } from '@/features/calendar/month-layout';
 import { calendarColorForScheme, onColor } from '@/features/calendars/colors';
 import { useMyCalendars, type MyCalendar } from '@/features/calendars/queries';
@@ -339,6 +340,7 @@ function privacyPreferencesHydrated() {
 
 /** 앱이 알고 있는 RLS 적용 결과만 WidgetKit 공유 저장소에 복사한다. 세션 키는 넘기지 않는다. */
 export function WidgetSync() {
+  const systemScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const { retainedUserId, user } = useAuth();
   const calendars = useMyCalendars();
   const { weekStart } = useCalendarPreference();
@@ -458,6 +460,7 @@ export function WidgetSync() {
           weekStart,
           showMemos: wallpaperShowMemos,
           backgroundMode: wallpaperBackgroundMode,
+          systemScheme,
           theme,
           mode,
           visibleCalendarIds: new Set(),
@@ -549,6 +552,7 @@ export function WidgetSync() {
           weekStart,
           showMemos: wallpaperShowMemos,
           backgroundMode: wallpaperBackgroundMode,
+          systemScheme,
           theme,
           mode,
           visibleCalendarIds: timelineCalendarIds,
@@ -593,6 +597,7 @@ export function WidgetSync() {
     selectedCalendarIds,
     selectedDeviceCalendarIds,
     showQuickActions,
+    systemScheme,
     theme,
     user,
     wallpaperEnabled,

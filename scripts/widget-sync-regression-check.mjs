@@ -144,6 +144,7 @@ const mocks = {
     },
     removeLockScreenBoardOutput: () => removedWallpaperOutputs.push('removed'),
   },
+  '@/hooks/use-color-scheme': { useColorScheme: () => 'dark' },
   '@/lib/date': dateUtils,
   '@/lib/event-time': eventTime,
   '@/stores/calendar-filter': { useCalendarFilter: storeHook('filter') },

@@ -123,6 +123,7 @@ function build(overrides = {}) {
     weekStart: 'monday',
     showMemos: true,
     backgroundMode: 'photo',
+    systemScheme: 'dark',
     theme: 'apricot',
     mode: 'custom',
     visibleCalendarIds: new Set(['allowed']),
@@ -205,6 +206,13 @@ check('light board uses the light palette and keeps photos on the dark palette',
   assert.equal(light.palette.background, lightPalette.background);
   assert.equal(light.palette.text, lightPalette.text);
   assert.equal(build({ backgroundMode: 'photo' }).palette.background, palette.background);
+});
+
+check('system background follows iPhone appearance while fixed modes stay fixed', () => {
+  assert.equal(build({ backgroundMode: 'system', systemScheme: 'light' }).palette.background, lightPalette.background);
+  assert.equal(build({ backgroundMode: 'system', systemScheme: 'dark' }).palette.background, palette.background);
+  assert.equal(build({ backgroundMode: 'theme', systemScheme: 'light' }).palette.background, palette.background);
+  assert.equal(build({ backgroundMode: 'light', systemScheme: 'dark' }).palette.background, lightPalette.background);
 });
 
 function storageFor(widgetsDirectory) {

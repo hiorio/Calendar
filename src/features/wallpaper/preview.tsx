@@ -78,7 +78,7 @@ export function LockScreenBoardPreview({
         style={[StyleSheet.absoluteFill, { backgroundColor: alpha(palette.background, backgroundUri ? 0.38 : 0.08) }]}
       />
 
-      <View style={styles.clockArea}>
+      <View style={[styles.clockArea, snapshot.layout === 'month' && styles.monthClockArea]}>
         <Text allowFontScaling={false} style={[styles.date, { color: alpha(palette.text, 0.88) }]}>
           {new Intl.DateTimeFormat('ko-KR', {
             month: 'long',
@@ -364,6 +364,7 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   clockArea: { height: '36.5%', alignItems: 'center', paddingTop: 32 },
+  monthClockArea: { height: '30%' },
   date: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
   clock: { fontSize: 58, lineHeight: 66, fontWeight: '300', letterSpacing: -2 },
   board: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 54 },
@@ -412,16 +413,16 @@ const styles = StyleSheet.create({
   monthCard: { flex: 1 },
   monthTodayCard: { height: 112 },
   monthWeek: { flexDirection: 'row', marginTop: 8 },
-  monthWeekday: { flex: 1, textAlign: 'center', fontSize: 7, lineHeight: 10, fontWeight: '600' },
+  monthWeekday: { flex: 1, textAlign: 'center', fontSize: 8, lineHeight: 11, fontWeight: '600' },
   monthGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 },
   monthDay: { width: `${100 / 7}%`, height: `${100 / 6}%`, alignItems: 'center', paddingTop: 2 },
   monthNumberCircle: {
-    width: 19,
-    height: 19,
+    width: 21,
+    height: 21,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  monthNumber: { fontSize: 8, lineHeight: 10, fontWeight: '600' },
-  monthEvent: { width: 22, height: 3, marginTop: 1, borderRadius: Radius.pill },
+  monthNumber: { fontSize: 9, lineHeight: 11, fontWeight: '600' },
+  monthEvent: { width: 24, height: 4, marginTop: 1, borderRadius: Radius.pill },
 });

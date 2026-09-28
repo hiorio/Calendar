@@ -59,6 +59,7 @@ type BuildSnapshotOptions = {
   weekStart: 'sunday' | 'monday';
   showMemos: boolean;
   backgroundMode: WallpaperBackgroundMode;
+  systemScheme: 'light' | 'dark';
   theme: AppTheme;
   mode: WidgetCalendarMode;
   visibleCalendarIds: Set<string>;
@@ -79,6 +80,7 @@ export function buildLockScreenBoardSnapshot({
   weekStart,
   showMemos,
   backgroundMode,
+  systemScheme,
   theme,
   mode,
   visibleCalendarIds,
@@ -88,7 +90,9 @@ export function buildLockScreenBoardSnapshot({
   memos,
   cleared = false,
 }: BuildSnapshotOptions): LockScreenBoardSnapshot {
-  const colorScheme = backgroundMode === 'light' ? 'light' : 'dark';
+  const colorScheme = backgroundMode === 'system'
+    ? systemScheme
+    : backgroundMode === 'light' ? 'light' : 'dark';
   const colors = ThemePalettes[theme][colorScheme];
   const occurrenceByKey = new Map<string, EventOccurrence | DeviceCalendarEvent>([
     ...events.filter((event) => visibleCalendarIds.has(event.calendar_id)),

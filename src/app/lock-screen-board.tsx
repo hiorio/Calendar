@@ -35,6 +35,7 @@ import {
 } from '@/features/wallpaper/storage';
 import { visibleCalendarIds } from '@/features/widgets/widget-policy';
 import { useTheme } from '@/hooks/use-theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
 import { addMonths, startOfMonth } from '@/lib/date';
 import { notify } from '@/lib/confirm';
 import { useCalendarFilter } from '@/stores/calendar-filter';
@@ -51,6 +52,7 @@ const MAX_BACKGROUND_BYTES = 25 * 1024 * 1024;
 
 export default function LockScreenBoardScreen() {
   const { colors, theme } = useTheme();
+  const systemScheme = useColorScheme() === 'dark' ? 'dark' : 'light';
   const { weekStart } = useCalendarPreference();
   const calendars = useMyCalendars();
   const month = useMemo(() => startOfMonth(new Date()), []);
@@ -103,6 +105,7 @@ export default function LockScreenBoardScreen() {
       weekStart,
       showMemos,
       backgroundMode,
+      systemScheme,
       theme,
       mode: calendarMode,
       visibleCalendarIds: visibleIds,
@@ -123,6 +126,7 @@ export default function LockScreenBoardScreen() {
     now,
     showMemos,
     selectedDeviceCalendarIds,
+    systemScheme,
     theme,
     visibleIds,
     weekStart,
@@ -255,6 +259,14 @@ export default function LockScreenBoardScreen() {
         <Section title="배경">
           <Card padded={false}>
             <BackgroundOption
+              icon="contrast-outline"
+              title="시스템 설정에 맞춤"
+              subtitle="iPhone의 밝게·어둡게 설정 사용"
+              selected={backgroundMode === 'system'}
+              onPress={() => setBackgroundMode('system')}
+            />
+            <Divider />
+            <BackgroundOption
               icon="color-palette-outline"
               title="어두운 테마"
               subtitle="현재 TimeFlower 테마의 어두운 색"
@@ -279,6 +291,11 @@ export default function LockScreenBoardScreen() {
               loading={picking}
             />
           </Card>
+          {backgroundMode === 'system' ? (
+            <Txt variant="caption" tone="secondary" style={styles.note}>
+              밝게·어둡게 설정이 바뀌면 앱을 열고 단축어를 다시 실행해 주세요.
+            </Txt>
+          ) : null}
         </Section>
 
         <Section title="표시할 내용">

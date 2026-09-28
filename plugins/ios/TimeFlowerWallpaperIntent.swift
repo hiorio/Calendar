@@ -681,9 +681,9 @@ private enum TimeFlowerWallpaperRenderer {
     let onAccent = color(snapshot.palette.onAccent, fallback: UIColor.white)
     let daysByKey = dictionaryByDay(snapshot.days)
     let today = daysByKey[dayKey(now)]
-    let monthY = min(metrics.contentTop, bounds.height * 0.38)
+    let monthY = min(265 * metrics.unit, bounds.height * 0.33)
     let availableHeight = bounds.height - monthY - metrics.bottomMargin - metrics.gap
-    let monthHeight = min(390 * metrics.unit, max(205 * metrics.unit, availableHeight * 0.64))
+    let monthHeight = min(420 * metrics.unit, max(220 * metrics.unit, availableHeight * 0.70))
     let monthRect = CGRect(
       x: metrics.margin,
       y: monthY,
