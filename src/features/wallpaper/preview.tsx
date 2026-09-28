@@ -91,7 +91,7 @@ export function LockScreenBoardPreview({
         </Text>
       </View>
 
-      <View style={styles.board}>
+      <View style={[styles.board, snapshot.layout === 'month' && styles.monthBoard]}>
         {snapshot.layout === 'agenda' ? (
           <AgendaBoard snapshot={snapshot} dayMap={dayMap} now={now} />
         ) : (
@@ -364,10 +364,11 @@ const styles = StyleSheet.create({
     borderRadius: Radius.pill,
   },
   clockArea: { height: '36.5%', alignItems: 'center', paddingTop: 32 },
-  monthClockArea: { height: '30%' },
+  monthClockArea: { height: '28%' },
   date: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
   clock: { fontSize: 58, lineHeight: 66, fontWeight: '300', letterSpacing: -2 },
   board: { flex: 1, gap: 8, paddingHorizontal: 12, paddingBottom: 54 },
+  monthBoard: { paddingBottom: 102 },
   previewCard: { borderRadius: 15, padding: 12 },
   weekCard: { paddingVertical: 9 },
   weekRow: { flexDirection: 'row' },
@@ -411,7 +412,7 @@ const styles = StyleSheet.create({
   memoCircle: { width: 7, height: 7, borderRadius: Radius.pill, borderWidth: 1 },
   memoText: { flex: 1, fontSize: 8, lineHeight: 11, fontWeight: '500' },
   monthCard: { flex: 1 },
-  monthTodayCard: { height: 112 },
+  monthTodayCard: { height: 88 },
   monthWeek: { flexDirection: 'row', marginTop: 8 },
   monthWeekday: { flex: 1, textAlign: 'center', fontSize: 8, lineHeight: 11, fontWeight: '600' },
   monthGrid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', marginTop: 2 },

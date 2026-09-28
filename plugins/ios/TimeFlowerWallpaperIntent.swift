@@ -681,9 +681,15 @@ private enum TimeFlowerWallpaperRenderer {
     let onAccent = color(snapshot.palette.onAccent, fallback: UIColor.white)
     let daysByKey = dictionaryByDay(snapshot.days)
     let today = daysByKey[dayKey(now)]
-    let monthY = min(265 * metrics.unit, bounds.height * 0.33)
-    let availableHeight = bounds.height - monthY - metrics.bottomMargin - metrics.gap
-    let monthHeight = min(420 * metrics.unit, max(220 * metrics.unit, availableHeight * 0.70))
+    // Lock Screen flashlight/camera controls sit above the home indicator. Reserve
+    // their entire band rather than treating the wallpaper's edge as usable space.
+    let monthY = min(235 * metrics.unit, bounds.height * 0.29)
+    let accessoryClearance = 145 * metrics.unit
+    let availableHeight = bounds.height - monthY - accessoryClearance - metrics.gap
+    let monthHeight = min(
+      min(420 * metrics.unit, max(220 * metrics.unit, availableHeight * 0.75)),
+      availableHeight - 90 * metrics.unit
+    )
     let monthRect = CGRect(
       x: metrics.margin,
       y: monthY,
@@ -707,7 +713,7 @@ private enum TimeFlowerWallpaperRenderer {
       x: metrics.margin,
       y: monthRect.maxY + metrics.gap,
       width: bounds.width - metrics.margin * 2,
-      height: max(90 * metrics.unit, bounds.height - monthRect.maxY - metrics.gap - metrics.bottomMargin)
+      height: max(90 * metrics.unit, bounds.height - monthRect.maxY - metrics.gap - accessoryClearance)
     )
     drawCard(todayRect, color: card)
     drawAgendaList(
