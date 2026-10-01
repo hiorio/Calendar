@@ -14,7 +14,7 @@ import { basename, dirname, resolve } from 'node:path';
 
 const PROJECT_ROOT = process.cwd();
 const SOURCE = 'assets/brand/timeflower-icon-source.png';
-const BACKGROUND = '#EBE5DC';
+const BACKGROUND = '#F8F1E1';
 
 async function renderPng(destination, size) {
   const { source } = await generateImageAsync(
@@ -39,13 +39,13 @@ async function renderPng(destination, size) {
   console.log(`  ${destination}  ${size}×${size}  ${(source.length / 1024).toFixed(1)} KB`);
 }
 
-async function renderTransparentSplash(destination, size) {
+async function renderTransparentFlower(destination, size, { scale = 1, monochrome = false } = {}) {
   const image = await Jimp.read(resolve(PROJECT_ROOT, SOURCE));
-  image.resize(size, size, Jimp.RESIZE_BICUBIC);
+  const contentSize = Math.round(size * scale);
+  image.resize(contentSize, contentSize, Jimp.RESIZE_BICUBIC);
 
-  const background = { r: 0xeb, g: 0xe5, b: 0xdc };
-  // 원본의 아이보리 배경에는 가장자리로 갈수록 약 28 RGB 거리의 미세한 그라데이션이 있다.
-  // 그 범위를 전부 투명하게 만들고 꽃의 안티앨리어싱 픽셀만 짧게 페더링한다.
+  const background = Jimp.intToRGBA(Jimp.cssColorToHex(BACKGROUND));
+  // A1 원본의 미세한 아이보리 톤 차이를 제거하고 꽃 가장자리만 짧게 페더링한다.
   const transparentDistance = 30;
   const opaqueDistance = 70;
 
@@ -69,11 +69,20 @@ async function renderTransparentSplash(destination, size) {
         ((distance - transparentDistance) / (opaqueDistance - transparentDistance)) * 255,
       );
     }
+
+    if (monochrome) {
+      image.bitmap.data[index] = 255;
+      image.bitmap.data[index + 1] = 255;
+      image.bitmap.data[index + 2] = 255;
+    }
   });
 
+  const canvas = new Jimp(size, size, 0x00000000);
+  const inset = Math.round((size - contentSize) / 2);
+  canvas.composite(image, inset, inset);
   const output = resolve(PROJECT_ROOT, destination);
   mkdirSync(dirname(output), { recursive: true });
-  await image.writeAsync(output);
+  await canvas.writeAsync(output);
   console.log(`  ${destination}  ${size}×${size}  transparent background`);
 }
 
@@ -84,6 +93,15 @@ if (sourceInfo.width !== sourceInfo.height) {
 
 console.log('TimeFlower 아이콘 생성');
 await renderPng('assets/images/icon.png', 1024);
-await renderTransparentSplash('assets/images/splash-icon.png', 512);
+await renderTransparentFlower('assets/images/splash-icon.png', 512);
 await renderPng('assets/images/favicon.png', 96);
+// Adaptive 아이콘의 마스크가 달라져도 꽃잎과 잎이 잘리지 않도록 중앙 안전 영역에 둔다.
+await renderTransparentFlower('assets/images/android-icon-foreground.png', 1024, { scale: 0.6 });
+await renderTransparentFlower('assets/images/android-icon-monochrome.png', 1024, {
+  scale: 0.6,
+  monochrome: true,
+});
+await new Jimp(1024, 1024, BACKGROUND).writeAsync(
+  resolve(PROJECT_ROOT, 'assets/images/android-icon-background.png'),
+);
 console.log('완료');

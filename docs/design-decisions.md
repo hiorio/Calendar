@@ -207,9 +207,10 @@ chromeBorder  경계선            (살구 light: #ECE3DA / 먹빛 light: #191B1
 ### 마크
 
 TimeFlower 마크는 따뜻한 아이보리 바탕의 주황 꽃과 올리브색 줄기·잎으로 확정했습니다.
-손으로 그린 듯한 약간의 비대칭을 브랜드 개성으로 유지하며, AI 보정으로 형태를
-재해석하지 않습니다. 원본은 `assets/brand/timeflower-icon-source.png` 한 곳에서
-관리합니다.
+2026-10-01 사용자가 꽃 캐릭터 시안 **A1**을 선택했습니다. 기존의 따뜻한 색조와 약간의
+비대칭을 유지하면서 다섯 개의 도톰한 꽃잎과 작은 올리브색 눈으로 단순화한 모습입니다.
+선택한 1254×1254 원본은 `assets/brand/timeflower-icon-source.png` 한 곳에서 관리하며,
+파생 자산을 만들 때 형태를 다시 그리지 않습니다.
 
 ### 아이콘 생성
 
@@ -223,7 +224,7 @@ Expo 이미지 도구로 iOS 아이콘·스플래시·파비콘 크기에 맞게
 | `android-icon-background.png` | 1024 | Adaptive 배경(단색) |
 | `android-icon-foreground.png` | 1024 | Adaptive 전경. 바깥 33%가 잘리므로 마크를 좁게 |
 | `android-icon-monochrome.png` | 1024 | Android 13+ 테마 아이콘 |
-| `splash-icon.png` | 512 | 스플래시. 원본 배경색 `#EBE5DC`와 맞춤 |
+| `splash-icon.png` | 512 | 꽃만 투명 배경으로 추출. 스플래시 바탕은 A1 아이보리 `#F8F1E1` |
 | `favicon.png` | 96 | 웹 |
 
 ### 이름이 들어가는 곳 / 안 들어가는 곳
