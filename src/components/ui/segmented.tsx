@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type SegmentedProps<T extends string> = {
@@ -22,10 +22,18 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
             key={option.value}
             accessibilityRole="button"
             accessibilityState={{ selected }}
+            hitSlop={{ top: 2, bottom: 2 }}
             onPress={() => onChange(option.value)}
-            style={[
+            style={({ pressed }) => [
               styles.item,
-              selected && { backgroundColor: colors.surface, borderColor: colors.border },
+              {
+                backgroundColor: selected
+                  ? colors.surface
+                  : pressed
+                    ? colors.surfacePressed
+                    : 'transparent',
+                borderColor: selected ? colors.border : 'transparent',
+              },
             ]}>
             <Txt variant="label" tone={selected ? 'default' : 'secondary'}>
               {option.label}
@@ -40,18 +48,19 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
 const styles = StyleSheet.create({
   track: {
     flexDirection: 'row',
-    padding: 3,
+    minHeight: Layout.controlHeight,
+    padding: 2,
     borderRadius: Radius.md,
-    gap: 3,
+    gap: 2,
   },
   item: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    height: 36,
+    minHeight: 40,
     borderRadius: Radius.sm,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: 'transparent',
     paddingHorizontal: Spacing.sm,
+    paddingVertical: Spacing.sm,
   },
 });

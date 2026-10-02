@@ -1,23 +1,143 @@
 import { router, useLocalSearchParams } from 'expo-router';
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet } from 'react-native';
+import { useRef, useState } from 'react';
+import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
+import { Divider } from '@/components/ui/card';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Spacing } from '@/constants/theme';
+import { MaxContentWidth, Radius, Spacing } from '@/constants/theme';
+import { useAuth } from '@/features/auth/auth-provider';
 import { useMyCalendars } from '@/features/calendars/queries';
-import { EventForm } from '@/features/events/event-form';
-import { useCreateEvent } from '@/features/events/queries';
+import {
+  uploadAttachmentDrafts,
+  type AttachmentDraft,
+} from '@/features/events/attachment-queries';
+import { AttachmentDraftPicker } from '@/features/events/attachments';
+import { EventEditorHeader } from '@/features/events/event-editor-header';
+import { EventForm, type EventFormHandle } from '@/features/events/event-form';
+import { useEventEditorExit } from '@/features/events/use-event-editor-exit';
+import { useCreateEvent, type EventInput } from '@/features/events/queries';
 import { useTheme } from '@/hooks/use-theme';
-import { parseDateKey, startOfDay } from '@/lib/event-time';
+import { notify } from '@/lib/confirm';
+import { newEventTime, parseDateKey } from '@/lib/event-time';
 
 export default function NewEventScreen() {
   const { colors } = useTheme();
-  const { date, calendarId } = useLocalSearchParams<{ date?: string; calendarId?: string }>();
+  const {
+    date,
+    calendarId,
+    copyTitle,
+    copyLocation,
+    copyDescription,
+    copyAllDay,
+    copyStartAt,
+    copyEndAt,
+    copyStartDate,
+    copyEndDate,
+    multiCopy,
+  } = useLocalSearchParams<{
+    date?: string;
+    calendarId?: string;
+    copyTitle?: string;
+    copyLocation?: string;
+    copyDescription?: string;
+    copyAllDay?: string;
+    copyStartAt?: string;
+    copyEndAt?: string;
+    copyStartDate?: string;
+    copyEndDate?: string;
+    multiCopy?: string;
+  }>();
+  const { user } = useAuth();
 
   const calendars = useMyCalendars();
   const create = useCreateEvent();
+  const formRef = useRef<EventFormHandle>(null);
+  const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [attachmentRecovery, setAttachmentRecovery] = useState<{ eventId: string; calendarId: string } | null>(null);
+  const [attachmentError, setAttachmentError] = useState('');
+  const [dirty, setDirty] = useState(false);
+  const { finish, savingRef } = useEventEditorExit(saving || create.isPending, dirty || drafts.length > 0);
+  const [initialTime] = useState(() => {
+    const now = new Date();
+    return newEventTime(date ? parseDateKey(date) : now, now);
+  });
+
+  async function submit(input: EventInput) {
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      const created = await create.mutateAsync(input);
+
+      if (drafts.length && user) {
+        try {
+          await uploadAttachmentDrafts({
+            drafts,
+            eventId: created.id,
+            calendarId: input.calendar_id,
+            uploadedBy: user.id,
+            onUploaded: (draft) => setDrafts((current) => current.filter((item) => item.id !== draft.id)),
+          });
+        } catch (e) {
+          formRef.current?.markSaved();
+          setAttachmentRecovery({ eventId: created.id, calendarId: input.calendar_id });
+          setAttachmentError(e instanceof Error ? e.message : String(e));
+          notify(
+            '일정은 저장됐지만 첨부하지 못했습니다',
+            e instanceof Error ? e.message : String(e),
+          );
+          return;
+        }
+      }
+
+      if (multiCopy === 'true') {
+        formRef.current?.markSaved();
+        setDrafts([]);
+        notify('일정을 복사했습니다', '날짜를 바꾼 뒤 다시 저장하면 계속 복사할 수 있습니다.');
+      } else {
+        finish();
+      }
+    } catch {
+      // mutation 상태의 오류 문구를 폼 아래에서 보여 준다.
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function retryAttachments() {
+    if (!attachmentRecovery || !user || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await uploadAttachmentDrafts({ drafts, ...attachmentRecovery, uploadedBy: user.id,
+        onUploaded: (draft) => setDrafts((current) => current.filter((item) => item.id !== draft.id)),
+      });
+      setAttachmentRecovery(null);
+      setDrafts([]);
+      if (multiCopy === 'true') notify('첨부를 저장했습니다', '날짜를 바꾼 뒤 계속 복사할 수 있습니다.');
+      else finish();
+    } catch (error) { setAttachmentError(error instanceof Error ? error.message : String(error)); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+
+  if (attachmentRecovery) {
+    return <>
+      <EventEditorHeader title="첨부 다시 시도" saveDisabled onSave={() => undefined} />
+      <Content style={styles.content}>
+        <Txt variant="subtitle">일정은 저장되었습니다</Txt>
+        <Txt variant="body" tone="secondary">실패한 파일만 다시 첨부합니다. 일정은 중복으로 만들지 않습니다.</Txt>
+        <Txt variant="caption" tone="danger">{attachmentError}</Txt>
+        <AttachmentDraftPicker drafts={drafts} onChange={setDrafts} disabled={saving} />
+        <Button label="첨부 다시 시도" loading={saving} onPress={() => void retryAttachments()} />
+        <Button label="첨부 없이 마치기" variant="ghost" disabled={saving} onPress={() => { setDrafts([]); finish(); }} />
+      </Content>
+    </>;
+  }
 
   // 캘린더가 없으면 넣을 곳이 없다. 만들기부터 안내한다.
   if (calendars.data && calendars.data.length === 0) {
@@ -49,52 +169,98 @@ export default function NewEventScreen() {
     );
   }
 
-  // 선택한 날의 09:00~10:00을 기본으로 연다. 날짜 파라미터가 없으면 오늘.
-  const base = date ? parseDateKey(date) : startOfDay(new Date());
-  const start = new Date(base);
-  start.setHours(9, 0, 0, 0);
-  const end = new Date(start);
-  end.setHours(10, 0, 0, 0);
+  const copiedTime =
+    copyAllDay === 'true' && copyStartDate
+      ? {
+          isAllDay: true,
+          start: parseDateKey(copyStartDate),
+          end: parseDateKey(copyEndDate || copyStartDate),
+        }
+      : copyAllDay === 'false' && copyStartAt && copyEndAt
+        ? {
+            isAllDay: false,
+            start: new Date(copyStartAt),
+            end: new Date(copyEndAt),
+          }
+        : initialTime;
 
   return (
-    <KeyboardAvoidingView
-      style={[styles.flex, { backgroundColor: colors.background }]}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Content style={styles.content}>
+    <>
+      <EventEditorHeader
+        title="새 일정"
+        pending={create.isPending || saving}
+        onSave={() => formRef.current?.submit()}
+      />
+      <KeyboardAvoidingView
+        style={[styles.flex, { backgroundColor: colors.background }]}
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}>
+          {multiCopy === 'true' ? (
+            <View style={[styles.copyGuide, { backgroundColor: colors.accentSoft }]}>
+              <Txt variant="label" tone="accent">
+                여러 날짜에 복사
+              </Txt>
+              <Txt variant="caption" tone="secondary">
+                저장한 뒤 날짜를 바꾸고 다시 저장하세요. 완료하면 왼쪽 위 닫기를 누르세요.
+              </Txt>
+            </View>
+          ) : null}
           <EventForm
+            ref={formRef}
             calendars={calendars.data}
             submitLabel="추가"
-            pending={create.isPending}
+            showSubmitButton={false}
+            pending={create.isPending || saving}
+            onDirtyChange={setDirty}
             initial={{
               calendarId: calendarId ?? calendars.data[0].id,
-              title: '',
-              location: '',
-              description: '',
-              time: { isAllDay: false, start, end },
+              title: copyTitle ?? '',
+              location: copyLocation ?? '',
+              description: copyDescription ?? '',
+              time: copiedTime,
               recurrence: { freq: null, until: null },
             }}
-            onSubmit={(input) =>
-              create.mutate(input, {
-                onSuccess: () => router.back(),
-              })
-            }
-          />
+            onSubmit={submit}>
+            <View>
+              <Divider />
+              <AttachmentDraftPicker
+                compact
+                drafts={drafts}
+                onChange={setDrafts}
+                disabled={saving}
+              />
+            </View>
+          </EventForm>
 
           {create.isError ? (
             <Txt variant="caption" tone="danger">
               저장하지 못했습니다: {(create.error as Error).message}
             </Txt>
           ) : null}
-        </Content>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
-  scroll: { flexGrow: 1, paddingVertical: Spacing.xxl },
-  content: { flex: 0, gap: Spacing.lg, paddingHorizontal: Spacing.xl },
+  scroll: { flex: 1, width: '100%', maxWidth: MaxContentWidth, alignSelf: 'center' },
+  content: {
+    gap: Spacing.lg,
+    paddingHorizontal: Spacing.xl,
+    paddingTop: Spacing.lg,
+    paddingBottom: Spacing.xxxl,
+  },
   empty: { justifyContent: 'center', paddingHorizontal: Spacing.xl },
+  copyGuide: {
+    gap: Spacing.xs,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.sm,
+    borderRadius: Radius.sm,
+  },
 });

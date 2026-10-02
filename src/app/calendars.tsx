@@ -8,11 +8,12 @@ import { ListRow } from '@/components/ui/list-row';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
 import { Radius, Spacing } from '@/constants/theme';
+import { calendarColorForScheme } from '@/features/calendars/colors';
 import { useMyCalendars } from '@/features/calendars/queries';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function CalendarsScreen() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const calendars = useMyCalendars();
 
   return (
@@ -29,7 +30,14 @@ export default function CalendarsScreen() {
                   <ListRow
                     title={calendar.name}
                     subtitle={`구성원 ${calendar.memberCount}명${calendar.role === 'OWNER' ? ' · 내가 만든 캘린더' : ''}`}
-                    right={<View style={[styles.dot, { backgroundColor: calendar.color }]} />}
+                    right={
+                      <View
+                        style={[
+                          styles.dot,
+                          { backgroundColor: calendarColorForScheme(calendar.color, scheme) },
+                        ]}
+                      />
+                    }
                     onPress={() =>
                       router.push({ pathname: '/calendar/[id]', params: { id: calendar.id } })
                     }

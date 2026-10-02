@@ -1,7 +1,7 @@
 import { ActivityIndicator, Pressable, StyleSheet, type PressableProps } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
@@ -52,6 +52,7 @@ export function Button({
           backgroundColor: pressed ? surface.pressed : surface.bg,
           borderColor: surface.border,
           opacity: inactive ? 0.45 : 1,
+          transform: [{ scale: pressed ? 0.98 : 1 }],
         },
       ]}
       {...rest}>
@@ -74,7 +75,7 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     paddingHorizontal: Spacing.xl,
   },
-  md: { height: 42 },
-  lg: { height: 52 },
+  md: { minHeight: Layout.controlHeight, paddingVertical: Spacing.sm },
+  lg: { minHeight: Layout.prominentControlHeight, paddingVertical: Spacing.md },
   block: { alignSelf: 'stretch' },
 });

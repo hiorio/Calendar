@@ -1,10 +1,11 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Notice } from '@/components/ui/notice';
+import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, Typography } from '@/constants/theme';
+import { Layout, Radius, Spacing, Typography } from '@/constants/theme';
 import {
   formatRelativeTime,
   useAddComment,
@@ -28,12 +29,19 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
 
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
+  const sending = useRef(false);
+  const preferredInputStyle = usePreferredTextStyle(styles.input);
 
   function send() {
     const content = draft.trim();
-    if (!content) return;
+    if (!content || sending.current || add.isPending) return;
+    sending.current = true;
 
-    add.mutate(content, { onSuccess: () => setDraft('') });
+    const sentDraft = draft;
+    add.mutate(content, {
+      onSuccess: () => setDraft((current) => current === sentDraft ? '' : current),
+      onSettled: () => { sending.current = false; },
+    });
   }
 
   async function askDelete(commentId: string) {
@@ -47,10 +55,6 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
 
   return (
     <View style={styles.section}>
-      <Txt variant="label" tone="secondary">
-        댓글
-      </Txt>
-
       {isRecurring ? (
         <Notice tone="info" title="반복 일정의 댓글은 모든 회차가 함께 봅니다">
           이 날짜에만 남는 것이 아닙니다.
@@ -94,7 +98,7 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
         </View>
       ) : (
         <Txt variant="caption" tone="tertiary">
-          {comments.isLoading ? '불러오는 중…' : '아직 댓글이 없습니다.'}
+          {comments.isError ? '댓글을 불러오지 못했습니다.' : comments.isLoading ? '불러오는 중…' : '아직 댓글이 없습니다.'}
         </Txt>
       )}
 
@@ -114,6 +118,7 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
               backgroundColor: colors.surface,
               borderColor: focused ? colors.accent : colors.border,
             },
+            preferredInputStyle,
           ]}
         />
         <Pressable
@@ -155,8 +160,8 @@ const styles = StyleSheet.create({
   body: { flex: 1, gap: 2 },
   meta: { flexDirection: 'row', alignItems: 'center', gap: Spacing.sm },
   deleteButton: {
-    width: 26,
-    height: 26,
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
     borderRadius: Radius.pill,
     alignItems: 'center',
     justifyContent: 'center',

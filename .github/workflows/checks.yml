@@ -1,0 +1,47 @@
+name: Portable and database checks
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  checks:
+    # Untrusted pull requests run only on an ephemeral hosted runner, never the Mac mini.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      SENTRY_DISABLE_AUTO_UPLOAD: 'true'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.2.0
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:regression
+      - run: npm run typecheck:worker
+      - run: npm run test:sql-embedded
+      - run: npm run db:start
+      - run: npm run db:reset
+      - run: npm run db:smoke
+      - run: npm run db:regression
+      - run: npm run db:env
+      - run: npm run web:export
+      - name: Stop local containers
+        if: always()
+        run: npm run db:stop

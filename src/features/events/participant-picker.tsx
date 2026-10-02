@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Layout, Radius, Spacing } from '@/constants/theme';
 import { useCalendarMembers } from '@/features/calendars/queries';
 import { useParticipants, useToggleParticipant } from '@/features/events/participants';
 import { useTheme } from '@/hooks/use-theme';
@@ -26,10 +26,6 @@ export function ParticipantPicker({ eventId, calendarId }: ParticipantPickerProp
 
   return (
     <View style={styles.section}>
-      <Txt variant="label" tone="secondary">
-        참여자
-      </Txt>
-
       <View style={styles.chips}>
         {members.data.map((member) => {
           const joined = joinedIds.has(member.user_id);
@@ -82,7 +78,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
-    height: 36,
+    minHeight: Layout.minTouchTarget,
     paddingLeft: 4,
     paddingRight: Spacing.md,
     borderRadius: Radius.pill,
