@@ -147,6 +147,24 @@ function mountForm(initial, overrides = {}) {
 }
 const values = (event, extra = {}) => ({ calendarId: 'calendar', title: event.title, location: event.location, description: event.description,
   time: time.fromTimeColumns(event), recurrence: recurrence.parseRrule(event.rrule), rawRrule: event.rrule, timezone: event.timezone, ...extra });
+await check('일정 토글은 iOS 기본 위쪽 정렬을 덮고 크기·상태 전환을 유지', () => {
+  const form = mountForm(values(master()));
+  let tree = form.render();
+  const switches = descendants(tree).filter((node) => node.type === 'Switch');
+  assert.equal(switches.length, 2);
+  for (const control of switches) {
+    assert.equal(control.props.style.alignSelf, 'center');
+    assert.equal(control.props.style.flexShrink, 0);
+    assert.equal(control.props.style.height, undefined, 'iOS 버전별 시스템 토글 높이를 유지');
+    assert.equal(control.props.style.transform, undefined, '임의 이동/확대 없이 레이아웃으로 정렬');
+    assert.ok(control.props.accessibilityLabel);
+  }
+  switches[0].props.onValueChange(true); tree = form.render();
+  assert.equal(descendants(tree).find((node) => node.type === 'Switch' && node.props.accessibilityLabel === '종일 일정').props.value, true);
+  assert.equal(descendants(tree).filter((node) => node.type === 'DateTimeField' && node.props.mode === 'time').length, 0);
+  descendants(tree).find((node) => node.type === 'Switch' && node.props.accessibilityLabel === '반복 종료일 사용').props.onValueChange(true);
+  assert.equal(descendants(form.render()).find((node) => node.type === 'Switch' && node.props.accessibilityLabel === '반복 종료일 사용').props.value, true);
+});
 await check('종료일 당일 09시에도 전체 저장 가능하고 해외 제목 수정은 RRULE/타임존 보존', async () => {
   process.env.TZ = 'Asia/Seoul';
   const event = master({ start_at: '2026-09-05T13:00:00Z', end_at: '2026-09-05T14:00:00Z', timezone: 'America/New_York', rrule: 'FREQ=DAILY;UNTIL=20260905T235900;BYHOUR=9' });

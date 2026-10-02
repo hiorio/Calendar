@@ -218,6 +218,8 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
             종일
           </Txt>
           <Switch
+            style={styles.switchControl}
+            accessibilityLabel="종일 일정"
             value={time.isAllDay}
             onValueChange={(next) => setTime((current) => switchAllDay(current, next))}
             trackColor={{ true: colors.accent, false: colors.surfaceMuted }}
@@ -336,6 +338,8 @@ export const EventForm = forwardRef<EventFormHandle, EventFormProps>(function Ev
                 />
               ) : null}
               <Switch
+                style={styles.switchControl}
+                accessibilityLabel="반복 종료일 사용"
                 value={recurrence.until !== null}
                 onValueChange={(on) =>
                   setRecurrence((current) => ({
@@ -509,6 +513,8 @@ const styles = StyleSheet.create({
   },
   compactLabel: { minWidth: 36 },
   rowLabel: { flex: 1 },
+  // RN Switch의 기본 alignSelf: flex-start가 행의 alignItems를 덮는다.
+  switchControl: { alignSelf: 'center', flexShrink: 0 },
   readOnlyValue: { marginLeft: 'auto' },
   timeRow: {
     minHeight: 56,
