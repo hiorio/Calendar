@@ -97,6 +97,7 @@ function makeProps({
   theme,
   preferredScheme,
   availableMonths,
+  monthPageCache = new Map(),
 }: {
   month: Date;
   now: Date;
@@ -112,6 +113,7 @@ function makeProps({
   theme: AppTheme;
   preferredScheme: SchemePreference;
   availableMonths: Date[];
+  monthPageCache?: Map<string, WidgetMonthPage>;
 }): TimeFlowerWidgetProps {
   const visibleIds = visibleCalendarIds(
     calendars,
@@ -184,6 +186,13 @@ function makeProps({
 
   const makeMonthPage = (pageMonth: Date): WidgetMonthPage => {
     const normalizedMonth = startOfMonth(pageMonth);
+    const monthKey = toDateKey(normalizedMonth).slice(0, 7);
+    const withToday = (page: WidgetMonthPage): WidgetMonthPage => ({
+      ...page,
+      weeks: page.weeks.map((week) => ({ ...week, days: week.days.map((day) => ({ ...day, isToday: day.key === toDateKey(now) })) })),
+    });
+    const cachedPage = monthPageCache.get(monthKey);
+    if (cachedPage) return withToday(cachedPage);
     const weeks: WidgetWeekItem[] = buildMonthMatrix(normalizedMonth, weekStart).map((week) => {
       const weekKeys = week.map(toDateKey);
       const placements = layoutWeekMarks(weekKeys, layoutMarksByDate);
@@ -250,12 +259,14 @@ function makeProps({
       return { key: weekKeys[0], days, lanes };
     });
 
-    return {
-      key: toDateKey(normalizedMonth).slice(0, 7),
+    const page = {
+      key: monthKey,
       title: new Intl.DateTimeFormat('ko-KR', { year: 'numeric', month: 'long' }).format(normalizedMonth),
       shortTitle: new Intl.DateTimeFormat('ko-KR', { month: 'long' }).format(normalizedMonth),
       weeks,
     };
+    monthPageCache.set(monthKey, page);
+    return withToday(page);
   };
   const currentMonthPage = makeMonthPage(month);
   const adjacentMonthPages = [...new Map(
@@ -381,7 +392,7 @@ export function WidgetSync() {
   // 홈의 현재 달 요청과 같은 캐시를 먼저 채운 뒤 다음 달을 받는다. 위젯은 화면에
   // 보이지 않으므로 첫 화면 네트워크 대역을 선점할 이유가 없다.
   const nextEvents = useMonthEvents(nextMonth, weekStart, currentEvents.isFetched);
-  const memos = useMemos();
+  const memos = useMemos(false);
 
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout>;
@@ -498,6 +509,8 @@ export function WidgetSync() {
       ...(nextEvents.data ? [nextMonth] : []),
     ];
     const shared = {
+      // 한 번 발행하는 타임라인에서만 재사용한다. 계정/설정 변경 때 공유하지 않는다.
+      monthPageCache: new Map<string, WidgetMonthPage>(),
       calendars: calendars.data,
       events: allEvents,
       memos: memos.data ?? [],

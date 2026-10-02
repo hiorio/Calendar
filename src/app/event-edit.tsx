@@ -23,11 +23,11 @@ import {
 import { useTheme } from '@/hooks/use-theme';
 import { confirm } from '@/lib/confirm';
 import { fromTimeColumns, occurrenceTime } from '@/lib/event-time';
-import { parseRrule } from '@/lib/recurrence';
+import { isOriginalOccurrence, parseRrule } from '@/lib/recurrence';
 
 const SCOPE_OPTIONS = [
   { value: 'THIS' as const, label: '이 일정만' },
-  { value: 'FOLLOWING' as const, label: '이후 모두' },
+  { value: 'FOLLOWING' as const, label: '이후 삭제' },
   { value: 'ALL' as const, label: '전체' },
 ];
 
@@ -52,15 +52,17 @@ export default function EventEditScreen() {
   // 예외 조회가 끝나기 전에는 폼을 그리지 않는다.
   // EventForm 은 initial 을 useState 로 한 번만 받으므로, 나중에 도착한 값은
   // 반영되지 않는다 — 고쳐 둔 회차를 열었는데 마스터 값이 보이게 된다.
-  const exceptionPending = Boolean(occ) && !exception.isFetched;
+  const exceptionPending = Boolean(occ) && exception.data === undefined && !exception.isError;
+  const unavailable = event.data?.deleted_at || exception.data?.type === 'CANCELLED' ||
+    (event.data?.rrule && occ && !isOriginalOccurrence(event.data, new Date(occ)));
 
-  if (!event.data || !calendars.data || exceptionPending) {
+  if (!event.data || !calendars.data || exceptionPending || unavailable || event.isError || exception.isError) {
     return (
       <>
         <EventEditorHeader title="일정 수정" saveDisabled onSave={() => undefined} />
         <Content style={[styles.empty, { backgroundColor: colors.background }]}>
           <Txt variant="body" tone="secondary">
-            {event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
+            {unavailable ? '삭제되었거나 취소된 일정은 수정할 수 없습니다.' : event.isError || exception.isError || calendars.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
           </Txt>
         </Content>
       </>
@@ -68,7 +70,7 @@ export default function EventEditScreen() {
   }
 
   const master = event.data;
-  // MODIFIED 예외만 값을 덮는다. CANCELLED는 목록에서 이미 빠져 여기 오지 않는다.
+  // 취소/삭제/규칙에서 빠진 회차는 위에서 막고 MODIFIED 예외만 값을 덮는다.
   const isRecurring = Boolean(master.rrule);
   // 회차 정보가 없으면(예: 링크로 직접 들어옴) 회차 단위 작업을 할 수 없다
   const originalStart = occ ?? null;
@@ -175,7 +177,7 @@ export default function EventEditScreen() {
                   <Segmented options={SCOPE_OPTIONS} value={scope} onChange={(next) => { void changeScope(next); }} />
                   {submitBlocked ? (
                     <Txt variant="caption" tone="secondary">
-                      이후 모두 수정은 준비 중이며 삭제만 가능합니다.
+                      선택한 날짜부터 이후 일정을 삭제하는 범위입니다. 수정하려면 ‘이 일정만’ 또는 ‘전체’를 선택해 주세요.
                     </Txt>
                   ) : null}
                 </View>

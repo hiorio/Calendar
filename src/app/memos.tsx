@@ -30,11 +30,14 @@ export default function MemosScreen() {
   const deleteMemo = useDeleteMemo();
   const [calendarId, setCalendarId] = useState('');
   const [content, setContent] = useState('');
+  const [showCompleted, setShowCompleted] = useState(false);
+  const visibleMemos = (memos.data ?? []).filter((memo) => showCompleted || !memo.done);
   const submitting = useRef(false);
   const pendingIds = useRef(new Set<string>());
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [actionErrors, setActionErrors] = useState<Record<string, string>>({});
-  const selectedCalendarId = calendarId || calendars.data?.[0]?.id || '';
+  const selectedCalendarId = calendars.data?.some((calendar) => calendar.id === calendarId)
+    ? calendarId : calendars.data?.length === 1 ? calendars.data[0].id : '';
 
   async function submit() {
     if (submitting.current || !selectedCalendarId || !content.trim()) return;
@@ -128,9 +131,10 @@ export default function MemosScreen() {
               label="메모 추가"
               size="md"
               loading={createMemo.isPending}
-              disabled={!content.trim()}
+              disabled={!content.trim() || !selectedCalendarId}
               onPress={submit}
             />
+            {!selectedCalendarId ? <Txt variant="caption" tone="secondary">메모를 함께 볼 캘린더를 먼저 선택해 주세요.</Txt> : null}
           </Card>
         ) : (
           <Card>
@@ -147,8 +151,8 @@ export default function MemosScreen() {
             저장한 메모
           </Txt>
           <Card padded={false}>
-            {memos.data?.length ? (
-              memos.data.map((memo, index) => (
+            {visibleMemos.length ? (
+              visibleMemos.map((memo, index) => (
                 <View key={memo.id}>
                   {index > 0 ? <Divider /> : null}
                   <View style={styles.memoRow}>
@@ -211,11 +215,14 @@ export default function MemosScreen() {
               <EmptyState
                 compact
                 icon="document-text-outline"
-                title="아직 메모가 없어요"
-                description="위에서 첫 메모를 남겨 보세요."
+                title={memos.isPending ? '메모를 불러오는 중…' : memos.isError ? '메모를 불러오지 못했어요' : '진행 중인 메모가 없어요'}
+                description={memos.isError ? '연결을 확인하고 다시 시도해 주세요.' : '위에서 메모를 남기거나 완료한 메모를 펼쳐 보세요.'}
               />
             )}
           </Card>
+          {memos.data?.some((memo) => memo.done) ? (
+            <Button variant="ghost" label={showCompleted ? '완료한 메모 접기' : `완료한 메모 ${memos.data.filter((memo) => memo.done).length}개 보기`} onPress={() => setShowCompleted((value) => !value)} />
+          ) : null}
         </View>
 
         {memos.isError ? (

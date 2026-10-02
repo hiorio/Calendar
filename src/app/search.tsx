@@ -1,9 +1,10 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, TextInput, View } from 'react-native';
 
 import { Card, Divider } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
 import { usePreferredTextStyle } from '@/components/ui/preferred-text-style';
 import { Content } from '@/components/ui/screen';
@@ -18,7 +19,17 @@ import { formatEventTimeRange } from '@/lib/event-time';
 export default function SearchScreen() {
   const { colors, scheme } = useTheme();
   const [query, setQuery] = useState('');
-  const results = useEventSearch(query);
+  const [settledQuery, setSettledQuery] = useState('');
+  const [limit, setLimit] = useState(50);
+  useEffect(() => {
+    if (query.trim() === settledQuery) return;
+    const timer = setTimeout(() => { setSettledQuery(query.trim()); setLimit(50); }, 250);
+    return () => clearTimeout(timer);
+  }, [query, settledQuery]);
+  const results = useEventSearch(settledQuery, limit);
+  const waitingForInput = query.trim() !== settledQuery;
+  const visibleResults = waitingForInput ? [] : (results.data ?? []).slice(0, limit);
+  const hasMore = !waitingForInput && (results.data?.length ?? 0) > limit;
   const preferredInputStyle = usePreferredTextStyle(styles.input);
 
   return (
@@ -29,7 +40,7 @@ export default function SearchScreen() {
       <Content style={styles.content}>
         <View style={styles.intro}>
           <Txt variant="body" tone="secondary">
-            내가 볼 수 있는 캘린더의 일정 제목을 찾습니다.
+            앱에 등록한 일정 제목을 찾습니다. 연결된 외부 캘린더는 해당 앱에서 검색해 주세요.
           </Txt>
         </View>
 
@@ -44,6 +55,7 @@ export default function SearchScreen() {
             autoFocus
             value={query}
             onChangeText={setQuery}
+            onSubmitEditing={() => { setSettledQuery(query.trim()); setLimit(50); }}
             placeholder="일정 이름 검색"
             placeholderTextColor={colors.textTertiary}
             returnKeyType="search"
@@ -63,11 +75,11 @@ export default function SearchScreen() {
         {query.trim() ? (
           <View style={styles.section}>
             <Txt variant="label" tone="tertiary">
-              검색 결과 {results.data?.length ?? 0}개
+              {waitingForInput || results.isFetching ? '검색 중…' : `검색 결과 ${visibleResults.length}개${hasMore ? ' 이상' : ''}`}
             </Txt>
             <Card padded={false}>
-              {results.data?.length ? (
-                results.data.map((event, index) => (
+              {visibleResults.length ? (
+                visibleResults.map((event, index) => (
                   <View key={event.key}>
                     {index > 0 ? <Divider /> : null}
                     <Pressable
@@ -103,7 +115,9 @@ export default function SearchScreen() {
                     </Pressable>
                   </View>
                 ))
-              ) : results.isFetching ? (
+              ) : results.isError && !waitingForInput ? (
+                <EmptyState compact icon="cloud-offline-outline" title="검색하지 못했어요" description="연결을 확인하고 다시 시도해 주세요." />
+              ) : results.isFetching || waitingForInput ? (
                 <EmptyState compact icon="search-outline" title="검색하고 있어요" />
               ) : (
                 <EmptyState
@@ -114,18 +128,19 @@ export default function SearchScreen() {
                 />
               )}
             </Card>
+            {hasMore ? <Button label="검색 결과 더 보기" variant="ghost" loading={results.isFetching} onPress={() => setLimit((value) => value + 50)} /> : null}
           </View>
         ) : (
           <Card>
             <EmptyState
               icon="search-outline"
               title="일정 이름을 입력해 주세요"
-              description="최근 일정부터 최대 50개를 보여 줍니다."
+              description="최근 일정부터 보여 주며, 결과가 많으면 더 볼 수 있습니다."
             />
           </Card>
         )}
 
-        {results.isError ? (
+        {results.isError && !waitingForInput && query.trim() ? (
           <Txt variant="caption" tone="danger">
             검색하지 못했습니다: {(results.error as Error).message}
           </Txt>

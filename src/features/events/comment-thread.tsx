@@ -1,5 +1,5 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Pressable, StyleSheet, TextInput, View } from 'react-native';
 
 import { Notice } from '@/components/ui/notice';
@@ -29,13 +29,19 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
 
   const [draft, setDraft] = useState('');
   const [focused, setFocused] = useState(false);
+  const sending = useRef(false);
   const preferredInputStyle = usePreferredTextStyle(styles.input);
 
   function send() {
     const content = draft.trim();
-    if (!content) return;
+    if (!content || sending.current || add.isPending) return;
+    sending.current = true;
 
-    add.mutate(content, { onSuccess: () => setDraft('') });
+    const sentDraft = draft;
+    add.mutate(content, {
+      onSuccess: () => setDraft((current) => current === sentDraft ? '' : current),
+      onSettled: () => { sending.current = false; },
+    });
   }
 
   async function askDelete(commentId: string) {
@@ -92,7 +98,7 @@ export function CommentThread({ eventId, isRecurring = false }: CommentThreadPro
         </View>
       ) : (
         <Txt variant="caption" tone="tertiary">
-          {comments.isLoading ? '불러오는 중…' : '아직 댓글이 없습니다.'}
+          {comments.isError ? '댓글을 불러오지 못했습니다.' : comments.isLoading ? '불러오는 중…' : '아직 댓글이 없습니다.'}
         </Txt>
       )}
 

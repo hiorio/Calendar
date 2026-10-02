@@ -11,7 +11,7 @@ async function check(name, run) {
   passed += 1;
   console.log(`  PASS  ${name}`);
 }
-function load(path, mocks) {
+function load(path, mocks, expose = '') {
   const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
   const { outputText } = ts.transpileModule(source, {
     compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: false },
@@ -21,7 +21,7 @@ function load(path, mocks) {
     if (name in mocks) return mocks[name];
     throw new Error(`Missing mock ${name} in ${path}`);
   };
-  new Function('require', 'module', 'exports', outputText)(require, module, module.exports);
+  new Function('require', 'module', 'exports', outputText + expose)(require, module, module.exports);
   return module.exports;
 }
 function storage() {
@@ -333,12 +333,13 @@ await check('calendar header add affordance routes through the session guard', (
     isFetched: true,
     isSuccess: true,
   };
+  const harness = hooks();
   const react = {
+    ...harness.react,
     useCallback: (callback) => callback,
     useEffect: () => {},
     useMemo: (factory) => factory(),
     useRef: (initial) => ({ current: initial }),
-    useState: (initial) => [typeof initial === 'function' ? initial() : initial, () => {}],
   };
   const CalendarScreen = load('src/app/(app)/index.tsx', {
     '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
@@ -412,7 +413,7 @@ await check('calendar header add affordance routes through the session guard', (
       addMonths: (date, amount) => new Date(date.getFullYear(), date.getMonth() + amount, 1),
       formatMonthTitle: () => '2026년 9월',
       startOfMonth: () => new Date(2026, 8, 1),
-      toDateKey: () => '2026-09-01',
+      toDateKey: (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
     },
     '@/stores/calendar-filter': {
       useCalendarFilter: () => ({ hidden: [], toggle: () => {} }),
@@ -431,7 +432,7 @@ await check('calendar header add affordance routes through the session guard', (
     },
   }).default;
 
-  let tree = CalendarScreen();
+  let tree = harness.render(CalendarScreen);
   let addButton = find(
     tree,
     (node) => node.type === 'Pressable' && node.props.accessibilityLabel === '일정 추가',
@@ -456,13 +457,54 @@ await check('calendar header add affordance routes through the session guard', (
   ]);
 
   session = { user: { id: 'account' } };
-  tree = CalendarScreen();
+  tree = harness.render(CalendarScreen);
+  const monthView = find(tree, (node) => node.type === 'MonthView');
+  monthView.props.onSelect(new Date(2026, 8, 17));
+  tree = harness.render(CalendarScreen);
   addButton = find(
     tree,
     (node) => node.type === 'Pressable' && node.props.accessibilityLabel === '일정 추가',
   );
   addButton.props.onPress();
-  assert.equal(navigations.at(-1), '/event-new');
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: { date: '2026-09-17' } });
+  find(tree, (node) => node.props?.accessibilityState?.expanded === false).props.onPress();
+  tree = harness.render(CalendarScreen);
+  find(tree, (node) => node.type === 'MonthPicker').props.onChange(new Date(2027, 0, 1));
+  tree = harness.render(CalendarScreen);
+  find(tree, (node) => node.props?.accessibilityLabel === '일정 추가').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: { date: '2027-01-01' } });
+  find(tree, (node) => node.props?.onAccessibilityAction).props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } });
+  tree = harness.render(CalendarScreen);
+  find(tree, (node) => node.props?.accessibilityLabel === '일정 추가').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: { date: '2027-02-01' } });
+});
+await check('quick entry keeps title/calendar/date and all-day or timed selection in the full editor', () => {
+  const harness = hooks();
+  const navigations = [];
+  const base = new Date(2026, 9, 5, 15, 20);
+  const end = new Date(2026, 9, 5, 16, 20);
+  const component = load('src/app/quick-event.tsx', {
+    ...componentMocks(harness.react),
+    'expo-router': { router: { replace: (href) => navigations.push(href) }, useLocalSearchParams: () => ({ date: '2026-10-05' }) },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: [{ id: 'calendar', name: '개인' }] }) },
+    '@/features/events/queries': { useCreateEvent: () => ({}) },
+    '@/features/widgets/quick-calendar-picker': { QuickCalendarPicker: 'QuickCalendarPicker' },
+    '@/lib/date': { toDateKey: () => '2026-10-05' },
+    '@/lib/event-time': { formatDate: () => '', formatTime: () => '', parseDateKey: () => base, quickEventTime: () => ({ isAllDay: false, start: base, end }), startOfDay: (value) => value, toTimeColumns: () => ({}) },
+  }).default;
+  let tree = harness.render(component);
+  find(tree, (node) => node.type === 'Field').props.onChangeText('약속');
+  tree = harness.render(component);
+  find(tree, (node) => node.type === 'Button' && node.props.label === '장소·반복 등 자세히 입력').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: {
+    date: '2026-10-05', calendarId: 'calendar', copyTitle: '약속', copyAllDay: 'false', copyStartAt: base.toISOString(), copyEndAt: end.toISOString(),
+  } });
+  find(tree, (node) => node.type === 'Segmented').props.onChange('all-day');
+  tree = harness.render(component);
+  find(tree, (node) => node.type === 'Button' && node.props.label === '장소·반복 등 자세히 입력').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: {
+    date: '2026-10-05', calendarId: 'calendar', copyTitle: '약속', copyAllDay: 'true', copyStartDate: '2026-10-05',
+  } });
 });
 await check('keyboard plus button submits one quick event and completion cannot pop an unmounted screen', async () => {
   const harness = hooks();
@@ -475,6 +517,7 @@ await check('keyboard plus button submits one quick event and completion cannot 
     '@/features/calendars/queries': { useMyCalendars: () => ({ data: [{ id: 'calendar', name: '개인' }] }) },
     '@/features/events/queries': { useCreateEvent: () => ({ mutateAsync: async () => { writes++; await request.promise; } }) },
     '@/features/widgets/quick-calendar-picker': { QuickCalendarPicker: 'QuickCalendarPicker' },
+    '@/lib/date': { toDateKey: () => '2026-10-01' },
     '@/lib/event-time': { formatDate: () => '', formatTime: () => '', quickEventTime: (start) => ({ start, end: start }), startOfDay: (value) => value, toTimeColumns: () => ({}) },
   }).default;
   let tree = harness.render(component);
@@ -487,6 +530,175 @@ await check('keyboard plus button submits one quick event and completion cannot 
   request.resolve();
   await tick();
   assert.equal(backs, 0);
+});
+
+await check('calendar text is available before batched cover signing finishes', async () => {
+  const request = deferred();
+  let metadata;
+  let signed;
+  const options = [];
+  let signingCalls = 0;
+  const module = load('src/features/calendars/queries.ts', {
+    react: { useMemo: (factory) => factory() },
+    'expo-crypto': {},
+    '@tanstack/react-query': { useQuery: (option) => { options.push(option); return option.queryKey[0] === 'calendars' ? { data: metadata, isSuccess: Boolean(metadata) } : { data: signed }; } },
+    '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+    '@/features/calendars/cover': { CALENDAR_MEDIA_BUCKET: 'calendar-media' },
+    '@/features/events/queries': { eventKeys: {} },
+    '@/lib/supabase': { supabase: {
+      from: () => { const builder = { select: () => builder, order: () => builder, abortSignal: () => builder,
+        then: (resolve) => Promise.resolve({ data: [{ id: 'calendar', name: '내 일정', color: 'color', cover_url: 'cover.png', owner_id: 'A', calendar_members: [{ user_id: 'A', role: 'OWNER', muted: false }] }], error: null }).then(resolve) }; return builder; },
+      storage: { from: () => ({ createSignedUrls: async (paths) => { signingCalls++; assert.deepEqual(paths, ['cover.png']); return request.promise; } }) },
+    } },
+  });
+  module.useMyCalendars();
+  metadata = await options[0].queryFn({ signal: new AbortController().signal });
+  options.length = 0;
+  const result = module.useMyCalendars();
+  const signing = options[1].queryFn();
+  assert.equal(result.isSuccess, true);
+  assert.equal(result.data[0].name, '내 일정');
+  assert.equal(result.data[0].coverUrl, null);
+  request.resolve({ data: [{ path: 'cover.png', signedUrl: 'signed-cover' }], error: null });
+  signed = await signing;
+  assert.equal(module.useMyCalendars().data[0].coverUrl, 'signed-cover');
+  assert.equal(signingCalls, 1);
+});
+await check('comment completion keeps a newer draft and blocks duplicate sending', () => {
+  const harness = hooks();
+  let callbacks;
+  let sends = 0;
+  const component = load('src/features/events/comment-thread.tsx', {
+    ...componentMocks(harness.react),
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
+    'react-native': { ...native, Pressable: 'Pressable', TextInput: 'TextInput' },
+    '@/components/ui/notice': { Notice: 'Notice' },
+    '@/components/ui/preferred-text-style': { usePreferredTextStyle: () => ({}) },
+    '@/features/events/comments': { useComments: () => ({ data: [], isError: true }), useAddComment: () => ({ mutate: (_content, options) => { sends++; callbacks = options; } }), useDeleteComment: () => ({}), formatRelativeTime: () => '' },
+    '@/lib/confirm': { confirm: async () => false },
+  }).CommentThread;
+  const render = () => harness.render(() => component({ eventId: 'event' }));
+  let tree = render();
+  assert.ok(find(tree, (node) => node.type === 'Txt' && node.props.children === '댓글을 불러오지 못했습니다.'));
+  find(tree, (node) => node.type === 'TextInput').props.onChangeText('첫 댓글');
+  tree = render();
+  const send = find(tree, (node) => node.props?.accessibilityLabel === '댓글 보내기');
+  send.props.onPress(); send.props.onPress();
+  assert.equal(sends, 1);
+  find(tree, (node) => node.type === 'TextInput').props.onChangeText('다음 댓글');
+  callbacks.onSuccess(); callbacks.onSettled();
+  assert.equal(find(render(), (node) => node.type === 'TextInput').props.value, '다음 댓글');
+});
+await check('attachment retry uploads only remaining files without creating another event', async () => {
+  const harness = hooks();
+  let creates = 0;
+  let uploads = 0;
+  let finishes = 0;
+  const lock = { current: false };
+  const drafts = [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }];
+  const component = load('src/app/event-new.tsx', {
+    ...componentMocks(harness.react),
+    '@/components/ui/card': { Divider: 'Divider' },
+    'expo-router': { useLocalSearchParams: () => ({}) },
+    '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: [{ id: 'calendar' }] }) },
+    '@/features/events/attachment-queries': { uploadAttachmentDrafts: async (options) => {
+      uploads++;
+      assert.equal(options.eventId, 'saved-event');
+      if (uploads === 1) { options.onUploaded(options.drafts[0]); throw new Error('upload failed'); }
+      assert.deepEqual(options.drafts.map((draft) => draft.id), ['b']);
+      options.onUploaded(options.drafts[0]);
+    } },
+    '@/features/events/attachments': { AttachmentDraftPicker: 'AttachmentDraftPicker' },
+    '@/features/events/event-editor-header': { EventEditorHeader: 'EventEditorHeader' },
+    '@/features/events/event-form': { EventForm: 'EventForm' },
+    '@/features/events/use-event-editor-exit': { useEventEditorExit: () => ({ finish: () => { finishes++; }, savingRef: lock }) },
+    '@/features/events/queries': { useCreateEvent: () => ({ mutateAsync: async () => { creates++; return { id: 'saved-event' }; } }) },
+    '@/lib/confirm': { notify: () => {} },
+    '@/lib/event-time': { newEventTime: (start) => ({ isAllDay: false, start, end: start }), parseDateKey: () => new Date() },
+  }).default;
+  let tree = harness.render(component);
+  find(tree, (node) => node.type === 'AttachmentDraftPicker').props.onChange(drafts);
+  tree = harness.render(component);
+  await find(tree, (node) => node.type === 'EventForm').props.onSubmit({ calendar_id: 'calendar' });
+  tree = harness.render(component);
+  assert.equal(find(tree, (node) => node.type === 'AttachmentDraftPicker').props.drafts.length, 1);
+  find(tree, (node) => node.type === 'Button' && node.props.label === '첨부 다시 시도').props.onPress();
+  await tick();
+  assert.equal(creates, 1); assert.equal(uploads, 2); assert.equal(finishes, 1);
+});
+
+await check('event detail does not wait for calendar images and hides cancelled/deleted actions', () => {
+  const harness = hooks();
+  let row = { id: 'event', title: '내용', calendar_id: 'calendar', calendarName: '캘린더', created_at: '2026-10-01T00:00:00Z', created_by: null, rrule: null, deleted_at: null };
+  let patch = null;
+  const component = load('src/app/event/[id].tsx', {
+    ...componentMocks({ ...harness.react, useCallback: (fn) => fn }),
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' }, 'expo-image': { Image: 'Image' },
+    'react-native': { ...native, Pressable: 'Pressable' },
+    '@tanstack/react-query': { useQueryClient: () => ({}) },
+    'expo-router': { Stack: { Screen: 'StackScreen' }, useLocalSearchParams: () => ({ id: 'event', occ: '2026-10-01T00:00:00Z' }), useFocusEffect: () => {}, router: {} },
+    '@/components/ui/screen': { Screen: 'Screen', Content: 'Content' },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: undefined, isPending: true }), calendarKeys: {} },
+    '@/features/events/event-detail-tools': { EventDetailTools: 'EventDetailTools' },
+    '@/features/events/queries': { useEvent: () => ({ data: row }), useOccurrenceException: () => ({ data: patch }), eventKeys: {} },
+    '@/features/events/reminders': { REMINDER_CHOICES: [], useMyReminders: () => ({ isPending: true }) },
+    '@/features/profile/use-profile': { useProfileById: () => ({}) },
+    '@/lib/event-time': { occurrenceTime: (value) => value, formatDate: () => '10월 1일' },
+    '@/lib/recurrence': { isOriginalOccurrence: () => true },
+  }).default;
+  let tree = harness.render(component);
+  assert.ok(find(tree, (node) => node.type === 'EventDetailTools'));
+  assert.ok(find(tree, (node) => node.type === 'Txt' && node.props.children === '내용'));
+  patch = { type: 'CANCELLED' };
+  tree = harness.render(component);
+  assert.equal(find(tree, (node) => node.type === 'EventDetailTools'), null);
+  assert.ok(find(tree, (node) => node.type === 'Txt' && node.props.children === '삭제되었거나 취소된 일정입니다.'));
+  patch = null; row = { ...row, deleted_at: '2026-10-01T00:00:00Z' };
+  assert.equal(find(harness.render(component), (node) => node.type === 'EventDetailTools'), null);
+});
+await check('day view keeps app events during external loading/error and uses saved data offline after login', async () => {
+  const harness = hooks();
+  const day = '2026-10-05';
+  const row = { id: 'event', calendar_id: 'calendar', key: 'event-key' };
+  let events = { data: [row], isPending: false };
+  let external = { isLoading: true };
+  const module = load('src/app/day.tsx', {
+    ...componentMocks(harness.react),
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' }, 'expo-image': { Image: 'Image' },
+    'expo-router': { router: {} },
+    'react-native': { ...native, ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable' },
+    'react-native-gesture-handler/ReanimatedSwipeable': { default: 'Swipeable' },
+    '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+    '@/features/calendar/home-snapshot-cache': { homeMonthSnapshotKey: () => 'month' },
+    '@/features/calendar/home-snapshot': { loadHomeMonthSnapshot: async () => ({ key: 'month', marksByDate: { [day]: [{ id: 'saved', title: '저장됨' }] } }) },
+    '@/features/calendars/colors': { calendarColorForScheme: (value) => value },
+    '@/features/calendars/queries': {},
+    '@/features/external-calendars/device-calendar': {},
+    '@/features/external-calendars/queries': { useDeviceCalendarEvents: () => external },
+    '@/features/events/queries': { useMonthEvents: () => events, monthGridRange: () => ({}), groupByDate: (rows) => ({ [day]: rows }) },
+    '@/features/events/reminders': { useMyReminderEventIds: () => ({}) },
+    '@/features/stickers/catalog': { stickerByKey: () => null },
+    '@/features/stickers/sticker-picker': {},
+    '@/features/stickers/queries': { useDayStickers: () => ({}) },
+    '@/lib/confirm': {},
+    '@/lib/date': { toDateKey: () => day, formatDayTitle: () => day, formatLunarDate: () => null, startOfMonth: (value) => value },
+    '@/lib/event-time': { parseDateKey: () => new Date(2026, 9, 5) },
+    '@/stores/calendar-filter': { useCalendarFilter: () => ({ hidden: [] }) },
+    '@/stores/calendar-preference': { useCalendarPreference: () => ({ weekStart: 'sunday' }) },
+  }, '\nmodule.exports.TestDayPage = DayPage;');
+  const render = () => harness.render(() => module.TestDayPage({ date: new Date(2026, 9, 5), featuredCalendarId: null }));
+  let tree = render();
+  assert.ok(find(tree, (node) => typeof node.type === 'function' && node.type.name === 'SwipeableEventRow'));
+  assert.equal(find(tree, (node) => node.type === 'ActivityIndicator'), null);
+  external = { isError: true };
+  tree = render();
+  assert.ok(find(tree, (node) => typeof node.type === 'function' && node.type.name === 'SwipeableEventRow'));
+  await tick();
+  events = { data: undefined, isPending: true, fetchStatus: 'paused' };
+  tree = render();
+  assert.ok(find(tree, (node) => typeof node.type === 'function' && node.type.name === 'CachedDayEventRow'));
+  assert.equal(find(tree, (node) => node.type === 'ActivityIndicator'), null);
 });
 
 const sync = load('src/features/sync/query-sync.tsx', {

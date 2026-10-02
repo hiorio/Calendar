@@ -603,6 +603,18 @@ console.log('\n10. 푸시 알림 발송');
     notificationRoute({ event_id: eventId }) === `/event/${eventId}`);
   check('외부 URL은 알림 이동 경로로 허용하지 않는다',
     notificationRoute({ url: 'https://evil.example/phishing' }) === null);
+  const occurrence = '2026-10-05T00:00:00.000Z';
+  const occurrenceRoute = `/event/${eventId}?occ=${encodeURIComponent(occurrence)}`;
+  const reminder = buildPushMessage({ ...job, type: 'REMINDER', payload: {
+    ...job.payload, original_start: occurrence,
+  } }, 'ExponentPushToken[test]');
+  eq('이전 워커의 반복 알림도 해당 회차로 연다', notificationRoute(reminder.data), occurrenceRoute);
+  eq('URL 없는 반복 알림도 회차를 보존한다', notificationRoute({ event_id: eventId, original_start: occurrence }), occurrenceRoute);
+  eq('회차 URL은 검증 후 그대로 연다', notificationRoute({ url: occurrenceRoute }), occurrenceRoute);
+  eq('잘못된 회차 날짜는 일정 기본 경로로 연다', notificationRoute({ event_id: eventId, original_start: '2026-02-30T00:00:00.000Z' }), `/event/${eventId}`);
+  eq('잘못된 percent encoding은 예외 없이 기본 경로로 연다', notificationRoute({ url: `/event/${eventId}?occ=%ZZ` }), `/event/${eventId}`);
+  eq('회차 외 임의 쿼리는 허용하지 않는다', notificationRoute({ url: `${occurrenceRoute}&redirect=https://evil.example` }), null);
+  eq('회차를 통한 경로 삽입은 허용하지 않는다', notificationRoute({ event_id: eventId, original_start: '/account?token=secret' }), `/event/${eventId}`);
   eq('Expo 전송 제한에 맞춰 묶는다', chunks([1, 2, 3, 4, 5], 2), [[1, 2], [3, 4], [5]]);
   eq('재시도 지연은 지수 증가 후 5분에서 멈춘다',
     [1, 2, 3, 9].map(retryDelaySeconds), [15, 30, 60, 300]);

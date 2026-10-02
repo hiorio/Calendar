@@ -15,17 +15,17 @@ export const memoKeys = {
   list: () => ['memos', 'list'] as const,
 };
 
-export function useMemos() {
+export function useMemos(includeCompleted = true) {
   const { user } = useAuth();
 
   return useQuery<MemoWithCalendar[]>({
-    queryKey: memoKeys.list(),
+    queryKey: includeCompleted ? memoKeys.list() : [...memoKeys.list(), 'unfinished'],
     enabled: Boolean(user),
     queryFn: async ({ signal }) => {
       const rows = new Map<string, MemoWithCalendar>();
       const pageSize = 250;
       for (let offset = 0; ; offset += pageSize) {
-        const { data, error } = await supabase
+        let request = supabase
           .from('memos')
           .select('*, calendars(name, color)')
           .order('done', { ascending: true })
@@ -33,6 +33,8 @@ export function useMemos() {
           .order('id', { ascending: true })
           .range(offset, offset + pageSize - 1)
           .abortSignal(signal);
+        if (!includeCompleted) request = request.eq('done', false);
+        const { data, error } = await request;
 
         if (error) throw error;
 

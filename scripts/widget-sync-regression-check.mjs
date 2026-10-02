@@ -9,6 +9,7 @@ register('./ts-resolve.mjs', pathToFileURL('./scripts/'));
 const dateUtils = await import('../src/lib/date.ts');
 const eventTime = await import('../src/lib/event-time.ts');
 const layout = await import('../src/features/calendar/month-layout.ts');
+let monthLayoutCalls = 0;
 const colors = await import('../src/features/calendars/colors.ts');
 const policy = await import('../src/features/widgets/widget-policy.ts');
 
@@ -114,7 +115,7 @@ const mocks = {
   'expo-linking': { createURL: (path, options) => `app://${path}${options ? `?${JSON.stringify(options.queryParams)}` : ''}` },
   '@/constants/theme': { ThemePalettes: { apricot: { light: palette, dark: palette } } },
   '@/features/auth/auth-provider': { useAuth: () => ({ retainedUserId, user }) },
-  '@/features/calendar/month-layout': layout,
+  '@/features/calendar/month-layout': { ...layout, layoutWeekMarks: (...args) => { monthLayoutCalls++; return layout.layoutWeekMarks(...args); } },
   '@/features/calendars/colors': colors,
   '@/features/calendars/queries': { useMyCalendars: () => ({ data: calendars }) },
   '@/features/events/queries': {
@@ -166,6 +167,7 @@ new Function('require', 'module', 'exports', 'setTimeout', 'clearTimeout', code)
   (id) => timers.delete(id),
 );
 function render() {
+  monthLayoutCalls = 0;
   cursor = 0;
   pendingEffects = [];
   entries.length = 0;
@@ -191,12 +193,16 @@ check('hydrated custom selection publishes only allowed events and memos across 
   render();
   const timeline = lastTimeline();
   assert.ok(timeline.length > 8);
+  assert.ok(monthLayoutCalls <= 36, `초기화·만료 화면을 포함해 월간 배치 계산을 재사용: ${monthLayoutCalls}`);
   for (const entry of timeline) {
     assert.ok(entry.props.events.every((item) => item.title === 'allowed event'));
     assert.ok(entry.props.memos.every((item) => item.content === 'allowed memo'));
     assert.equal(entry.props.monthWeeks.length, 6);
     assert.equal(entry.props.monthWeeks.flatMap((week) => week.days).length, 42);
     if (!entry.props.expired) {
+      const dayKey = dateUtils.toDateKey(entry.date);
+      const allDays = [entry.props.monthWeeks, ...entry.props.adjacentMonthPages.map((page) => page.weeks)].flat().flatMap((week) => week.days);
+      assert.ok(allDays.every((item) => item.isToday === (item.key === dayKey)), '배치는 재사용하되 오늘 표시는 회차 날짜로 갱신');
       assert.equal(entry.props.adjacentMonthPages.length, 2);
       assert.equal(new Set([
         entry.props.monthKey,

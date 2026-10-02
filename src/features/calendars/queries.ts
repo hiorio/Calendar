@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
+import { useMemo } from 'react';
 
 import { useAuth } from '@/features/auth/auth-provider';
 import { CALENDAR_MEDIA_BUCKET } from '@/features/calendars/cover';
@@ -41,14 +42,14 @@ export const calendarKeys = {
 export function useMyCalendars() {
   const { user } = useAuth();
 
-  return useQuery<MyCalendar[]>({
+  const calendars = useQuery<MyCalendar[]>({
     queryKey: calendarKeys.mine(),
     enabled: Boolean(user),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { data, error } = await supabase
         .from('calendars')
         .select('id, name, color, cover_url, owner_id, calendar_members(user_id, role, muted)')
-        .order('created_at', { ascending: true });
+        .order('created_at', { ascending: true }).abortSignal(signal);
 
       if (error) throw error;
 
@@ -61,28 +62,41 @@ export function useMyCalendars() {
         calendar_members: { user_id: string; role: MemberRole; muted: boolean }[];
       };
 
-      return Promise.all((data as unknown as Row[]).map(async (row) => {
+      return (data as unknown as Row[]).map((row) => {
         const me = row.calendar_members.find((m) => m.user_id === user!.id);
-        const signed = row.cover_url
-          ? await supabase.storage
-              .from(CALENDAR_MEDIA_BUCKET)
-              .createSignedUrl(row.cover_url, 60 * 60)
-          : null;
 
         return {
           id: row.id,
           name: row.name,
           color: row.color,
           coverPath: row.cover_url,
-          coverUrl: signed?.data?.signedUrl ?? null,
+          coverUrl: null,
           owner_id: row.owner_id,
           role: me?.role ?? 'MEMBER',
           memberCount: row.calendar_members.length,
           muted: me?.muted ?? false,
         };
-      }));
+      });
     },
   });
+  const paths = [...new Set((calendars.data ?? []).flatMap((calendar) => calendar.coverPath ? [calendar.coverPath] : []))].sort();
+  const covers = useQuery({
+    queryKey: ['calendar-covers', user?.id, paths],
+    enabled: Boolean(user && paths.length),
+    staleTime: 45 * 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase.storage.from(CALENDAR_MEDIA_BUCKET).createSignedUrls(paths, 60 * 60);
+      if (error) throw error;
+      return Object.fromEntries((data ?? []).filter((row) => row.path && row.signedUrl).map((row) => [row.path!, row.signedUrl]));
+    },
+  });
+  const data = useMemo(() => calendars.data?.map((calendar) => ({
+    ...calendar,
+    coverUrl: calendar.coverPath ? covers.data?.[calendar.coverPath] ?? null : null,
+  })), [calendars.data, covers.data]);
+  // 본문 정보는 Storage와 무관하게 즉시 표시하고 사진만 나중에 채운다.
+  return { ...calendars, data };
 }
 
 export function useCreateCalendar() {

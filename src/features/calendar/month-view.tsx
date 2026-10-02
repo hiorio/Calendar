@@ -1,4 +1,5 @@
 import { Image } from 'expo-image';
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
@@ -71,7 +72,16 @@ export function MonthView({
   colorSaturday = true,
 }: MonthViewProps) {
   const { colors, scheme } = useTheme();
-  const weeks = buildMonthMatrix(month, weekStart);
+  const monthTime = month.getTime();
+  const weeks = useMemo(() => buildMonthMatrix(new Date(monthTime), weekStart), [monthTime, weekStart]);
+  const weekLayouts = useMemo(() => weeks.map((week) => {
+    const weekKeys = week.map(toDateKey);
+    const placements = layoutWeekMarks(weekKeys, marksByDate);
+    const hiddenByColumn = weekKeys.map((_, column) => placements.filter((placement) =>
+      placement.lane >= MAX_EVENT_LANES && placement.startColumn <= column && placement.endColumn >= column,
+    ).length);
+    return { placements, hiddenByColumn };
+  }), [weeks, marksByDate]);
   const labels = weekdayLabels(weekStart);
   const today = new Date();
   const eventTop = showLunar ? EVENT_TOP_WITH_LUNAR : EVENT_TOP;
@@ -114,16 +124,7 @@ export function MonthView({
           fillAvailableSpace && styles.gridFill,
         ]}>
         {weeks.map((week, weekIndex) => {
-          const weekKeys = week.map(toDateKey);
-          const placements = layoutWeekMarks(weekKeys, marksByDate);
-          const hiddenByColumn = weekKeys.map((_, column) =>
-            placements.filter(
-              (placement) =>
-                placement.lane >= MAX_EVENT_LANES &&
-                placement.startColumn <= column &&
-                placement.endColumn >= column,
-            ).length,
-          );
+          const { placements, hiddenByColumn } = weekLayouts[weekIndex];
 
           return (
             <View

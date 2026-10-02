@@ -84,8 +84,10 @@ export default function CalendarScreen() {
   const snapshotUserId = user?.id ?? retainedUserId;
 
   const moveMonth = useCallback((amount: number) => {
-    setMonth((current) => addMonths(current, amount));
-  }, []);
+    const next = addMonths(month, amount);
+    setMonth(next);
+    setSelected(next);
+  }, [month]);
 
   useEffect(() => {
     requestAnimationFrame(() => {
@@ -204,7 +206,7 @@ export default function CalendarScreen() {
       return;
     }
 
-    router.push('/event-new');
+    router.push({ pathname: '/event-new', params: { date: toDateKey(selected) } });
   }
 
   return (
@@ -234,6 +236,15 @@ export default function CalendarScreen() {
               ]}>
               <Txt variant="title">{formatMonthTitle(month)}</Txt>
               <Ionicons name="chevron-down" size={17} color={colors.textTertiary} />
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="오늘로 이동"
+              onPress={() => { const today = new Date(); setMonth(startOfMonth(today)); setSelected(today); monthPagerRef.current?.scrollTo({ x: calendarWidth, animated: false }); }}
+              style={({ pressed }) => [styles.addButton, pressed && { backgroundColor: colors.surfacePressed }]}>
+              <Txt variant="label" tone="accent">오늘</Txt>
+            </Pressable>
+            <Pressable accessibilityRole="button" accessibilityLabel="일정 검색" onPress={() => router.push('/search')}
+              style={({ pressed }) => [styles.addButton, pressed && { backgroundColor: colors.surfacePressed }]}>
+              <Ionicons name="search-outline" size={23} color={colors.accent} />
             </Pressable>
             <Pressable
               accessibilityRole="button"

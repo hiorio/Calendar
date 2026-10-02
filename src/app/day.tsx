@@ -231,7 +231,6 @@ function DayPage({
       ])[dateKey] ?? []
     );
   }, [dateKey, deviceEvents.data, events.data, hidden]);
-
   const visibleStickers = useMemo(
     () => (stickers.data ?? []).filter((sticker) => !hidden.includes(sticker.calendarId)),
     [hidden, stickers.data],
@@ -434,10 +433,11 @@ function DayPage({
           </View>
         ) : null}
 
-        {!user && deviceEvents.isLoading ? (
-          <ActivityIndicator color={colors.accent} style={styles.loading} />
-        ) : !user && cachedDayEvents.length + offlineDeviceEvents.length > 0 ? (
+        {!events.data && cachedDayEvents.length > 0 ? (
           <View style={styles.eventList}>
+            <Txt variant="caption" tone="secondary">
+              저장된 일정입니다. 연결되면 최신 내용으로 갱신합니다.
+            </Txt>
             {cachedDayEvents.map((event, index) => (
               <CachedDayEventRow key={`${event.id}:${index}`} event={event} index={index} />
             ))}
@@ -451,25 +451,25 @@ function DayPage({
               />
             ))}
           </View>
-        ) : !user ? (
+        ) : !user && offlineDeviceEvents.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="cloud-offline-outline" size={28} color={colors.textTertiary} />
             <Txt variant="body" tone="secondary">
               이 날짜에 저장된 일정이 없습니다
             </Txt>
           </View>
-        ) : events.isPending || deviceEvents.isLoading ? (
+        ) : dayEvents.length === 0 && events.isPending && events.fetchStatus !== 'paused' && user ? (
           <ActivityIndicator color={colors.accent} style={styles.loading} />
-        ) : events.isError || deviceEvents.isError ? (
+        ) : dayEvents.length === 0 && events.isError ? (
           <Txt variant="caption" tone="danger" style={styles.feedback}>
             일정을 불러오지 못했습니다:{' '}
-            {((events.error ?? deviceEvents.error) as Error).message}
+            {(events.error as Error).message}
           </Txt>
         ) : dayEvents.length === 0 ? (
           <View style={styles.empty}>
             <Ionicons name="calendar-outline" size={28} color={colors.textTertiary} />
             <Txt variant="body" tone="secondary">
-              등록된 일정이 없습니다
+              {events.fetchStatus === 'paused' ? '오프라인입니다. 저장된 일정이 없습니다.' : deviceEvents.isLoading ? '외부 일정을 불러오는 중…' : '등록된 일정이 없습니다'}
             </Txt>
           </View>
         ) : (
@@ -518,6 +518,14 @@ function DayPage({
             })}
           </View>
         )}
+        {dayEvents.length > 0 && events.isError ? (
+          <Txt variant="caption" tone="danger" style={styles.feedback}>갱신하지 못해 이전 일정을 표시합니다.</Txt>
+        ) : null}
+        {deviceEvents.isLoading && dayEvents.length > 0 ? (
+          <Txt variant="caption" tone="secondary" style={styles.feedback}>외부 일정을 불러오는 중…</Txt>
+        ) : deviceEvents.isError ? (
+          <Txt variant="caption" tone="danger" style={styles.feedback}>외부 일정을 불러오지 못했습니다. 앱 일정은 계속 표시합니다.</Txt>
+        ) : null}
       </Content>
     </ScrollView>
   );

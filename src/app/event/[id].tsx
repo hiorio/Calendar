@@ -15,6 +15,7 @@ import { REMINDER_CHOICES, useMyReminders } from '@/features/events/reminders';
 import { useProfileById } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
 import { formatDate, formatTime, occurrenceTime, parseDateKey } from '@/lib/event-time';
+import { isOriginalOccurrence } from '@/lib/recurrence';
 
 export default function EventDetailScreen() {
   const { colors } = useTheme();
@@ -43,7 +44,7 @@ export default function EventDetailScreen() {
     }, [id, occ, queryClient]),
   );
 
-  const exceptionPending = Boolean(occ) && !exception.isFetched;
+  const exceptionPending = Boolean(occ) && exception.data === undefined && !exception.isError;
   const creator = useProfileById(event.data?.created_by ?? null);
 
   function openEdit() {
@@ -53,7 +54,9 @@ export default function EventDetailScreen() {
     } as unknown as Href);
   }
 
-  if (!event.data || !calendars.data || exceptionPending) {
+  const unavailable = event.data?.deleted_at || exception.data?.type === 'CANCELLED' ||
+    (event.data?.rrule && occ && !isOriginalOccurrence(event.data, new Date(occ)));
+  if (!event.data || exceptionPending || unavailable || event.isError || exception.isError) {
     return (
       <Screen edges={['top', 'bottom']}>
         <Stack.Screen options={{ headerShown: false }} />
@@ -62,7 +65,7 @@ export default function EventDetailScreen() {
         </View>
         <Content style={styles.empty}>
           <Txt variant="body" tone="secondary">
-            {event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
+            {unavailable ? '삭제되었거나 취소된 일정입니다.' : event.isError || exception.isError ? '일정을 불러오지 못했습니다.' : '불러오는 중…'}
           </Txt>
         </Content>
       </Screen>
@@ -72,7 +75,7 @@ export default function EventDetailScreen() {
   const master = event.data;
   const patch = exception.data?.type === 'MODIFIED' ? exception.data : null;
   const effective = occurrenceTime(master, occ, patch);
-  const calendar = calendars.data.find((item) => item.id === master.calendar_id);
+  const calendar = calendars.data?.find((item) => item.id === master.calendar_id);
   const title = patch?.title ?? master.title;
   const location = patch?.location ?? master.location;
   const description = patch?.description ?? master.description;
@@ -85,7 +88,7 @@ export default function EventDetailScreen() {
               `${minutes}분 전`,
           )
           .join(' · ')
-      : '알림 없음';
+      : reminders.isError ? '알림 정보를 불러오지 못했습니다' : reminders.isPending ? '알림 확인 중…' : '알림 없음';
   const detailRows: {
     key: string;
     icon: React.ComponentProps<typeof Ionicons>['name'];

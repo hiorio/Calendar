@@ -72,9 +72,10 @@ export function isoWeekNumber(date: Date): number {
  * 기기 Intl이 단기(음력) 달력을 지원할 때만 음력 일을 돌려준다.
  * 지원하지 않는 웹 엔진에서는 빈 값으로 두어 잘못된 날짜를 보여 주지 않는다.
  */
+let lunarDayFormatter: Intl.DateTimeFormat | undefined;
 export function formatLunarDay(date: Date): string | null {
   try {
-    const formatter = new Intl.DateTimeFormat('ko-KR-u-ca-dangi', { day: 'numeric' });
+    const formatter = lunarDayFormatter ??= new Intl.DateTimeFormat('ko-KR-u-ca-dangi', { day: 'numeric' });
     const day = formatter.formatToParts(date).find((part) => part.type === 'day')?.value;
     return day ? `음 ${day}` : null;
   } catch {

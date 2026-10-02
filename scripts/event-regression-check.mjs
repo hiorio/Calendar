@@ -194,13 +194,14 @@ await check('폼 입력 변경과 저장 기준 갱신으로 이탈 보호 상�
 function mockDatabase(events, exceptions) {
   const calls = []; let mutation;
   return { calls, get mutation() { return mutation; }, from(table) {
-    const filters = []; const orders = []; let start = 0; let end = Infinity; let columns;
+    const filters = []; const orders = []; let start = 0; let end = Infinity; let columns; let signal;
     const builder = {
       select(value) { columns = value; return builder; },
       is(field, value) { filters.push((row) => row[field] === value); return builder; },
       eq(field, value) { filters.push((row) => row[field] === value); return builder; },
       in(field, values) { filters.push((row) => values.includes(row[field])); return builder; },
       lt(field, value) { filters.push((row) => row[field] < value); return builder; },
+      gte(field, value) { filters.push((row) => Date.parse(row[field]) >= Date.parse(value)); return builder; },
       ilike(field, value) { const needle = value.slice(1, -1).replace(/\\([%_])/g, '$1').toLowerCase(); filters.push((row) => (row[field] ?? '').toLowerCase().includes(needle)); return builder; },
       or(value) {
         if (table === 'events') { const lower = value.split('range_end.gt.')[1]; filters.push((row) => row.range_end === null || row.range_end > lower); }
@@ -214,9 +215,11 @@ function mockDatabase(events, exceptions) {
       order(field, { ascending = true } = {}) { orders.push({ field, ascending }); return builder; },
       range(from, to) { start = from; end = to; return builder; },
       limit(count) { end = count - 1; return builder; },
+      abortSignal(value) { signal = value; return builder; },
       upsert(input) { mutation = input; return builder; },
       then(resolve) {
-        calls.push({ table, start, end, columns });
+        calls.push({ table, start, end, columns, signal });
+        if (signal?.aborted) return Promise.resolve({ data: null, error: new Error('aborted') }).then(resolve);
         const rows = [...(table === 'events' ? events : exceptions)].filter((row) => filters.every((filter) => filter(row)));
         rows.sort((a, b) => { for (const { field, ascending } of orders) { const order = String(a[field]).localeCompare(String(b[field])); if (order) return ascending ? order : -order; } return 0; });
         return Promise.resolve({ data: rows.slice(start, end + 1), error: null }).then(resolve);
@@ -225,10 +228,10 @@ function mockDatabase(events, exceptions) {
     return builder;
   } };
 }
-function queries(db) {
+function queries(db, client = { invalidateQueries: () => {}, setQueryData: () => {} }) {
   return load('../src/features/events/queries.ts', {
     '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'user' } }) },
-    '@tanstack/react-query': { useQuery: (options) => options, useMutation: (options) => options, useQueryClient: () => ({ invalidateQueries: () => {} }) },
+    '@tanstack/react-query': { useQuery: (options) => options, useMutation: (options) => options, useQueryClient: () => client },
     '@/lib/date': dates, '@/lib/event-time': time, '@/lib/recurrence': recurrence, '@/lib/supabase': { supabase: db },
   });
 }
@@ -237,8 +240,42 @@ await check('API 1000행을 넘는 월간 마스터도 고유 ID 페이지로 �
   const db = mockDatabase(events, []); const result = await queries(db).useMonthEvents(new Date(2026, 2, 1)).queryFn();
   assert.equal(result.length, 1101); assert.equal(new Set(result.map((row) => row.key)).size, 1101);
   assert.ok(db.calls.some((call) => call.table === 'events' && call.start === 1000));
+  assert.deepEqual(db.calls.slice(0, 2).map((call) => call.table), ['events', 'event_exceptions'], '기본 일정과 이동 예외는 첫 페이지부터 병렬 조회');
 });
-await check('마스터 range 밖에서 이동한 예외를 별도 조회하고 1000개 예외도 모두 적용', async () => {
+await check('월간 원본 캐시는 회차 시각으로 오염되지 않고 예외는 회차를 열 때 재사용한다', async () => {
+  const values = new Map();
+  const cache = { setQueryData: (key, value) => values.set(JSON.stringify(key), value),
+    getQueriesData: () => [...values].map(([key, value]) => [JSON.parse(key), value]), getQueryState: () => ({ dataUpdatedAt: 1234 }) };
+  const row = master({ rrule: 'FREQ=DAILY;COUNT=1000', range_end: null });
+  const patch = exception({ original_start: '2026-03-05T00:00:00Z', title: '회차 제목' });
+  const module = queries(mockDatabase([row], [patch]), cache);
+  await module.useMonthEvents(new Date(2026, 2, 1)).queryFn();
+  assert.equal(module.useEvent('master').initialData().start_at, row.start_at);
+  assert.equal(module.useEvent('master').initialData().title, row.title);
+  assert.equal(module.useOccurrenceException('master', '2026-03-05T00:00:00.000Z').initialData().title, '회차 제목');
+  assert.equal(module.useOccurrenceException('master', '2026-03-06T00:00:00.000Z').initialData(), null);
+  assert.equal(module.useOccurrenceException('master', '2026-03-05T00:00:00.000Z').initialDataUpdatedAt(), 1234);
+  assert.equal(module.useOccurrenceException('master', '2026-09-05T00:00:00.000Z').initialData(), undefined, '다른 달의 조회로 확인하지 않은 회차를 예외 없음으로 캐시하지 않는다');
+  assert.equal(values.size, 1, '일정/회차 수만큼 쿼리를 만들어 앱 시작 비용을 늘리지 않는다');
+});
+await check('빠른 월 이동으로 취소된 조회는 상세 캐시를 채우지 않는다', async () => {
+  const controller = new AbortController(); controller.abort();
+  const db = mockDatabase([master()], []);
+  let writes = 0;
+  await assert.rejects(queries(db, { setQueryData: () => { writes++; } }).useMonthEvents(new Date(2026, 2, 1)).queryFn({ signal: controller.signal }), /aborted/);
+  assert.equal(writes, 0);
+  assert.ok(db.calls.every((call) => call.signal === controller.signal));
+});
+await check('검색은 50개 뒤 결과도 더 볼 수 있고 모든 요청에 취소 신호를 전달한다', async () => {
+  const events = Array.from({ length: 76 }, (_, index) => master({ id: `search-${index}`, title: '찾을 일정', rrule: null }));
+  const controller = new AbortController();
+  const db = mockDatabase(events, []);
+  const module = queries(db);
+  assert.equal((await module.useEventSearch('찾을', 50).queryFn({ signal: controller.signal })).length, 51);
+  assert.equal((await module.useEventSearch('찾을', 100).queryFn({ signal: controller.signal })).length, 76);
+  assert.ok(db.calls.every((call) => call.signal === controller.signal));
+});
+await check('범위 밖에서 이동한 회차는 유지하고 오래된 예외 1000개를 다시 받지 않는다', async () => {
   const events = [master({ rrule: 'FREQ=DAILY;COUNT=2000', range_end: '2031-06-23T01:00:00Z' }), master({ id: 'outside' })];
   const exceptions = Array.from({ length: 1101 }, (_, index) => {
     const at = new Date(Date.parse('2026-01-01T00:00:00Z') + index * 86400000).toISOString();
@@ -247,8 +284,19 @@ await check('마스터 range 밖에서 이동한 예외를 별도 조회하고 1
   exceptions.push(exception({ event_id: 'outside', is_all_day: true, start_date: '2026-03-05', end_date: '2026-03-05' }));
   const db = mockDatabase(events, exceptions); const result = await queries(db).useMonthEvents(new Date(2026, 2, 1)).queryFn();
   assert.equal(result.length, 1); assert.equal(result[0].id, 'outside'); assert.equal(result[0].is_all_day, true);
-  assert.ok(db.calls.some((call) => call.table === 'event_exceptions' && call.start === 1000));
+  assert.ok(!db.calls.some((call) => call.table === 'event_exceptions' && call.start === 1000));
   assert.ok(db.calls.filter((call) => call.table === 'event_exceptions').every((call) => call.columns.includes('is_all_day')));
+});
+await check('조회 범위로 이동한 예외 1000개 이상도 페이지 끝까지 유지한다', async () => {
+  const event = master({ rrule: 'FREQ=DAILY;COUNT=2000', range_end: null });
+  const patches = Array.from({ length: 1101 }, (_, index) => exception({
+    original_start: new Date(Date.parse('2026-01-01T00:00:00Z') + index * 86400000).toISOString(),
+    start_at: '2026-03-05T03:00:00Z', end_at: '2026-03-05T04:00:00Z',
+  }));
+  const db = mockDatabase([event], patches);
+  const result = await queries(db).useMonthEvents(new Date(2026, 2, 1)).queryFn();
+  assert.equal(result.length, 1101);
+  assert.ok(db.calls.some((call) => call.table === 'event_exceptions' && call.start === 1000));
 });
 await check('회차 제목 검색은 변경 시각과 original_start를 갖고 삭제된 마스터는 제외', async () => {
   const moved = exception({ title: '회차 변경 제목', start_at: '2026-03-05T03:00:00Z', end_at: '2026-03-05T04:00:00Z' });
@@ -280,6 +328,12 @@ await check('9월 회차에서 전체 범위로 바꾸면 1월 마스터 날짜�
   const initial = descendants(tree).find((node) => node.type === 'EventForm').props.initial;
   assert.equal(initial.time.start.toISOString(), event.start_at); assert.equal(initial.title, event.title); assert.equal(initial.timezone, event.timezone);
   assert.equal(recurrence.computeRruleUntil({ ...event, ...time.toTimeColumns(initial.time, initial.timezone) }), recurrence.computeRruleUntil(event));
+  descendants(tree).find((node) => node.type === 'Segmented').props.onChange('FOLLOWING'); await tick(); tree = h.render(Screen);
+  assert.equal(descendants(tree).find((node) => node.type === 'Segmented').props.options.find((option) => option.value === 'FOLLOWING').label, '이후 삭제');
+  const form = descendants(tree).find((node) => node.type === 'EventForm');
+  assert.equal(form.props.submitDisabled, true);
+  assert.equal(descendants(tree).find((node) => node.type === 'EventEditorHeader').props.saveDisabled, true);
+  await form.props.onSubmit({ ...event, title: '저장하면 안 됨' });
 });
 await check('저장 중 이탈 차단, 입력 포기 확인, 늦은 완료의 다른 화면 닫기 차단', async () => {
   const h = harness(); let callback; let allow = false; let focused = true; let pops = 0; let dispatched = 0;

@@ -57,6 +57,8 @@ export default function NewEventScreen() {
   const formRef = useRef<EventFormHandle>(null);
   const [drafts, setDrafts] = useState<AttachmentDraft[]>([]);
   const [saving, setSaving] = useState(false);
+  const [attachmentRecovery, setAttachmentRecovery] = useState<{ eventId: string; calendarId: string } | null>(null);
+  const [attachmentError, setAttachmentError] = useState('');
   const [dirty, setDirty] = useState(false);
   const { finish, savingRef } = useEventEditorExit(saving || create.isPending, dirty || drafts.length > 0);
   const [initialTime] = useState(() => {
@@ -78,12 +80,17 @@ export default function NewEventScreen() {
             eventId: created.id,
             calendarId: input.calendar_id,
             uploadedBy: user.id,
+            onUploaded: (draft) => setDrafts((current) => current.filter((item) => item.id !== draft.id)),
           });
         } catch (e) {
+          formRef.current?.markSaved();
+          setAttachmentRecovery({ eventId: created.id, calendarId: input.calendar_id });
+          setAttachmentError(e instanceof Error ? e.message : String(e));
           notify(
             '일정은 저장됐지만 첨부하지 못했습니다',
             e instanceof Error ? e.message : String(e),
           );
+          return;
         }
       }
 
@@ -100,6 +107,36 @@ export default function NewEventScreen() {
       savingRef.current = false;
       setSaving(false);
     }
+  }
+
+  async function retryAttachments() {
+    if (!attachmentRecovery || !user || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      await uploadAttachmentDrafts({ drafts, ...attachmentRecovery, uploadedBy: user.id,
+        onUploaded: (draft) => setDrafts((current) => current.filter((item) => item.id !== draft.id)),
+      });
+      setAttachmentRecovery(null);
+      setDrafts([]);
+      if (multiCopy === 'true') notify('첨부를 저장했습니다', '날짜를 바꾼 뒤 계속 복사할 수 있습니다.');
+      else finish();
+    } catch (error) { setAttachmentError(error instanceof Error ? error.message : String(error)); }
+    finally { savingRef.current = false; setSaving(false); }
+  }
+
+  if (attachmentRecovery) {
+    return <>
+      <EventEditorHeader title="첨부 다시 시도" saveDisabled onSave={() => undefined} />
+      <Content style={styles.content}>
+        <Txt variant="subtitle">일정은 저장되었습니다</Txt>
+        <Txt variant="body" tone="secondary">실패한 파일만 다시 첨부합니다. 일정은 중복으로 만들지 않습니다.</Txt>
+        <Txt variant="caption" tone="danger">{attachmentError}</Txt>
+        <AttachmentDraftPicker drafts={drafts} onChange={setDrafts} disabled={saving} />
+        <Button label="첨부 다시 시도" loading={saving} onPress={() => void retryAttachments()} />
+        <Button label="첨부 없이 마치기" variant="ghost" disabled={saving} onPress={() => { setDrafts([]); finish(); }} />
+      </Content>
+    </>;
   }
 
   // 캘린더가 없으면 넣을 곳이 없다. 만들기부터 안내한다.

@@ -97,11 +97,13 @@ export async function uploadAttachmentDrafts({
   eventId,
   calendarId,
   uploadedBy,
+  onUploaded,
 }: {
   drafts: AttachmentDraft[];
   eventId: string;
   calendarId: string;
   uploadedBy: string;
+  onUploaded?: (draft: AttachmentDraft) => void;
 }) {
   for (const draft of drafts) {
     const payload =
@@ -139,6 +141,7 @@ export async function uploadAttachmentDrafts({
       await supabase.storage.from(BUCKET).remove([storagePath]);
       throw rowError;
     }
+    onUploaded?.(draft);
   }
 }
 

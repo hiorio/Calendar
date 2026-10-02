@@ -14,6 +14,7 @@ import { useMyCalendars } from '@/features/calendars/queries';
 import { useCreateEvent } from '@/features/events/queries';
 import { QuickCalendarPicker } from '@/features/widgets/quick-calendar-picker';
 import { useTheme } from '@/hooks/use-theme';
+import { toDateKey } from '@/lib/date';
 import {
   formatDate,
   formatTime,
@@ -175,9 +176,19 @@ export default function QuickEventScreen() {
                 router.replace({
                   pathname: '/event-new',
                   params: {
-                    date: date ?? undefined,
+                    date: toDateKey(baseDate),
                     calendarId: selectedCalendarId || undefined,
                     copyTitle: title || undefined,
+                    ...(timeMode === 'all-day'
+                      ? {
+                          copyAllDay: 'true',
+                          copyStartDate: toDateKey(baseDate),
+                        }
+                      : {
+                          copyAllDay: 'false',
+                          copyStartAt: timed.start.toISOString(),
+                          copyEndAt: timed.end.toISOString(),
+                        }),
                   },
                 })
               }
