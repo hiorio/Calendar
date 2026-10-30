@@ -1,0 +1,339 @@
+/** Execute the actual sync hook with isolated query/store/native adapters. No WidgetKit claims. */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { register } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import ts from 'typescript';
+
+register('./ts-resolve.mjs', pathToFileURL('./scripts/'));
+const dateUtils = await import('../src/lib/date.ts');
+const eventTime = await import('../src/lib/event-time.ts');
+const layout = await import('../src/features/calendar/month-layout.ts');
+let monthLayoutCalls = 0;
+const colors = await import('../src/features/calendars/colors.ts');
+const policy = await import('../src/features/widgets/widget-policy.ts');
+
+let passed = 0;
+function check(name, test) { test(); passed++; console.log(`  PASS  ${name}`); }
+const entries = [];
+const errors = [];
+const timers = new Map();
+let timerId = 0;
+let failCalendarClear = false;
+let failCalendarPublish = false;
+const reloads = [];
+const wallpaperSnapshots = [];
+const removedWallpaperOutputs = [];
+function widget(name) {
+  return {
+    reload() { reloads.push(name); },
+    updateSnapshot(props) {
+      entries.push({ name, method: 'snapshot', props });
+      if (name === 'calendar' && failCalendarClear) { failCalendarClear = false; throw new Error('native temporarily unavailable'); }
+    },
+    updateTimeline(timeline) {
+      entries.push({ name, method: 'timeline', timeline });
+      if (name === 'calendar' && failCalendarPublish) { failCalendarPublish = false; throw new Error('timeline temporarily unavailable'); }
+    },
+  };
+}
+
+const stores = {
+  widgets: {
+    calendarMode: 'custom',
+    selectedCalendarIds: ['allowed'],
+    quickAddCalendarId: null,
+    showQuickActions: true,
+    wallpaperEnabled: false,
+    wallpaperLayout: 'agenda',
+    wallpaperBackgroundMode: 'theme',
+    wallpaperShowMemos: true,
+    wallpaperBackgroundRevision: 0,
+  },
+  filter: { hidden: [] },
+  device: { connected: false, selectedIds: [] },
+  theme: { theme: 'apricot', schemePreference: 'system' },
+};
+let hydrated = false;
+const persist = { hasHydrated: () => hydrated, onHydrate: () => () => {}, onFinishHydration: () => () => {} };
+function storeHook(name) { const hook = (select) => select(stores[name]); hook.persist = persist; return hook; }
+
+let user = { id: 'A' };
+let retainedUserId = 'A';
+let calendars = [
+  { id: 'allowed', name: '선택', color: colors.DEFAULT_CALENDAR_COLOR },
+  { id: 'private', name: '비공개', color: colors.DEFAULT_CALENDAR_COLOR },
+];
+const day = dateUtils.toDateKey(new Date());
+const event = (id, calendar_id) => ({
+  id, key: id, calendar_id, title: `${calendar_id} event`, calendarName: calendar_id,
+  displayColor: colors.DEFAULT_CALENDAR_COLOR, is_all_day: true, start_date: day, end_date: day,
+  start_at: null, end_at: null, timezone: 'Asia/Seoul', originalStart: `${day}T00:00:00Z`,
+});
+let events = [
+  event('a', 'allowed'),
+  event('b', 'allowed'),
+  event('c', 'allowed'),
+  event('d', 'allowed'),
+  event('p', 'private'),
+];
+let memos = [
+  { id: 'am', calendar_id: 'allowed', content: 'allowed memo', done: false, calendarName: '선택', calendarColor: colors.DEFAULT_CALENDAR_COLOR },
+  { id: 'pm', calendar_id: 'private', content: 'private memo', done: false, calendarName: '비공개', calendarColor: colors.DEFAULT_CALENDAR_COLOR },
+];
+let deviceEvents = [];
+
+const slots = [];
+let cursor = 0;
+let pendingEffects = [];
+const equalDeps = (first, second) => first?.length === second?.length && first.every((value, index) => Object.is(value, second[index]));
+const react = {
+  useState(initial) { const index = cursor++; if (!(index in slots)) slots[index] = typeof initial === 'function' ? initial() : initial; return [slots[index], (value) => { slots[index] = typeof value === 'function' ? value(slots[index]) : value; }]; },
+  useRef(initial) { const index = cursor++; return slots[index] ??= { current: initial }; },
+  useMemo(factory, deps) { const index = cursor++; if (!slots[index] || !equalDeps(slots[index].deps, deps)) slots[index] = { value: factory(), deps }; return slots[index].value; },
+  useSyncExternalStore(_subscribe, snapshot) { return snapshot(); },
+  useEffect(effect, deps) {
+    const index = cursor++;
+    if (!slots[index] || !equalDeps(slots[index].deps, deps)) {
+      slots[index]?.cleanup?.();
+      slots[index] = { deps };
+      pendingEffects.push(() => { slots[index].cleanup = effect(); });
+    }
+  },
+};
+const palette = { background: 'background', text: 'text', accent: 'accent' };
+const mocks = {
+  react,
+  'react-native': {
+    AppState: { addEventListener: (_event, listener) => {
+      mocks.appStateListener = listener;
+      return { remove() {} };
+    } },
+    Dimensions: { get: () => ({ width: 390, height: 844 }) },
+    PixelRatio: { get: () => 3 },
+  },
+  'expo-linking': { createURL: (path, options) => `app://${path}${options ? `?${JSON.stringify(options.queryParams)}` : ''}` },
+  '@/constants/theme': { ThemePalettes: { apricot: { light: palette, dark: palette } } },
+  '@/features/auth/auth-provider': { useAuth: () => ({ retainedUserId, user }) },
+  '@/features/calendar/month-layout': { ...layout, layoutWeekMarks: (...args) => { monthLayoutCalls++; return layout.layoutWeekMarks(...args); } },
+  '@/features/calendars/colors': colors,
+  '@/features/calendars/queries': { useMyCalendars: () => ({ data: calendars }) },
+  '@/features/events/queries': {
+    monthGridRange: (month) => ({ start: month, end: dateUtils.addMonths(month, 1) }),
+    useMonthEvents: () => ({ data: events, isFetched: events !== undefined }),
+  },
+  '@/features/external-calendars/queries': { useDeviceCalendarEvents: () => ({ data: deviceEvents }) },
+  '@/features/memos/queries': { useMemos: () => ({ data: memos }) },
+  '@/features/wallpaper/snapshot': {
+    buildLockScreenBoardSnapshot: (options) => ({
+      ...options,
+      days: options.cleared
+        ? []
+        : [
+          ...options.events.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
+          ...(options.deviceEvents ?? []).filter((item) => options.visibleDeviceCalendarIds?.has(item.calendarId)),
+        ],
+      memos: options.cleared
+        ? []
+        : options.memos.filter((item) => options.visibleCalendarIds.has(item.calendar_id)),
+    }),
+  },
+  '@/features/wallpaper/storage': {
+    publishLockScreenBoardSnapshot: (snapshot) => {
+      wallpaperSnapshots.push(snapshot);
+      return true;
+    },
+    removeLockScreenBoardOutput: () => removedWallpaperOutputs.push('removed'),
+  },
+  '@/hooks/use-color-scheme': { useColorScheme: () => 'dark' },
+  '@/lib/date': dateUtils,
+  '@/lib/event-time': eventTime,
+  '@/stores/calendar-filter': { useCalendarFilter: storeHook('filter') },
+  '@/stores/calendar-preference': { useCalendarPreference: () => ({ weekStart: 'sunday' }) },
+  '@/stores/device-calendar-preference': { useDeviceCalendarPreference: storeHook('device') },
+  '@/stores/theme-preference': { useThemePreference: storeHook('theme') },
+  '@/stores/widget-preference': { useWidgetPreference: storeHook('widgets') },
+  '@/lib/observability': { Sentry: { captureException: (error) => errors.push(error) } },
+  './timeflower-widgets': { CalendarWidget: widget('calendar'), QuickMemoWidget: widget('memo') },
+  './widget-policy': policy,
+};
+const code = ts.transpileModule(readFileSync('src/features/widgets/widget-sync.tsx', 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: false },
+}).outputText;
+const module = { exports: {} };
+new Function('require', 'module', 'exports', 'setTimeout', 'clearTimeout', code)(
+  (name) => { assert.ok(name in mocks, `Missing ${name}`); return mocks[name]; }, module, module.exports,
+  (callback, ms) => { const id = ++timerId; timers.set(id, { callback, ms }); return id; },
+  (id) => timers.delete(id),
+);
+function render() {
+  monthLayoutCalls = 0;
+  cursor = 0;
+  pendingEffects = [];
+  entries.length = 0;
+  wallpaperSnapshots.length = 0;
+  module.exports.WidgetSync();
+  pendingEffects.forEach((effect) => effect());
+}
+function lastTimeline(name = 'calendar') { return entries.findLast((entry) => entry.name === name && entry.method === 'timeline')?.timeline; }
+
+check('unhydrated custom/filter settings never publish query data', () => {
+  render();
+  assert.deepEqual(reloads, ['calendar', 'memo']);
+  assert.deepEqual(entries.map((entry) => entry.method), ['snapshot', 'snapshot']);
+  assert.ok(entries.every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+  assert.deepEqual(wallpaperSnapshots[0].days, []);
+  assert.equal(removedWallpaperOutputs.length, 1);
+});
+check('hydrated custom selection publishes only allowed events and memos across all timeline entries', () => {
+  hydrated = true;
+  stores.widgets.wallpaperEnabled = true;
+  render();
+  const timeline = lastTimeline();
+  assert.ok(timeline.length > 8);
+  assert.ok(monthLayoutCalls <= 36, `초기화·만료 화면을 포함해 월간 배치 계산을 재사용: ${monthLayoutCalls}`);
+  for (const entry of timeline) {
+    assert.ok(entry.props.events.every((item) => item.title === 'allowed event'));
+    assert.ok(entry.props.memos.every((item) => item.content === 'allowed memo'));
+    assert.equal(entry.props.monthWeeks.length, 6);
+    assert.equal(entry.props.monthWeeks.flatMap((week) => week.days).length, 42);
+    if (!entry.props.expired) {
+      const dayKey = dateUtils.toDateKey(entry.date);
+      const allDays = [entry.props.monthWeeks, ...entry.props.adjacentMonthPages.map((page) => page.weeks)].flat().flatMap((week) => week.days);
+      assert.ok(allDays.every((item) => item.isToday === (item.key === dayKey)), '배치는 재사용하되 오늘 표시는 회차 날짜로 갱신');
+      assert.equal(entry.props.adjacentMonthPages.length, 2);
+      assert.equal(new Set([
+        entry.props.monthKey,
+        ...entry.props.adjacentMonthPages.map((page) => page.key),
+      ]).size, 3);
+    }
+  }
+  const today = timeline[0].props.monthWeeks.flatMap((week) => week.days)
+    .find((item) => item.key === day);
+  assert.equal(today.hiddenEventCount, 2);
+  assert.equal(timeline.at(-1).props.expired, true);
+  const wallpaper = wallpaperSnapshots.at(-1);
+  assert.equal(wallpaper.cleared, undefined);
+  assert.ok(wallpaper.days.every((item) => item.calendar_id === 'allowed'));
+  assert.ok(wallpaper.memos.every((item) => item.calendar_id === 'allowed'));
+});
+check('wallpaper includes only connected and selected device calendar events', () => {
+  stores.device.connected = true;
+  stores.device.selectedIds = ['holiday-calendar'];
+  deviceEvents = [
+    { kind: 'device', key: 'device:holiday', calendarId: 'holiday-calendar', title: '명절' },
+    { kind: 'device', key: 'device:private', calendarId: 'private-device', title: '비공개' },
+  ];
+  render();
+  const wallpaper = wallpaperSnapshots.at(-1);
+  assert(wallpaper.days.some((item) => item.title === '명절'));
+  assert(!wallpaper.days.some((item) => item.title === '비공개'));
+  stores.device.connected = false;
+  stores.device.selectedIds = [];
+  render();
+  assert(!wallpaperSnapshots.at(-1).days.some((item) => item.title === '명절'));
+  deviceEvents = [];
+});
+check('wallpaper waits for selected device calendars before replacing a cleared scope', () => {
+  stores.device.connected = true;
+  stores.device.selectedIds = ['holiday-calendar'];
+  deviceEvents = undefined;
+  render();
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+  deviceEvents = [{ kind: 'device', key: 'device:holiday', calendarId: 'holiday-calendar', title: '명절' }];
+  render();
+  assert(wallpaperSnapshots.at(-1).days.some((item) => item.title === '명절'));
+  stores.device.connected = false;
+  stores.device.selectedIds = [];
+  deviceEvents = [];
+  render();
+});
+check('returning to the foreground reloads layouts and republishes an unchanged timeline', () => {
+  entries.length = 0;
+  mocks.appStateListener('active');
+  render();
+  assert.deepEqual(reloads.slice(-2), ['calendar', 'memo']);
+  assert.ok(lastTimeline());
+});
+check('privacy scope reduction clears both widgets while the event query is unavailable', () => {
+  stores.widgets.selectedCalendarIds = [];
+  events = undefined;
+  render();
+  assert.deepEqual(entries.map((entry) => [entry.name, entry.method]), [['calendar', 'snapshot'], ['memo', 'snapshot']]);
+  assert.ok(entries.every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+});
+check('empty custom selection remains empty after queries recover', () => {
+  events = [event('a', 'allowed'), event('p', 'private')];
+  render();
+  assert.ok(lastTimeline().every((entry) => entry.props.events.length === 0 && entry.props.memos.length === 0));
+});
+check('disabling the wallpaper board clears its payload but keeps ordinary widgets publishing', () => {
+  stores.widgets.wallpaperEnabled = false;
+  render();
+  assert.ok(lastTimeline());
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+  stores.widgets.wallpaperEnabled = true;
+});
+check('failure clearing one native widget does not skip the other or publish data', () => {
+  stores.widgets.selectedCalendarIds = ['allowed'];
+  failCalendarClear = true;
+  render();
+  assert.deepEqual(entries.map((entry) => [entry.name, entry.method]), [['calendar', 'snapshot'], ['memo', 'snapshot']]);
+  assert.equal(lastTimeline(), undefined);
+  assert.equal(errors.length, 1);
+});
+check('transient clear failure retries the same privacy scope before publishing', () => {
+  const retry = [...timers].find(([, item]) => item.ms === 1000);
+  assert.ok(retry);
+  timers.delete(retry[0]);
+  retry[1].callback();
+  render();
+  assert.deepEqual(entries.slice(0, 2).map((entry) => entry.method), ['snapshot', 'snapshot']);
+  assert.ok(lastTimeline());
+});
+check('calendar publication failure does not block memo publication and retries without query changes', () => {
+  events = [...events];
+  failCalendarPublish = true;
+  render();
+  assert.ok(lastTimeline('memo'));
+  const retry = [...timers].find(([, item]) => item.ms === 1000);
+  assert.ok(retry);
+  timers.delete(retry[0]);
+  retry[1].callback();
+  render();
+  assert.ok(lastTimeline());
+  assert.ok(lastTimeline('memo'));
+  assert.equal(entries.filter((entry) => entry.method === 'snapshot').length, 0);
+});
+check('temporary auth loss preserves the last published widget snapshot', () => {
+  user = null;
+  render();
+  assert.equal(entries.length, 0);
+  assert.equal(wallpaperSnapshots.length, 0);
+});
+check('signout clears previous snapshots even with cached query data still present', () => {
+  retainedUserId = null;
+  render();
+  assert.equal(entries.length, 2);
+  assert.ok(entries.every((entry) => entry.method === 'snapshot' && entry.props.events.length === 0));
+  assert.equal(wallpaperSnapshots.length, 1);
+  assert.equal(wallpaperSnapshots[0].cleared, true);
+});
+check('account switch with unavailable calendars leaves cleared snapshots', () => {
+  user = { id: 'B' };
+  retainedUserId = 'B';
+  calendars = undefined;
+  render();
+  assert.equal(entries.length, 2);
+  assert.equal(lastTimeline(), undefined);
+});
+
+slots.forEach((slot) => slot?.cleanup?.());
+assert.equal(timers.size, 0);
+console.log(`\nWidget sync regressions: ${passed} passed`);

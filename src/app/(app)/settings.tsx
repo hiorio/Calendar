@@ -1,6 +1,5 @@
 import { router } from 'expo-router';
-import { useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, View } from 'react-native';
 
 import { Button } from '@/components/ui/button';
 import { Card, Divider } from '@/components/ui/card';
@@ -11,35 +10,38 @@ import { Radius, Spacing } from '@/constants/theme';
 import { useAuth } from '@/features/auth/auth-provider';
 import { useProfile } from '@/features/profile/use-profile';
 import { useTheme } from '@/hooks/use-theme';
+import { useDeviceCalendarPreference } from '@/stores/device-calendar-preference';
+import { useThemePreference } from '@/stores/theme-preference';
 
-export default function SettingsScreen() {
+const THEME_LABELS = { apricot: '살구', indigo: '쪽빛', ink: '먹빛' } as const;
+const FONT_SIZE_LABELS = {
+  small: '작게',
+  standard: '보통',
+  large: '크게',
+  extraLarge: '매우 크게',
+} as const;
+const FONT_FAMILY_LABELS = {
+  system: '기본',
+  nanumGothic: '나눔고딕',
+  nanumMyeongjo: '나눔명조',
+} as const;
+export default function MoreScreen() {
   const { colors } = useTheme();
-  const { user, isGuest, signOut } = useAuth();
+  const { isGuest } = useAuth();
   const profile = useProfile();
-  const [signingOut, setSigningOut] = useState(false);
-
-  async function handleSignOut() {
-    setSigningOut(true);
-    try {
-      await signOut();
-      // signOut 은 새 게스트 세션까지 만들어 준다. 그런데 세션이 잠깐 null 인 사이
-      // (app) 레이아웃이 계정 화면으로 보내 버리고, 게스트가 들어와도 거기 그대로
-      // 남는다. 끝난 뒤 캘린더로 돌려놓는다 — 로그인 화면에 가두지 않는다.
-      router.replace('/');
-    } catch (e) {
-      Alert.alert('로그아웃 실패', e instanceof Error ? e.message : String(e));
-    } finally {
-      setSigningOut(false);
-    }
-  }
+  const theme = useThemePreference((state) => state.theme);
+  const fontSizePreference = useThemePreference((state) => state.fontSizePreference);
+  const fontFamilyPreference = useThemePreference((state) => state.fontFamilyPreference);
+  const deviceCalendarsConnected = useDeviceCalendarPreference((state) => state.connected);
+  const selectedDeviceCalendars = useDeviceCalendarPreference((state) => state.selectedIds.length);
 
   return (
     <Screen>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         <Content>
-          <Header title="설정" />
+          <Header title="더보기" />
 
-          <View style={styles.group}>
+          <Section title="계정">
             <Card padded={false}>
               <View style={styles.identity}>
                 <View style={[styles.avatar, { backgroundColor: colors.accent }]}>
@@ -51,85 +53,86 @@ export default function SettingsScreen() {
                     </Txt>
                   )}
                 </View>
-
                 <View style={styles.identityText}>
                   <Txt variant="subtitle">{profile.data?.nickname ?? '알 수 없는 사용자'}</Txt>
                   <Txt variant="caption" tone="secondary">
-                    {isGuest ? '게스트 · 이 기기에서만 사용 중' : (user?.email ?? '이메일 없음')}
+                    {isGuest ? '게스트 · 이 기기에서 사용 중' : '계정으로 동기화 중'}
                   </Txt>
                 </View>
               </View>
-
+              <Divider />
               {isGuest ? (
-                <View style={styles.upgrade}>
+                <View style={styles.accountAction}>
                   <Txt variant="caption" tone="secondary">
-                    계정을 만들면 다른 기기에서도 이어서 쓰고, 캘린더를 다른 사람과 공유할 수
-                    있습니다. 지금까지 쓰던 내용은 그대로 유지됩니다.
+                    가입 없이도 앱을 사용할 수 있어요. 재설치하거나 기기를 바꿔도 데이터를 이어서
+                    쓰려면 계정을 만들어 주세요.
                   </Txt>
-                  <Button label="계정 만들기" onPress={() => router.push('/account')} />
+                  <Button label="계정 만들기" size="md" onPress={() => router.push('/account')} />
                 </View>
-              ) : null}
+              ) : (
+                <ListRow
+                  title="계정 관리"
+                  icon="person-outline"
+                  onPress={() => router.push('/preferences')}
+                />
+              )}
             </Card>
-          </View>
+          </Section>
 
-          <Section title="알림">
+          <Section title="캘린더">
             <Card padded={false}>
               <ListRow
+                title="캘린더 관리"
+                subtitle="공유 캘린더와 구성원 관리"
+                icon="calendar-outline"
+                onPress={() => router.push('/calendars')}
+              />
+              <Divider inset="icon" />
+              <ListRow
+                title="알림"
+                subtitle="이 기기와 캘린더별 알림 설정"
                 icon="notifications-outline"
-                title="푸시 알림"
-                subtitle="일정 등록·변경, 댓글, 리마인더"
                 onPress={() => router.push('/notifications')}
               />
-            </Card>
-          </Section>
-
-          <Section title="연동">
-            <Card padded={false}>
+              <Divider inset="icon" />
               <ListRow
-                icon="sync-outline"
-                title="다른 캘린더 가져오기"
-                subtitle="Google · Apple · 네이버"
-                value="예정"
-                disabled
+                title="외부 캘린더"
+                subtitle="iCloud·Google·구독 캘린더"
+                icon="link-outline"
+                value={
+                  deviceCalendarsConnected ? `${selectedDeviceCalendars}개 표시` : '연결 안 됨'
+                }
+                onPress={() => router.push('/external-calendars')}
               />
             </Card>
           </Section>
 
-          <Section title="계정">
+          <Section title="도구">
             <Card padded={false}>
-              {isGuest ? (
-                <ListRow
-                  icon="log-in-outline"
-                  title="이미 계정이 있어요"
-                  subtitle="기존 계정으로 로그인"
-                  onPress={() => router.push('/account')}
-                />
-              ) : (
-                <>
-                  <ListRow
-                    icon="person-outline"
-                    title="프로필 수정"
-                    value="예정"
-                    disabled
-                  />
-                  <Divider />
-                  <ListRow
-                    icon="log-out-outline"
-                    title={signingOut ? '로그아웃 중…' : '로그아웃'}
-                    danger
-                    onPress={handleSignOut}
-                    disabled={signingOut}
-                  />
-                </>
-              )}
-
-              <Divider />
               <ListRow
-                icon="trash-outline"
-                title="계정 삭제"
-                subtitle="되돌릴 수 없습니다"
-                danger
-                onPress={() => router.push('/account-delete')}
+                title="검색"
+                subtitle="일정과 메모 찾기"
+                icon="search-outline"
+                onPress={() => router.push('/search')}
+              />
+              <Divider inset="icon" />
+              <ListRow
+                title="메모"
+                subtitle="캘린더 구성원과 공유하는 기록"
+                icon="document-text-outline"
+                onPress={() => router.push('/memos')}
+              />
+            </Card>
+          </Section>
+
+          <Section title="앱">
+            <Card padded={false}>
+              <ListRow
+                title="설정"
+                subtitle="표시·입력·위젯·계정"
+                icon="settings-outline"
+                value={`${THEME_LABELS[theme]} · ${FONT_FAMILY_LABELS[fontFamilyPreference]} ${FONT_SIZE_LABELS[fontSizePreference]}`}
+                onPress={() => router.push('/preferences')}
               />
             </Card>
           </Section>
@@ -151,7 +154,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 const styles = StyleSheet.create({
-  scroll: { paddingBottom: Spacing.xxxl },
+  scroll: { paddingBottom: Spacing.xxxl * 2 },
   group: { paddingHorizontal: Spacing.xl, paddingBottom: Spacing.xl, gap: Spacing.sm },
   sectionTitle: { paddingLeft: Spacing.xs },
   identity: {
@@ -168,5 +171,5 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   identityText: { flex: 1, gap: 2 },
-  upgrade: { gap: Spacing.md, paddingHorizontal: Spacing.lg, paddingBottom: Spacing.lg },
+  accountAction: { gap: Spacing.md, padding: Spacing.lg },
 });

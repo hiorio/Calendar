@@ -1,7 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Crypto from 'expo-crypto';
+import { useMemo } from 'react';
 
 import { useAuth } from '@/features/auth/auth-provider';
+import { CALENDAR_MEDIA_BUCKET } from '@/features/calendars/cover';
+import { eventKeys } from '@/features/events/queries';
 import { supabase } from '@/lib/supabase';
 import type { CalendarInvite, MemberRole } from '@/types/database';
 
@@ -9,6 +12,8 @@ export type MyCalendar = {
   id: string;
   name: string;
   color: string;
+  coverPath: string | null;
+  coverUrl: string | null;
   owner_id: string;
   /** 내 역할 */
   role: MemberRole;
@@ -37,14 +42,14 @@ export const calendarKeys = {
 export function useMyCalendars() {
   const { user } = useAuth();
 
-  return useQuery<MyCalendar[]>({
+  const calendars = useQuery<MyCalendar[]>({
     queryKey: calendarKeys.mine(),
     enabled: Boolean(user),
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       const { data, error } = await supabase
         .from('calendars')
-        .select('id, name, color, owner_id, calendar_members(user_id, role, muted)')
-        .order('created_at', { ascending: true });
+        .select('id, name, color, cover_url, owner_id, calendar_members(user_id, role, muted)')
+        .order('created_at', { ascending: true }).abortSignal(signal);
 
       if (error) throw error;
 
@@ -52,16 +57,20 @@ export function useMyCalendars() {
         id: string;
         name: string;
         color: string;
+        cover_url: string | null;
         owner_id: string;
         calendar_members: { user_id: string; role: MemberRole; muted: boolean }[];
       };
 
       return (data as unknown as Row[]).map((row) => {
         const me = row.calendar_members.find((m) => m.user_id === user!.id);
+
         return {
           id: row.id,
           name: row.name,
           color: row.color,
+          coverPath: row.cover_url,
+          coverUrl: null,
           owner_id: row.owner_id,
           role: me?.role ?? 'MEMBER',
           memberCount: row.calendar_members.length,
@@ -70,6 +79,24 @@ export function useMyCalendars() {
       });
     },
   });
+  const paths = [...new Set((calendars.data ?? []).flatMap((calendar) => calendar.coverPath ? [calendar.coverPath] : []))].sort();
+  const covers = useQuery({
+    queryKey: ['calendar-covers', user?.id, paths],
+    enabled: Boolean(user && paths.length),
+    staleTime: 45 * 60_000,
+    retry: 1,
+    queryFn: async () => {
+      const { data, error } = await supabase.storage.from(CALENDAR_MEDIA_BUCKET).createSignedUrls(paths, 60 * 60);
+      if (error) throw error;
+      return Object.fromEntries((data ?? []).filter((row) => row.path && row.signedUrl).map((row) => [row.path!, row.signedUrl]));
+    },
+  });
+  const data = useMemo(() => calendars.data?.map((calendar) => ({
+    ...calendar,
+    coverUrl: calendar.coverPath ? covers.data?.[calendar.coverPath] ?? null : null,
+  })), [calendars.data, covers.data]);
+  // 본문 정보는 Storage와 무관하게 즉시 표시하고 사진만 나중에 채운다.
+  return { ...calendars, data };
 }
 
 export function useCreateCalendar() {
@@ -99,7 +126,14 @@ export function useUpdateCalendar(calendarId: string) {
       const { error } = await supabase.from('calendars').update(patch).eq('id', calendarId);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: calendarKeys.all }),
+        // 일정 조회는 캘린더 이름과 색을 조인해 캐시하므로 함께 새로 받아야 한다.
+        queryClient.invalidateQueries({ queryKey: eventKeys.all }),
+        queryClient.invalidateQueries({ queryKey: ['activity'] }),
+      ]);
+    },
   });
 }
 

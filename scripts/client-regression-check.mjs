@@ -1,0 +1,935 @@
+/** Actual client modules executed with isolated storage/network/React adapters. No real requests. */
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import ts from 'typescript';
+
+const nodeRequire = createRequire(import.meta.url);
+let passed = 0;
+async function check(name, run) {
+  await run();
+  passed += 1;
+  console.log(`  PASS  ${name}`);
+}
+function load(path, mocks, expose = '') {
+  const source = readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+  const { outputText } = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX, esModuleInterop: false },
+  });
+  const module = { exports: {} };
+  const require = (name) => {
+    if (name in mocks) return mocks[name];
+    throw new Error(`Missing mock ${name} in ${path}`);
+  };
+  new Function('require', 'module', 'exports', outputText + expose)(require, module, module.exports);
+  return module.exports;
+}
+function storage() {
+  const values = new Map();
+  return {
+    values,
+    getItem: async (key) => values.get(key) ?? null,
+    setItem: async (key, value) => { values.set(key, value); },
+    removeItem: async (key) => { values.delete(key); },
+    multiRemove: async (keys) => { keys.forEach((key) => values.delete(key)); },
+  };
+}
+const deferred = () => {
+  let resolve;
+  let reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+};
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+const continuityStore = storage();
+const continuity = load('src/features/auth/auth-continuity.ts', {
+  '@react-native-async-storage/async-storage': { default: continuityStore },
+});
+await check('auth continuity keeps the last installation user without storing credentials', async () => {
+  await continuity.saveAuthContinuity({ id: 'existing-user', is_anonymous: false });
+  const remembered = await continuity.loadAuthContinuity();
+  assert.equal(remembered.userId, 'existing-user');
+  assert.equal(remembered.isAnonymous, false);
+  assert.equal('access_token' in remembered, false);
+  await continuity.clearAuthContinuity();
+  assert.equal(await continuity.loadAuthContinuity(), null);
+});
+
+const snapshotStore = storage();
+const snapshotCache = load('src/features/calendar/home-snapshot-cache.ts', {});
+const homeSnapshot = load('src/features/calendar/home-snapshot.ts', {
+  '@react-native-async-storage/async-storage': { default: snapshotStore },
+  '@/features/calendar/home-snapshot-cache': snapshotCache,
+});
+await check('calendar snapshot owner remains readable before auth recovery', async () => {
+  const snapshot = {
+    key: '2026-09:sunday',
+    savedAt: '2026-09-11T00:00:00.000Z',
+    marksByDate: {
+      '2026-09-11': [
+        { id: 'event', title: '보존된 일정', color: '#1B54A8', isAllDay: true },
+      ],
+    },
+    stickersByDate: {},
+  };
+  await homeSnapshot.saveHomeMonthSnapshot('existing-user', snapshot);
+  assert.equal(await homeSnapshot.loadHomeSnapshotOwnerId(), 'existing-user');
+  assert.deepEqual(
+    await homeSnapshot.loadHomeMonthSnapshot('existing-user', '2026-09:sunday'),
+    snapshot,
+  );
+});
+
+const pendingKey = 'auth.pendingGuestDataTransfer.v1';
+const store = storage();
+let currentUser = { id: 'G1', is_anonymous: true };
+let claimCalls = 0;
+let claimError = null;
+const guestMocks = {
+  '@react-native-async-storage/async-storage': { default: store },
+  '@/lib/supabase': { supabase: {
+    auth: { getSession: async () => ({ data: { session: { user: currentUser } }, error: null }) },
+    rpc: async (name) => {
+      if (name === 'prepare_guest_data_transfer') return { data: 'transfer-token', error: null };
+      claimCalls++;
+      return { data: claimError ? null : { transferred: 1 }, error: claimError };
+    },
+  } },
+};
+let guest = load('src/features/auth/guest-data-transfer.ts', guestMocks);
+await check('unbound transfer is never claimed by a restored account', async () => {
+  await guest.prepareGuestDataTransfer('G1');
+  currentUser = { id: 'A', is_anonymous: false };
+  assert.equal(await guest.claimPendingGuestDataTransfer('A'), null);
+  assert.equal(claimCalls, 0);
+});
+await check('failed claim retains the intended target account across restart', async () => {
+  await guest.bindPendingGuestDataTransfer('G1', 'A');
+  claimError = { message: 'network timeout' };
+  await assert.rejects(guest.claimPendingGuestDataTransfer('A'), /로그인은 완료/);
+  assert.equal(JSON.parse(await store.getItem(pendingKey)).targetUserId, 'A');
+  guest = load('src/features/auth/guest-data-transfer.ts', guestMocks);
+  currentUser = { id: 'B', is_anonymous: false };
+  assert.equal(await guest.claimPendingGuestDataTransfer('B'), null);
+  assert.equal(claimCalls, 1);
+});
+await check('new guest discard cannot remove the old targeted claim', async () => {
+  await guest.discardPendingGuestDataTransfer('G2');
+  assert.equal(JSON.parse(await store.getItem(pendingKey)).targetUserId, 'A');
+  await assert.rejects(guest.bindPendingGuestDataTransfer('G1', 'B'), /다른 계정/);
+});
+await check('lost response recovery only retries as the bound account', async () => {
+  currentUser = { id: 'A', is_anonymous: false };
+  claimError = null;
+  assert.deepEqual(await guest.claimPendingGuestDataTransfer('A'), { transferred: 1 });
+  assert.equal(await store.getItem(pendingKey), null);
+  assert.equal(claimCalls, 2);
+});
+await check('legacy records without a target are not auto-migrated to the current user', async () => {
+  await store.setItem(pendingKey, JSON.stringify({ token: 'old', guestUserId: 'G1', preparedAt: new Date().toISOString() }));
+  assert.equal(await guest.claimPendingGuestDataTransfer('A'), null);
+  assert.equal(claimCalls, 2);
+});
+
+const authWeb = load('src/features/notifications/push.web.ts', { '@/lib/supabase': guestMocks['@/lib/supabase'] });
+await check('account switch waits until a bound transfer operation has finished', async () => {
+  const waiting = deferred();
+  const actions = [];
+  const transfer = authWeb.withCurrentAuthSession('A', async () => { actions.push('claim'); await waiting.promise; actions.push('claimed'); });
+  const signout = authWeb.withPushUnregisteredForSessionEnd('A', async () => { actions.push('signout'); currentUser = { id: 'G2', is_anonymous: true }; });
+  await tick();
+  assert.deepEqual(actions, ['claim']);
+  waiting.resolve();
+  await Promise.all([transfer, signout]);
+  assert.deepEqual(actions, ['claim', 'claimed', 'signout']);
+  await assert.rejects(authWeb.withCurrentAuthSession('A', async () => { throw new Error('must not run'); }), /현재 사용자가 다릅니다/);
+});
+
+const memoRows = Array.from({ length: 1205 }, (_, id) => ({ id: String(id), content: `memo ${id}`, done: false, calendars: null }));
+const ranges = [];
+let mutationResult = { data: [], error: null };
+const memoModule = load('src/features/memos/queries.ts', {
+  '@tanstack/react-query': { useQuery: (options) => options, useMutation: (options) => options, useQueryClient: () => ({ invalidateQueries: async () => {} }) },
+  '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+  '@/features/calendars/colors': { DEFAULT_CALENDAR_COLOR: 'palette-color' },
+  '@/lib/supabase': { supabase: { from: () => {
+    let range = [0, 0];
+    let mutation = false;
+    const builder = {
+      select: () => builder, order: () => builder, eq: () => builder,
+      update: () => { mutation = true; return builder; },
+      delete: () => { mutation = true; return builder; },
+      range: (start, end) => { range = [start, end]; ranges.push(range); return builder; },
+      abortSignal: () => builder,
+      then: (resolve) => Promise.resolve(mutation ? mutationResult : { data: memoRows.slice(range[0], range[1] + 1), error: null }).then(resolve),
+    };
+    return builder;
+  } } },
+});
+await check('memo pages retain rows beyond PostgREST 1000-row default', async () => {
+  const rows = await memoModule.useMemos().queryFn({ signal: new AbortController().signal });
+  assert.equal(rows.length, 1205);
+  assert.equal(rows.at(-1).content, 'memo 1204');
+  assert.deepEqual(ranges, [[0, 249], [250, 499], [500, 749], [750, 999], [1000, 1249]]);
+  assert.equal(rows[0].calendarName, '알 수 없는 캘린더');
+});
+await check('memo update and delete cannot report success after RLS returns zero rows', async () => {
+  await assert.rejects(memoModule.useToggleMemo().mutationFn({ id: 'missing', done: true }), /수정 권한/);
+  await assert.rejects(memoModule.useDeleteMemo().mutationFn('missing'), /삭제 권한/);
+  mutationResult = { data: [{ id: 'ok' }], error: null };
+  await memoModule.useToggleMemo().mutationFn({ id: 'ok', done: true });
+  await memoModule.useDeleteMemo().mutationFn('ok');
+});
+
+const pushStore = storage();
+await pushStore.setItem('push.expoToken', 'this-installation');
+let permission = { granted: true, status: 'granted', ios: { status: 2 } };
+let deviceResult = { data: { disabled_at: null }, error: null };
+const filters = [];
+const push = load('src/features/notifications/push.ts', {
+  '@react-native-async-storage/async-storage': { default: pushStore },
+  expo: { isRunningInExpoGo: () => false },
+  'expo-constants': { default: {} },
+  'expo-notifications': { getPermissionsAsync: async () => permission, IosAuthorizationStatus: { AUTHORIZED: 2, PROVISIONAL: 3, EPHEMERAL: 4 } },
+  'react-native': { Platform: { OS: 'ios' } },
+  '@/lib/supabase': { supabase: {
+    auth: { getSession: async () => ({ data: { session: { user: { id: 'A' } } }, error: null }) },
+    from: () => {
+      const builder = {
+        select: () => builder,
+        eq: (key, value) => { filters.push([key, value]); return builder; },
+        maybeSingle: async () => deviceResult,
+      };
+      return builder;
+    },
+  } },
+});
+await check('device status queries only this installation and owner', async () => {
+  assert.deepEqual(await push.getDevicePushState('A'), { supported: true, permission: 'allowed', registered: true, locallyEnabled: true });
+  assert.deepEqual(filters, [['user_id', 'A'], ['expo_token', 'this-installation']]);
+});
+await check('disabled token and denied OS permission are represented separately', async () => {
+  deviceResult = { data: { disabled_at: '2026-09-05' }, error: null };
+  permission = { granted: false, status: 'denied', ios: { status: 1 } };
+  assert.deepEqual(await push.getDevicePushState('A'), { supported: true, permission: 'denied', registered: false, locallyEnabled: true });
+});
+await check('device status query failures are not reported as unregistered', async () => {
+  deviceResult = { data: null, error: new Error('connection failed') };
+  await assert.rejects(push.getDevicePushState('A'), /connection failed/);
+});
+
+const jsx = { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) };
+const native = { StyleSheet: { create: (value) => value }, Platform: { OS: 'web' }, View: 'View', ScrollView: 'ScrollView', KeyboardAvoidingView: 'KeyboardAvoidingView' };
+function hooks() {
+  const slots = [];
+  const cleanups = [];
+  let index = 0;
+  return {
+    cleanups,
+    render: (component) => { index = 0; return component(); },
+    react: {
+      useState: (initial) => { const key = index++; if (!(key in slots)) slots[key] = typeof initial === 'function' ? initial() : initial; return [slots[key], (value) => { slots[key] = typeof value === 'function' ? value(slots[key]) : value; }]; },
+      useRef: (initial) => { const key = index++; return slots[key] ??= { current: initial }; },
+      useMemo: (factory) => factory(),
+      useEffect: (effect) => { const key = index++; if (!(key in slots)) { slots[key] = true; cleanups.push(effect()); } },
+    },
+  };
+}
+function find(tree, predicate) {
+  if (!tree || typeof tree !== 'object') return null;
+  if (predicate(tree)) return tree;
+  for (const child of [tree.props?.children].flat(Infinity)) {
+    const result = find(child, predicate);
+    if (result) return result;
+  }
+  return null;
+}
+function componentMocks(react) {
+  const mocks = { react, 'react/jsx-runtime': jsx, 'react-native': native,
+    '@/hooks/use-theme': { useTheme: () => ({ colors: {}, scheme: 'light' }) },
+    '@/constants/theme': {
+      Layout: { controlHeight: 44, minTouchTarget: 44, prominentControlHeight: 50 },
+      Spacing: {},
+      Radius: {},
+      Typography: {},
+    },
+  };
+  for (const [path, name] of [['button', 'Button'], ['card', 'Card'], ['empty-state', 'EmptyState'], ['field', 'Field'], ['segmented', 'Segmented'], ['screen', 'Content'], ['text', 'Txt']]) mocks[`@/components/ui/${path}`] = { [name]: name };
+  return mocks;
+}
+await check('calendar navigation exposes three tabs and keeps the new route hidden', () => {
+  function Tabs() {}
+  Tabs.Screen = 'TabsScreen';
+  const appLayout = load('src/app/(app)/_layout.tsx', {
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
+    'expo-router': { Tabs },
+    'react/jsx-runtime': jsx,
+    'react-native': {
+      StyleSheet: { create: (values) => values, hairlineWidth: 1 },
+    },
+    '@/components/ui/preferred-text-style': { usePreferredTextStyle: () => ({}) },
+    '@/constants/theme': { Typography: { caption: {} } },
+    '@/features/auth/auth-provider': { useAuth: () => ({ isLoading: false }) },
+    '@/hooks/use-theme': {
+      useTheme: () => ({
+        colors: {
+          accent: 'accent',
+          textTertiary: 'tertiary',
+          chrome: 'chrome',
+          chromeBorder: 'border',
+        },
+      }),
+    },
+  }).default;
+
+  const tree = appLayout();
+  assert.equal(tree.type, Tabs);
+  const screens = [tree.props.children].flat(Infinity);
+  assert.equal(screens.length, 4);
+  assert.deepEqual(
+    screens
+      .filter((screen) => screen.props.options.href !== null)
+      .map((screen) => [screen.props.name, screen.props.options.title]),
+    [
+      ['index', '캘린더'],
+      ['activity', '활동'],
+      ['settings', '더보기'],
+    ],
+  );
+  const hiddenNewRoute = screens.find((screen) => screen.props.name === 'new');
+  assert.deepEqual(hiddenNewRoute.props.options, { href: null });
+  assert.equal(hiddenNewRoute.props.listeners, undefined);
+});
+
+await check('hidden new route preserves the add-event auth guard for direct links', () => {
+  let session = null;
+  const NewTabRoute = load('src/app/(app)/new.tsx', {
+    'expo-router': { Redirect: 'Redirect' },
+    'react/jsx-runtime': jsx,
+    '@/features/auth/auth-provider': { useAuth: () => ({ session }) },
+  }).default;
+
+  let tree = NewTabRoute();
+  assert.equal(tree.type, 'Redirect');
+  assert.deepEqual(tree.props.href, {
+    pathname: '/account',
+    params: { reason: '연결을 복구한 뒤 일정을 추가할 수 있어요.' },
+  });
+
+  session = { user: { id: 'account' } };
+  tree = NewTabRoute();
+  assert.equal(tree.type, 'Redirect');
+  assert.equal(tree.props.href, '/event-new');
+});
+
+await check('calendar header add affordance routes through the session guard', () => {
+  let session = null;
+  const navigations = [];
+  const query = {
+    data: [],
+    error: null,
+    isError: false,
+    isFetched: true,
+    isSuccess: true,
+  };
+  const harness = hooks();
+  const react = {
+    ...harness.react,
+    useCallback: (callback) => callback,
+    useEffect: () => {},
+    useMemo: (factory) => factory(),
+    useRef: (initial) => ({ current: initial }),
+  };
+  const CalendarScreen = load('src/app/(app)/index.tsx', {
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
+    'expo-image': { Image: 'Image' },
+    'expo-router': { router: { push: (href) => navigations.push(href) } },
+    react,
+    'react/jsx-runtime': jsx,
+    'react-native': {
+      Pressable: 'Pressable',
+      ScrollView: 'ScrollView',
+      StyleSheet: { create: (values) => values },
+      useWindowDimensions: () => ({ width: 390 }),
+      View: 'View',
+    },
+    '@/components/ui/screen': { Content: 'Content', Screen: 'Screen' },
+    '@/components/ui/text': { Txt: 'Txt' },
+    '@/constants/theme': {
+      Layout: { minTouchTarget: 44 },
+      MaxContentWidth: 720,
+      Radius: { md: 12, pill: 999, sm: 8 },
+      Spacing: { xs: 4, sm: 8, md: 12, lg: 16, xl: 24 },
+    },
+    '@/features/auth/auth-provider': {
+      useAuth: () => ({
+        bootstrapError: null,
+        retainedUserId: null,
+        session,
+        user: session?.user ?? null,
+      }),
+    },
+    '@/features/calendar/home-snapshot-cache': {
+      homeMonthSnapshotKey: () => '2026-09:sunday',
+    },
+    '@/features/calendar/home-snapshot': {
+      loadHomeMonthSnapshot: async () => null,
+      saveHomeMonthSnapshot: async () => {},
+    },
+    '@/features/calendar/month-view': { MonthView: 'MonthView' },
+    '@/features/calendar/month-picker': { MonthPicker: 'MonthPicker' },
+    '@/features/calendars/colors': { calendarColorForScheme: (color) => color },
+    '@/features/calendars/queries': {
+      useMyCalendars: () => ({ ...query, refetch: () => {} }),
+    },
+    '@/features/external-calendars/queries': {
+      useDeviceCalendarEvents: () => query,
+      useDeviceCalendars: () => query,
+    },
+    '@/features/events/queries': {
+      groupByDate: () => ({}),
+      monthGridRange: () => ({ start: new Date(2026, 7, 30), end: new Date(2026, 9, 10) }),
+      useMonthEvents: () => query,
+    },
+    '@/features/stickers/queries': { useMonthStickers: () => query },
+    '@/hooks/use-theme': {
+      useTheme: () => ({
+        colors: {
+          accent: 'accent',
+          accentSoft: 'accent-soft',
+          danger: 'danger',
+          dangerSoft: 'danger-soft',
+          surfaceMuted: 'surface-muted',
+          surfacePressed: 'surface-pressed',
+          text: 'text',
+          textSecondary: 'text-secondary',
+          textTertiary: 'text-tertiary',
+        },
+        scheme: 'light',
+      }),
+    },
+    '@/lib/date': {
+      addMonths: (date, amount) => new Date(date.getFullYear(), date.getMonth() + amount, 1),
+      formatMonthTitle: () => '2026년 9월',
+      startOfMonth: () => new Date(2026, 8, 1),
+      toDateKey: (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`,
+    },
+    '@/stores/calendar-filter': {
+      useCalendarFilter: () => ({ hidden: [], toggle: () => {} }),
+    },
+    '@/stores/calendar-preference': {
+      useCalendarPreference: () => ({
+        weekStart: 'sunday',
+        showWeekNumbers: false,
+        showLunar: false,
+        colorSaturday: true,
+      }),
+    },
+    '@/stores/device-calendar-preference': {
+      useDeviceCalendarPreference: (selector) =>
+        selector({ selectedIds: [], toggleCalendar: () => {} }),
+    },
+  }).default;
+
+  let tree = harness.render(CalendarScreen);
+  let addButton = find(
+    tree,
+    (node) => node.type === 'Pressable' && node.props.accessibilityLabel === '일정 추가',
+  );
+  assert.ok(addButton);
+  assert.equal(addButton.props.accessibilityRole, 'button');
+  assert.equal(addButton.props.accessibilityHint, '새 일정 입력 화면을 엽니다');
+  assert.ok(find(addButton, (node) => node.type === 'Ionicons' && node.props.name === 'add'));
+  const topBar = find(
+    tree,
+    (node) => node.type === 'View' && node.props.style?.justifyContent === 'space-between',
+  );
+  assert.ok(topBar);
+  assert.equal([topBar.props.children].flat(Infinity).at(-1), addButton);
+
+  addButton.props.onPress();
+  assert.deepEqual(navigations, [
+    {
+      pathname: '/account',
+      params: { reason: '연결을 복구한 뒤 일정을 추가할 수 있어요.' },
+    },
+  ]);
+
+  session = { user: { id: 'account' } };
+  tree = harness.render(CalendarScreen);
+  const monthView = find(tree, (node) => node.type === 'MonthView');
+  monthView.props.onSelect(new Date(2026, 8, 17));
+  tree = harness.render(CalendarScreen);
+  addButton = find(
+    tree,
+    (node) => node.type === 'Pressable' && node.props.accessibilityLabel === '일정 추가',
+  );
+  addButton.props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: { date: '2026-09-17' } });
+  find(tree, (node) => node.props?.accessibilityState?.expanded === false).props.onPress();
+  tree = harness.render(CalendarScreen);
+  find(tree, (node) => node.type === 'MonthPicker').props.onChange(new Date(2027, 0, 1));
+  tree = harness.render(CalendarScreen);
+  find(tree, (node) => node.props?.accessibilityLabel === '일정 추가').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: { date: '2027-01-01' } });
+  find(tree, (node) => node.props?.onAccessibilityAction).props.onAccessibilityAction({ nativeEvent: { actionName: 'increment' } });
+  tree = harness.render(CalendarScreen);
+  find(tree, (node) => node.props?.accessibilityLabel === '일정 추가').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: { date: '2027-02-01' } });
+});
+await check('quick entry keeps title/calendar/date and all-day or timed selection in the full editor', () => {
+  const harness = hooks();
+  const navigations = [];
+  const base = new Date(2026, 9, 5, 15, 20);
+  const end = new Date(2026, 9, 5, 16, 20);
+  const component = load('src/app/quick-event.tsx', {
+    ...componentMocks(harness.react),
+    'expo-router': { router: { replace: (href) => navigations.push(href) }, useLocalSearchParams: () => ({ date: '2026-10-05' }) },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: [{ id: 'calendar', name: '개인' }] }) },
+    '@/features/events/queries': { useCreateEvent: () => ({}) },
+    '@/features/widgets/quick-calendar-picker': { QuickCalendarPicker: 'QuickCalendarPicker' },
+    '@/lib/date': { toDateKey: () => '2026-10-05' },
+    '@/lib/event-time': { formatDate: () => '', formatTime: () => '', parseDateKey: () => base, quickEventTime: () => ({ isAllDay: false, start: base, end }), startOfDay: (value) => value, toTimeColumns: () => ({}) },
+  }).default;
+  let tree = harness.render(component);
+  find(tree, (node) => node.type === 'Field').props.onChangeText('약속');
+  tree = harness.render(component);
+  find(tree, (node) => node.type === 'Button' && node.props.label === '장소·반복 등 자세히 입력').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: {
+    date: '2026-10-05', calendarId: 'calendar', copyTitle: '약속', copyAllDay: 'false', copyStartAt: base.toISOString(), copyEndAt: end.toISOString(),
+  } });
+  find(tree, (node) => node.type === 'Segmented').props.onChange('all-day');
+  tree = harness.render(component);
+  find(tree, (node) => node.type === 'Button' && node.props.label === '장소·반복 등 자세히 입력').props.onPress();
+  assert.deepEqual(navigations.at(-1), { pathname: '/event-new', params: {
+    date: '2026-10-05', calendarId: 'calendar', copyTitle: '약속', copyAllDay: 'true', copyStartDate: '2026-10-05',
+  } });
+});
+await check('keyboard plus button submits one quick event and completion cannot pop an unmounted screen', async () => {
+  const harness = hooks();
+  const request = deferred();
+  let writes = 0;
+  let backs = 0;
+  const component = load('src/app/quick-event.tsx', {
+    ...componentMocks(harness.react),
+    'expo-router': { router: { back: () => { backs++; } }, useLocalSearchParams: () => ({}) },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: [{ id: 'calendar', name: '개인' }] }) },
+    '@/features/events/queries': { useCreateEvent: () => ({ mutateAsync: async () => { writes++; await request.promise; } }) },
+    '@/features/widgets/quick-calendar-picker': { QuickCalendarPicker: 'QuickCalendarPicker' },
+    '@/lib/date': { toDateKey: () => '2026-10-01' },
+    '@/lib/event-time': { formatDate: () => '', formatTime: () => '', quickEventTime: (start) => ({ start, end: start }), startOfDay: (value) => value, toTimeColumns: () => ({}) },
+  }).default;
+  let tree = harness.render(component);
+  find(tree, (node) => node.type === 'Field').props.onChangeText('새 일정');
+  tree = harness.render(component);
+  find(tree, (node) => node.type === 'Field').props.onSubmitEditing();
+  find(tree, (node) => node.type === 'Button' && node.props.label === '일정 추가').props.onPress();
+  assert.equal(writes, 1);
+  harness.cleanups.forEach((cleanup) => cleanup?.());
+  request.resolve();
+  await tick();
+  assert.equal(backs, 0);
+});
+
+await check('calendar text is available before batched cover signing finishes', async () => {
+  const request = deferred();
+  let metadata;
+  let signed;
+  const options = [];
+  let signingCalls = 0;
+  const module = load('src/features/calendars/queries.ts', {
+    react: { useMemo: (factory) => factory() },
+    'expo-crypto': {},
+    '@tanstack/react-query': { useQuery: (option) => { options.push(option); return option.queryKey[0] === 'calendars' ? { data: metadata, isSuccess: Boolean(metadata) } : { data: signed }; } },
+    '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+    '@/features/calendars/cover': { CALENDAR_MEDIA_BUCKET: 'calendar-media' },
+    '@/features/events/queries': { eventKeys: {} },
+    '@/lib/supabase': { supabase: {
+      from: () => { const builder = { select: () => builder, order: () => builder, abortSignal: () => builder,
+        then: (resolve) => Promise.resolve({ data: [{ id: 'calendar', name: '내 일정', color: 'color', cover_url: 'cover.png', owner_id: 'A', calendar_members: [{ user_id: 'A', role: 'OWNER', muted: false }] }], error: null }).then(resolve) }; return builder; },
+      storage: { from: () => ({ createSignedUrls: async (paths) => { signingCalls++; assert.deepEqual(paths, ['cover.png']); return request.promise; } }) },
+    } },
+  });
+  module.useMyCalendars();
+  metadata = await options[0].queryFn({ signal: new AbortController().signal });
+  options.length = 0;
+  const result = module.useMyCalendars();
+  const signing = options[1].queryFn();
+  assert.equal(result.isSuccess, true);
+  assert.equal(result.data[0].name, '내 일정');
+  assert.equal(result.data[0].coverUrl, null);
+  request.resolve({ data: [{ path: 'cover.png', signedUrl: 'signed-cover' }], error: null });
+  signed = await signing;
+  assert.equal(module.useMyCalendars().data[0].coverUrl, 'signed-cover');
+  assert.equal(signingCalls, 1);
+});
+await check('comment completion keeps a newer draft and blocks duplicate sending', () => {
+  const harness = hooks();
+  let callbacks;
+  let sends = 0;
+  const component = load('src/features/events/comment-thread.tsx', {
+    ...componentMocks(harness.react),
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' },
+    'react-native': { ...native, Pressable: 'Pressable', TextInput: 'TextInput' },
+    '@/components/ui/notice': { Notice: 'Notice' },
+    '@/components/ui/preferred-text-style': { usePreferredTextStyle: () => ({}) },
+    '@/features/events/comments': { useComments: () => ({ data: [], isError: true }), useAddComment: () => ({ mutate: (_content, options) => { sends++; callbacks = options; } }), useDeleteComment: () => ({}), formatRelativeTime: () => '' },
+    '@/lib/confirm': { confirm: async () => false },
+  }).CommentThread;
+  const render = () => harness.render(() => component({ eventId: 'event' }));
+  let tree = render();
+  assert.ok(find(tree, (node) => node.type === 'Txt' && node.props.children === '댓글을 불러오지 못했습니다.'));
+  find(tree, (node) => node.type === 'TextInput').props.onChangeText('첫 댓글');
+  tree = render();
+  const send = find(tree, (node) => node.props?.accessibilityLabel === '댓글 보내기');
+  send.props.onPress(); send.props.onPress();
+  assert.equal(sends, 1);
+  find(tree, (node) => node.type === 'TextInput').props.onChangeText('다음 댓글');
+  callbacks.onSuccess(); callbacks.onSettled();
+  assert.equal(find(render(), (node) => node.type === 'TextInput').props.value, '다음 댓글');
+});
+await check('attachment retry uploads only remaining files without creating another event', async () => {
+  const harness = hooks();
+  let creates = 0;
+  let uploads = 0;
+  let finishes = 0;
+  const lock = { current: false };
+  const drafts = [{ id: 'a', name: 'a' }, { id: 'b', name: 'b' }];
+  const component = load('src/app/event-new.tsx', {
+    ...componentMocks(harness.react),
+    '@/components/ui/card': { Divider: 'Divider' },
+    'expo-router': { useLocalSearchParams: () => ({}) },
+    '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: [{ id: 'calendar' }] }) },
+    '@/features/events/attachment-queries': { uploadAttachmentDrafts: async (options) => {
+      uploads++;
+      assert.equal(options.eventId, 'saved-event');
+      if (uploads === 1) { options.onUploaded(options.drafts[0]); throw new Error('upload failed'); }
+      assert.deepEqual(options.drafts.map((draft) => draft.id), ['b']);
+      options.onUploaded(options.drafts[0]);
+    } },
+    '@/features/events/attachments': { AttachmentDraftPicker: 'AttachmentDraftPicker' },
+    '@/features/events/event-editor-header': { EventEditorHeader: 'EventEditorHeader' },
+    '@/features/events/event-form': { EventForm: 'EventForm' },
+    '@/features/events/use-event-editor-exit': { useEventEditorExit: () => ({ finish: () => { finishes++; }, savingRef: lock }) },
+    '@/features/events/queries': { useCreateEvent: () => ({ mutateAsync: async () => { creates++; return { id: 'saved-event' }; } }) },
+    '@/lib/confirm': { notify: () => {} },
+    '@/lib/event-time': { newEventTime: (start) => ({ isAllDay: false, start, end: start }), parseDateKey: () => new Date() },
+  }).default;
+  let tree = harness.render(component);
+  find(tree, (node) => node.type === 'AttachmentDraftPicker').props.onChange(drafts);
+  tree = harness.render(component);
+  await find(tree, (node) => node.type === 'EventForm').props.onSubmit({ calendar_id: 'calendar' });
+  tree = harness.render(component);
+  assert.equal(find(tree, (node) => node.type === 'AttachmentDraftPicker').props.drafts.length, 1);
+  find(tree, (node) => node.type === 'Button' && node.props.label === '첨부 다시 시도').props.onPress();
+  await tick();
+  assert.equal(creates, 1); assert.equal(uploads, 2); assert.equal(finishes, 1);
+});
+
+await check('event detail does not wait for calendar images and hides cancelled/deleted actions', () => {
+  const harness = hooks();
+  let row = { id: 'event', title: '내용', calendar_id: 'calendar', calendarName: '캘린더', created_at: '2026-10-01T00:00:00Z', created_by: null, rrule: null, deleted_at: null };
+  let patch = null;
+  const component = load('src/app/event/[id].tsx', {
+    ...componentMocks({ ...harness.react, useCallback: (fn) => fn }),
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' }, 'expo-image': { Image: 'Image' },
+    'react-native': { ...native, Pressable: 'Pressable' },
+    '@tanstack/react-query': { useQueryClient: () => ({}) },
+    'expo-router': { Stack: { Screen: 'StackScreen' }, useLocalSearchParams: () => ({ id: 'event', occ: '2026-10-01T00:00:00Z' }), useFocusEffect: () => {}, router: {} },
+    '@/components/ui/screen': { Screen: 'Screen', Content: 'Content' },
+    '@/features/calendars/queries': { useMyCalendars: () => ({ data: undefined, isPending: true }), calendarKeys: {} },
+    '@/features/events/event-detail-tools': { EventDetailTools: 'EventDetailTools' },
+    '@/features/events/queries': { useEvent: () => ({ data: row }), useOccurrenceException: () => ({ data: patch }), eventKeys: {} },
+    '@/features/events/reminders': { REMINDER_CHOICES: [], useMyReminders: () => ({ isPending: true }) },
+    '@/features/profile/use-profile': { useProfileById: () => ({}) },
+    '@/lib/event-time': { occurrenceTime: (value) => value, formatDate: () => '10월 1일' },
+    '@/lib/recurrence': { isOriginalOccurrence: () => true },
+  }).default;
+  let tree = harness.render(component);
+  assert.ok(find(tree, (node) => node.type === 'EventDetailTools'));
+  assert.ok(find(tree, (node) => node.type === 'Txt' && node.props.children === '내용'));
+  patch = { type: 'CANCELLED' };
+  tree = harness.render(component);
+  assert.equal(find(tree, (node) => node.type === 'EventDetailTools'), null);
+  assert.ok(find(tree, (node) => node.type === 'Txt' && node.props.children === '삭제되었거나 취소된 일정입니다.'));
+  patch = null; row = { ...row, deleted_at: '2026-10-01T00:00:00Z' };
+  assert.equal(find(harness.render(component), (node) => node.type === 'EventDetailTools'), null);
+});
+await check('day view keeps app events during external loading/error and uses saved data offline after login', async () => {
+  const harness = hooks();
+  const day = '2026-10-05';
+  const row = { id: 'event', calendar_id: 'calendar', key: 'event-key' };
+  let events = { data: [row], isPending: false };
+  let external = { isLoading: true };
+  const module = load('src/app/day.tsx', {
+    ...componentMocks(harness.react),
+    '@expo/vector-icons/Ionicons': { default: 'Ionicons' }, 'expo-image': { Image: 'Image' },
+    'expo-router': { router: {} },
+    'react-native': { ...native, ActivityIndicator: 'ActivityIndicator', Pressable: 'Pressable' },
+    'react-native-gesture-handler/ReanimatedSwipeable': { default: 'Swipeable' },
+    '@/features/auth/auth-provider': { useAuth: () => ({ user: { id: 'A' } }) },
+    '@/features/calendar/home-snapshot-cache': { homeMonthSnapshotKey: () => 'month' },
+    '@/features/calendar/home-snapshot': { loadHomeMonthSnapshot: async () => ({ key: 'month', marksByDate: { [day]: [{ id: 'saved', title: '저장됨' }] } }) },
+    '@/features/calendars/colors': { calendarColorForScheme: (value) => value },
+    '@/features/calendars/queries': {},
+    '@/features/external-calendars/device-calendar': {},
+    '@/features/external-calendars/queries': { useDeviceCalendarEvents: () => external },
+    '@/features/events/queries': { useMonthEvents: () => events, monthGridRange: () => ({}), groupByDate: (rows) => ({ [day]: rows }) },
+    '@/features/events/reminders': { useMyReminderEventIds: () => ({}) },
+    '@/features/stickers/catalog': { stickerByKey: () => null },
+    '@/features/stickers/sticker-picker': {},
+    '@/features/stickers/queries': { useDayStickers: () => ({}) },
+    '@/lib/confirm': {},
+    '@/lib/date': { toDateKey: () => day, formatDayTitle: () => day, formatLunarDate: () => null, startOfMonth: (value) => value },
+    '@/lib/event-time': { parseDateKey: () => new Date(2026, 9, 5) },
+    '@/stores/calendar-filter': { useCalendarFilter: () => ({ hidden: [] }) },
+    '@/stores/calendar-preference': { useCalendarPreference: () => ({ weekStart: 'sunday' }) },
+  }, '\nmodule.exports.TestDayPage = DayPage;');
+  const render = () => harness.render(() => module.TestDayPage({ date: new Date(2026, 9, 5), featuredCalendarId: null }));
+  let tree = render();
+  assert.ok(find(tree, (node) => typeof node.type === 'function' && node.type.name === 'SwipeableEventRow'));
+  assert.equal(find(tree, (node) => node.type === 'ActivityIndicator'), null);
+  external = { isError: true };
+  tree = render();
+  assert.ok(find(tree, (node) => typeof node.type === 'function' && node.type.name === 'SwipeableEventRow'));
+  await tick();
+  events = { data: undefined, isPending: true, fetchStatus: 'paused' };
+  tree = render();
+  assert.ok(find(tree, (node) => typeof node.type === 'function' && node.type.name === 'CachedDayEventRow'));
+  assert.equal(find(tree, (node) => node.type === 'ActivityIndicator'), null);
+});
+
+const sync = load('src/features/sync/query-sync.tsx', {
+  ...componentMocks({}),
+  '@tanstack/react-query': {},
+  expo: { requireOptionalNativeModule: () => null },
+  '@/features/auth/auth-provider': {},
+  '@/features/calendar/home-snapshot': {},
+});
+await check('network recovery and shared refresh include comments/stickers but exclude unrelated local data', () => {
+  assert.equal(sync.isNetworkOnline({ isConnected: false }), false);
+  assert.equal(sync.isNetworkOnline({ isConnected: true, isInternetReachable: false }), false);
+  assert.equal(sync.isNetworkOnline({ isConnected: true, isInternetReachable: true }), true);
+  assert.equal(sync.isNetworkOnline({}), true);
+  assert.equal(sync.isSharedQuery(['comments', 'event']), true);
+  assert.equal(sync.isSharedQuery(['calendar-stickers', 'range']), true);
+  assert.equal(sync.isSharedQuery(['device-calendars']), false);
+});
+
+await check('common field passes its visible label and hint to accessibility', () => {
+  const field = load('src/components/ui/field.tsx', {
+    ...componentMocks({ useState: () => [false, () => {}] }),
+    'react-native': { ...native, TextInput: 'TextInput' },
+    './preferred-text-style': { usePreferredTextStyle: () => ({}) },
+  });
+  const tree = field.Field({ label: '일정 제목', hint: '120자까지' });
+  const input = find(tree, (node) => node.type === 'TextInput');
+  assert.equal(input.props.accessibilityLabel, '일정 제목');
+  assert.equal(input.props.accessibilityHint, '120자까지');
+});
+
+function createDateTimeFieldHarness(style, fieldProps = {}) {
+  const harness = hooks();
+  const changes = [];
+  const component = load('src/components/ui/date-time-field.tsx', {
+    '@react-native-community/datetimepicker': { default: 'DateTimePicker' },
+    react: harness.react,
+    'react/jsx-runtime': jsx,
+    'react-native': {
+      Platform: { OS: 'ios' },
+      Pressable: 'Pressable',
+      StyleSheet: { create: (values) => values },
+      View: 'View',
+    },
+    '@/components/ui/text': { Txt: 'Txt' },
+    '@/constants/theme': {
+      Layout: { minTouchTarget: 44 },
+      Radius: { sm: 8 },
+      Spacing: { xs: 4, sm: 8, md: 12, lg: 16 },
+    },
+    '@/features/experiments/time-picker-lab-picker': {
+      TimePickerLabPicker: 'TimePickerLabPicker',
+    },
+    '@/hooks/use-theme': {
+      useTheme: () => ({
+        colors: { surfacePressed: 'pressed', surfaceMuted: 'muted' },
+      }),
+    },
+    '@/lib/event-time': {
+      formatDate: () => '2026. 9. 15.',
+      formatTime: () => '오후 2:35',
+    },
+    '@/stores/time-picker-preference': {
+      useTimePickerPreference: (selector) => selector({ style }),
+    },
+  }).DateTimeField;
+
+  const value = new Date(2026, 8, 15, 14, 35);
+  const render = (mode = 'time') =>
+    harness.render(() =>
+      component({
+        label: '시작',
+        value,
+        mode,
+        onChange: (next) => changes.push(next),
+        ...fieldProps,
+      }),
+    );
+
+  return { changes, render };
+}
+
+await check('iOS 기본형과 날짜 입력은 기존 compact 선택기를 유지한다', () => {
+  const system = createDateTimeFieldHarness('system');
+  const systemTree = system.render('time');
+  const systemPicker = find(systemTree, (node) => node.type === 'DateTimePicker');
+  assert.equal(systemPicker.props.mode, 'time');
+  assert.equal(systemPicker.props.display, 'compact');
+  assert.equal(systemPicker.props.hitSlop.top, 8);
+  assert.equal(systemPicker.props.hitSlop.bottom, 8);
+  assert.equal(find(systemTree, (node) => node.type === 'TimePickerLabPicker'), null);
+
+  const customDate = createDateTimeFieldHarness('digit-auto');
+  const dateTree = customDate.render('date');
+  assert.equal(find(dateTree, (node) => node.type === 'DateTimePicker').props.mode, 'date');
+  assert.equal(find(dateTree, (node) => node.type === 'TimePickerLabPicker'), null);
+});
+
+await check('iOS 커스텀 시각 버튼은 compact 높이와 44pt 이상의 터치 영역을 함께 유지한다', () => {
+  const custom = createDateTimeFieldHarness('digit-auto');
+  const tree = custom.render('time');
+  const trigger = find(tree, (node) => node.type === 'Pressable');
+  const style = Object.assign({}, ...trigger.props.style({ pressed: false }));
+
+  assert.equal(style.minHeight, 34);
+  assert.equal(style.paddingVertical, 4);
+  assert.equal(trigger.props.hitSlop.top, 8);
+  assert.equal(trigger.props.hitSlop.bottom, 8);
+});
+
+await check('일정 날짜와 시각 입력은 줄바꿈 없이 같은 행을 유지한다', () => {
+  const source = readFileSync(
+    new URL('../src/features/events/event-form.tsx', import.meta.url),
+    'utf8',
+  );
+  const timeControls = source.match(/timeControls:\s*\{([\s\S]*?)\n\s*\},/)?.[1] ?? '';
+
+  assert.match(source, /function CompactTimeRow[\s\S]*?style=\{styles\.compactLabel\}/);
+  assert.match(timeControls, /flexDirection:\s*'row'/);
+  assert.match(timeControls, /\bflex:\s*1/);
+  assert.match(timeControls, /minWidth:\s*0/);
+  assert.match(timeControls, /flexWrap:\s*'nowrap'/);
+});
+
+await check('iOS A형은 전용 다이얼을 열고 취소하면 값을 바꾸지 않는다', () => {
+  const aType = createDateTimeFieldHarness('digit-auto');
+  let tree = aType.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = aType.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-auto');
+  assert.equal(picker.props.purpose, 'event');
+  picker.props.onCancel();
+  tree = aType.render();
+  assert.equal(find(tree, (node) => node.type === 'TimePickerLabPicker'), null);
+  assert.deepEqual(aType.changes, []);
+});
+
+await check('iOS B형은 확인한 시각을 한 번만 일정 폼에 반영한다', () => {
+  const bType = createDateTimeFieldHarness('digit-composed');
+  let tree = bType.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = bType.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-composed');
+  assert.equal(picker.props.purpose, 'event');
+  const confirmed = new Date(2026, 8, 15, 15, 47);
+  picker.props.onConfirm(confirmed);
+  tree = bType.render();
+  assert.equal(find(tree, (node) => node.type === 'TimePickerLabPicker'), null);
+  assert.deepEqual(bType.changes, [confirmed]);
+});
+
+await check('설정 체험은 저장값 대신 지정한 실제 선택기를 열어 샘플 시각에만 반영한다', () => {
+  const customPreview = createDateTimeFieldHarness('system', {
+    timePickerStyleOverride: 'digit-composed',
+    timePickerPurpose: 'preview',
+  });
+  let tree = customPreview.render();
+  find(tree, (node) => node.type === 'Pressable').props.onPress();
+  tree = customPreview.render();
+  const picker = find(tree, (node) => node.type === 'TimePickerLabPicker');
+  assert.equal(picker.props.variant, 'digit-composed');
+  assert.equal(picker.props.purpose, 'preview');
+  const previewValue = new Date(2026, 8, 15, 16, 52);
+  picker.props.onConfirm(previewValue);
+  assert.deepEqual(customPreview.changes, [previewValue]);
+
+  const systemPreview = createDateTimeFieldHarness('digit-auto', {
+    timePickerStyleOverride: 'system',
+    timePickerPurpose: 'preview',
+  });
+  const systemTree = systemPreview.render();
+  assert.equal(find(systemTree, (node) => node.type === 'DateTimePicker').props.display, 'compact');
+  assert.equal(find(systemTree, (node) => node.type === 'TimePickerLabPicker'), null);
+});
+
+await check('정식 설정에서 기본형·A형·B형을 직접 체험한 뒤 별도로 선택한다', () => {
+  const preferences = readFileSync(
+    new URL('../src/app/preferences.tsx', import.meta.url),
+    'utf8',
+  );
+  const more = readFileSync(new URL('../src/app/(app)/settings.tsx', import.meta.url), 'utf8');
+  const source = readFileSync(new URL('../src/app/time-picker-lab.tsx', import.meta.url), 'utf8');
+  const nativePicker = readFileSync(
+    new URL('../src/features/experiments/time-picker-lab-picker.ios.tsx', import.meta.url),
+    'utf8',
+  );
+  const preferenceStore = readFileSync(
+    new URL('../src/stores/time-picker-preference.ts', import.meta.url),
+    'utf8',
+  );
+  const options = source.match(/const STYLE_DEFINITIONS:[\s\S]*?= \[([\s\S]*?)\];/)?.[1] ?? '';
+  assert.match(options, /id:\s*'system'/);
+  assert.match(options, /id:\s*'digit-auto'/);
+  assert.match(options, /id:\s*'digit-composed'/);
+  assert.doesNotMatch(options, /id:\s*'digit-hold'/);
+  assert.doesNotMatch(source, /C타입|기본·A·B·C/);
+  assert.doesNotMatch(preferences, /기본·A·B·C/);
+  assert.doesNotMatch(nativePicker, /digit-hold|onLongPressGesture|long-press/);
+  assert.match(preferenceStore, /version:\s*1/);
+  assert.match(preferenceStore, /migrate:\s*\(persisted\)/);
+  assert.match(source, /timePickerStyleOverride=\{definition\.id\}/);
+  assert.match(source, /timePickerPurpose="preview"/);
+  assert.match(source, /onPreviewChange=\{setPreviewValue\}/);
+  assert.match(source, /onSelect=\{\(\) => setSelectedStyle\(definition\.id\)\}/);
+  assert.match(source, /accessibilityRole="radiogroup"/);
+  assert.match(source, /accessibilityRole="radio"/);
+  assert.match(source, /accessibilityState=\{\{ checked: selected \}\}/);
+  assert.match(source, /label=\{selected \? '현재 사용 중' : '이 방식 사용'\}/);
+  assert.match(preferences, /router\.push\('\/time-picker-lab'/);
+  assert.match(more, /title="설정"[\s\S]*?router\.push\('\/preferences'/);
+  assert.doesNotMatch(more, /router\.push\('\/time-picker-lab'/);
+});
+
+// Real QueryClient verifies cancelled/cleared data is not revived by a late network response.
+await check('shared query reset removes cached data after membership is revoked', async () => {
+  const { QueryClient, QueryObserver } = nodeRequire('@tanstack/react-query');
+  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const request = deferred();
+  queryClient.setQueryData(['events', 'private'], { title: 'private event' });
+  const observer = new QueryObserver(queryClient, { queryKey: ['events', 'private'], queryFn: () => request.promise });
+  const stop = observer.subscribe(() => {});
+  await queryClient.cancelQueries({ predicate: (query) => sync.isSharedQuery(query.queryKey) });
+  const reset = queryClient.resetQueries({ predicate: (query) => sync.isSharedQuery(query.queryKey) });
+  assert.equal(queryClient.getQueryData(['events', 'private']), undefined);
+  request.reject(new Error('access revoked'));
+  await reset;
+  assert.equal(queryClient.getQueryData(['events', 'private']), undefined);
+  stop();
+  queryClient.clear();
+});
+
+console.log(`\nClient regressions: ${passed} passed`);

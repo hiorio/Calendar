@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { StyleSheet, TextInput, View, type TextInputProps } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing, Typography } from '@/constants/theme';
+import { Layout, Radius, Spacing, Typography } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+
+import { usePreferredTextStyle } from './preferred-text-style';
 
 export type FieldProps = TextInputProps & {
   label: string;
@@ -13,6 +15,7 @@ export type FieldProps = TextInputProps & {
 export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldProps) {
   const { colors } = useTheme();
   const [focused, setFocused] = useState(false);
+  const preferredTextStyle = usePreferredTextStyle([styles.input, style]);
 
   return (
     <View style={styles.wrap}>
@@ -20,6 +23,8 @@ export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldPro
         {label}
       </Txt>
       <TextInput
+        accessibilityLabel={label}
+        accessibilityHint={hint}
         placeholderTextColor={colors.textTertiary}
         onFocus={(e) => {
           setFocused(true);
@@ -33,10 +38,11 @@ export function Field({ label, hint, style, onFocus, onBlur, ...rest }: FieldPro
           styles.input,
           {
             color: colors.text,
-            backgroundColor: colors.surface,
-            borderColor: focused ? colors.accent : colors.border,
+            backgroundColor: colors.surfaceMuted,
+            borderColor: focused ? colors.accent : 'transparent',
           },
           style,
+          preferredTextStyle,
         ]}
         {...rest}
       />
@@ -56,6 +62,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: Radius.md,
     paddingHorizontal: Spacing.lg,
-    height: 50,
+    paddingVertical: Spacing.md,
+    minHeight: Layout.prominentControlHeight,
   },
 });

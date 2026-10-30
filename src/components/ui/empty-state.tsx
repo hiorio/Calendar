@@ -2,7 +2,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { StyleSheet, View } from 'react-native';
 
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
+import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 export type EmptyStateProps = {
@@ -18,7 +18,7 @@ export function EmptyState({ icon, title, description, action, compact = false }
 
   return (
     <View style={[styles.wrap, compact && styles.compact]}>
-      <View style={[styles.badge, { backgroundColor: colors.surfaceMuted }]}>
+      <View style={styles.icon}>
         <Ionicons name={icon} size={compact ? 20 : 26} color={colors.textTertiary} />
       </View>
       <View style={styles.text}>
@@ -42,10 +42,9 @@ const styles = StyleSheet.create({
     padding: Spacing.xxl,
   },
   compact: { padding: Spacing.lg, gap: Spacing.sm },
-  badge: {
-    width: 56,
-    height: 56,
-    borderRadius: Radius.pill,
+  icon: {
+    width: 40,
+    height: 40,
     alignItems: 'center',
     justifyContent: 'center',
   },

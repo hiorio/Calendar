@@ -6,13 +6,18 @@ import { Button } from '@/components/ui/button';
 import { Field } from '@/components/ui/field';
 import { Content } from '@/components/ui/screen';
 import { Txt } from '@/components/ui/text';
-import { Radius, Spacing } from '@/constants/theme';
-import { CALENDAR_COLORS, DEFAULT_CALENDAR_COLOR, onColor } from '@/features/calendars/colors';
+import { Layout, Radius, Spacing } from '@/constants/theme';
+import {
+  CALENDAR_COLORS,
+  DEFAULT_CALENDAR_COLOR,
+  calendarColorForScheme,
+  onColor,
+} from '@/features/calendars/colors';
 import { useCreateCalendar } from '@/features/calendars/queries';
 import { useTheme } from '@/hooks/use-theme';
 
 export default function NewCalendarScreen() {
-  const { colors } = useTheme();
+  const { colors, scheme } = useTheme();
   const create = useCreateCalendar();
 
   const [name, setName] = useState('');
@@ -29,10 +34,9 @@ export default function NewCalendarScreen() {
     create.mutate(
       { name, color },
       {
-        onSuccess: (calendar) => {
-          if (router.canGoBack()) router.back();
-          router.push({ pathname: '/calendar/[id]', params: { id: calendar.id } });
-        },
+        // 생성 직후에는 설정 화면에 머물지 않고 새 캘린더가 보이는 메인 화면으로 간다.
+        // dismissTo는 어느 경로에서 만들기를 열었든 중간 모달까지 함께 정리한다.
+        onSuccess: () => router.dismissTo('/'),
         onError: (e) => setError(e instanceof Error ? e.message : String(e)),
       },
     );
@@ -45,7 +49,6 @@ export default function NewCalendarScreen() {
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Content style={styles.content}>
           <View style={styles.intro}>
-            <Txt variant="display">새 캘린더</Txt>
             <Txt variant="body" tone="secondary">
               만든 뒤 초대 링크를 보내면 함께 쓸 수 있습니다.
             </Txt>
@@ -76,16 +79,19 @@ export default function NewCalendarScreen() {
                     accessibilityLabel={`색 ${option}`}
                     accessibilityState={{ selected }}
                     onPress={() => setColor(option)}
-                    style={[
-                      styles.swatch,
-                      { backgroundColor: option },
-                      selected && { borderColor: colors.text, borderWidth: 2 },
-                    ]}>
-                    {selected ? (
-                      <Txt variant="caption" style={{ color: onColor(option) }}>
-                        ✓
-                      </Txt>
-                    ) : null}
+                    style={styles.swatchTarget}>
+                    <View
+                      style={[
+                        styles.swatch,
+                        { backgroundColor: calendarColorForScheme(option, scheme) },
+                        selected && { borderColor: colors.text, borderWidth: 2 },
+                      ]}>
+                      {selected ? (
+                        <Txt variant="caption" style={{ color: onColor(option, scheme) }}>
+                          ✓
+                        </Txt>
+                      ) : null}
+                    </View>
                   </Pressable>
                 );
               })}
@@ -93,7 +99,12 @@ export default function NewCalendarScreen() {
           </View>
 
           <View style={[styles.preview, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-            <View style={[styles.previewDot, { backgroundColor: color }]} />
+            <View
+              style={[
+                styles.previewDot,
+                { backgroundColor: calendarColorForScheme(color, scheme) },
+              ]}
+            />
             <Txt variant="body">{name.trim() || '이름 없는 캘린더'}</Txt>
           </View>
 
@@ -116,7 +127,13 @@ const styles = StyleSheet.create({
   content: { flex: 0, gap: Spacing.xl, paddingHorizontal: Spacing.xl },
   intro: { gap: Spacing.xs },
   colorSection: { gap: Spacing.sm },
-  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.md },
+  swatches: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm },
+  swatchTarget: {
+    width: Layout.minTouchTarget,
+    height: Layout.minTouchTarget,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   swatch: {
     width: 40,
     height: 40,

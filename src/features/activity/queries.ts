@@ -5,6 +5,7 @@ import { objectParticle } from '@/lib/korean';
 import { supabase } from '@/lib/supabase';
 
 export type ActivityType =
+  | 'CALENDAR_UPDATED'
   | 'EVENT_CREATED'
   | 'EVENT_UPDATED'
   | 'EVENT_DELETED'
@@ -86,7 +87,7 @@ export function useActivity() {
         id: row.id,
         calendar_id: row.calendar_id,
         calendarName: row.calendars?.name ?? '',
-        calendarColor: row.calendars?.color ?? '#6B7683',
+        calendarColor: row.calendars?.color ?? '#9AA1AC',
         actor_id: row.actor_id,
         // 탈퇴한 사람의 흔적은 남기고 이름만 잃는다 (actor_id는 on delete set null)
         actorName: row.profiles?.nickname ?? '알 수 없는 사용자',
@@ -109,12 +110,29 @@ const CHANGED_LABELS: Record<string, string> = {
   calendar: '캘린더',
 };
 
+const CALENDAR_CHANGED_LABELS: Record<string, string> = {
+  name: '이름',
+  color: '색상',
+  cover: '대표 사진',
+};
+
 /** "민준님이 저녁 약속의 시간을 바꿨어요" 같은 한 줄 */
 export function describeActivity(entry: ActivityEntry): { text: string; detail?: string } {
   const who = entry.mine ? '내가' : `${entry.actorName}님이`;
   const title = entry.summary?.title ?? '일정';
 
   switch (entry.type) {
+    case 'CALENDAR_UPDATED': {
+      const changed = (entry.summary?.changed ?? [])
+        .map((key) => CALENDAR_CHANGED_LABELS[key] ?? key)
+        .join(' · ');
+      return {
+        text: changed
+          ? `${who} ${title} 캘린더의 ${objectParticle(changed)} 바꿨어요`
+          : `${who} ${title} 캘린더를 바꿨어요`,
+      };
+    }
+
     case 'EVENT_CREATED':
       return { text: `${who} ${objectParticle(title)} 추가했어요` };
 
@@ -153,6 +171,8 @@ export function describeActivity(entry: ActivityEntry): { text: string; detail?:
 
 export function activityIcon(type: ActivityType): string {
   switch (type) {
+    case 'CALENDAR_UPDATED':
+      return 'calendar-outline';
     case 'EVENT_CREATED':
       return 'add-circle-outline';
     case 'EVENT_UPDATED':
