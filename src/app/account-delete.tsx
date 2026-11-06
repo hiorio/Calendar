@@ -37,7 +37,6 @@ export default function DeleteAccountScreen() {
       keyboardShouldPersistTaps="handled">
       <Content style={styles.content}>
         <View style={styles.intro}>
-          <Txt variant="display">계정 삭제</Txt>
           <Txt variant="body" tone="secondary">
             되돌릴 수 없습니다. 지우고 나면 같은 계정으로 다시 들어올 수 없습니다.
           </Txt>
